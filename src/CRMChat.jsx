@@ -138,7 +138,8 @@ export default function CRMChat({ token }) {
   useEffect(()=>{
     if (!selected) return
     setMessages([]); setAiText(""); setLoadingMsgs(true)
-    fetch(`/api/chat/messages/${selected.id}`,{headers:{"x-auth-token":token}})
+    const qs = selected.username ? `?username=${encodeURIComponent(selected.username)}` : ""
+    fetch(`/api/chat/messages/${selected.id}${qs}`,{headers:{"x-auth-token":token}})
       .then(r=>r.json())
       .then(d=>{ if(Array.isArray(d)) setMessages(d) })
       .catch(e=>console.error("loadMsgs:",e))
