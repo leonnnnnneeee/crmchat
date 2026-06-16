@@ -136,6 +136,8 @@ app.get('/api/chat/list', requireAuth, async (req,res) => {
       unread: d.unreadCount || 0,
       date: d.message?.date,
       isUser: d.isUser,
+      username: d.entity?.username || null,
+      accessHash: d.entity?.accessHash?.toString() || null,
     }))
     await client.disconnect()
     res.json(chats)
@@ -147,8 +149,24 @@ app.get('/api/chat/messages/:id', requireAuth, async (req,res) => {
   if (!_session) return res.json([])
   try {
     const client = await getClient()
-    const entity = await client.getEntity(req.params.id)
-    const msgs = await client.getMessages(entity, { limit: 60 })
+    let entity
+    const rawId = req.params.id
+    // Try resolving by username first (from query), then by numeric ID
+    const username = req.query.username
+    try {
+      if (username) {
+        entity = await client.getEntity(username)
+      } else {
+        entity = await client.getEntity(BigInt(rawId))
+      }
+    } catch(e1) {
+      try { entity = await client.getEntity(parseInt(rawId)) } catch(e2) {
+        log('entity resolve failed: ' + e2.message)
+        await client.disconnect()
+        return res.json([])
+      }
+    }
+    const msgs = await client.getMessages(entity, { limit: 80 })
     const results = msgs.reverse()
       .map(m => ({ id: m.id, text: m.message, fromMe: m.out, date: m.date }))
       .filter(m => m.text)
@@ -163,7 +181,9 @@ app.post('/api/chat/send', requireAuth, async (req,res) => {
   if (!_session) return res.status(401).json({ error: 'Not connected' })
   try {
     const client = await getClient()
-    const entity = await client.getEntity(chatId)
+    let entity
+    try { entity = await client.getEntity(BigInt(chatId)) }
+    catch { try { entity = await client.getEntity(parseInt(chatId)) } catch { entity = chatId } }
     await client.sendMessage(entity, { message: text })
     await client.disconnect()
     log('Sent to '+chatId+': '+text.slice(0,40))
