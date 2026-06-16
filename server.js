@@ -1,6 +1,7 @@
 require('dotenv').config()
 const express = require('express')
 const path = require('path')
+const axios = require('axios')
 const app = express()
 const PORT = process.env.PORT || 3002
 
@@ -12,113 +13,175 @@ const USERS = [
   { u: 'Leon',  p: process.env.LEON_PASSWORD  || 'coincu123'  },
   { u: 'admin', p: process.env.ADMIN_PASSWORD || 'coincu2026' },
 ]
-
 const TG_API_ID   = parseInt(process.env.TG_API_ID   || '23444646')
 const TG_API_HASH =          process.env.TG_API_HASH  || '83816a4a3a3006b19549b2ba782acae0'
-const SB_URL      =          process.env.SUPABASE_URL || 'https://rgtodxxuwdusaacipokt.supabase.co'
-const SB_KEY      =          process.env.SUPABASE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJndG9keHh1d2R1c2FhY2lwb2t0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2MjkxMjcsImV4cCI6MjA5NDIwNTEyN30.8zORHPswWA-0uwJfmKN9TxbTrsNdEAdk4IB8pst7GzU'
-const SBH = { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, 'Content-Type': 'application/json' }
+const GROQ_KEY    =          process.env.GROQ_API_KEY || ''
 
-const axios = require('axios')
 const logs = []
-function log(m) { const l = '[' + new Date().toLocaleTimeString('vi-VN') + '] ' + m; console.log(l); logs.push(l); if (logs.length > 200) logs.shift() }
-log('🚀 Coincu CRM Chat standalone')
+function log(m) { const l='['+new Date().toLocaleTimeString('vi-VN')+'] '+m; console.log(l); logs.push(l); if(logs.length>200)logs.shift() }
+log('🚀 Coincu CRM Chat v2 — standalone with TG auth')
 
-function requireAuth(req, res, next) {
-  const t = req.headers['x-auth-token'] || req.query.token
-  if (t === VALID_TOKEN) return next()
-  res.status(401).json({ error: 'Unauthorized' })
+function requireAuth(req,res,next){
+  const t=req.headers['x-auth-token']||req.query.token
+  if(t===VALID_TOKEN)return next()
+  res.status(401).json({error:'Unauthorized'})
 }
 
-app.post('/api/login', (req, res) => {
-  const { username, password } = req.body
-  if (USERS.some(v => v.u === username && v.p === password)) {
-    res.json({ ok: true, token: VALID_TOKEN })
-  } else {
-    res.json({ ok: false, message: 'Sai username hoặc password' })
-  }
+// ── LOGIN ──
+app.post('/api/login',(req,res)=>{
+  const{username,password}=req.body
+  if(USERS.some(v=>v.u===username&&v.p===password)) res.json({ok:true,token:VALID_TOKEN})
+  else res.json({ok:false,message:'Sai username hoặc password'})
 })
 
-// ── SESSION from Supabase (shared with main app) ──
-let _session = null
-async function getSession() {
-  if (_session && _session.length > 10) return _session
-  try {
-    const r = await axios.get(SB_URL + '/rest/v1/sessions?key=eq.telegram_session', { headers: SBH })
-    if (r.data && r.data[0] && r.data[0].value && r.data[0].value.length > 10) {
-      _session = r.data[0].value
-      log('✅ TG session loaded')
-      return _session
-    }
-  } catch (e) { log('getSession: ' + e.message) }
-  return null
-}
+// ── TELEGRAM SESSION (in-memory + env fallback) ──
+let _session = process.env.TG_SESSION || ''
+let _pendingClient = null
 
-// ── LEADS from Supabase ──
-app.get('/api/leads', requireAuth, async (req, res) => {
-  try {
-    const r = await axios.get(SB_URL + '/rest/v1/leads?order=created_at.asc', { headers: SBH })
-    res.json(r.data || [])
-  } catch (e) { res.json([]) }
-})
-
-// ── TELEGRAM CHAT LIST ──
-app.get('/api/chat/list', requireAuth, async (req, res) => {
-  const session = await getSession()
-  if (!session) return res.json([])
+async function getClient() {
   const { TelegramClient } = require('telegram')
   const { StringSession } = require('telegram/sessions')
+  const client = new TelegramClient(new StringSession(_session), TG_API_ID, TG_API_HASH, { connectionRetries: 3 })
+  await client.connect()
+  return client
+}
+
+// ── AUTH: check status ──
+app.get('/api/tg/status', requireAuth, async (req,res) => {
+  res.json({ connected: _session.length > 10 })
+})
+
+// ── AUTH: send OTP ──
+app.post('/api/tg/send-otp', requireAuth, async (req,res) => {
+  const { phone } = req.body
+  if (!phone) return res.status(400).json({ error: 'Phone required' })
   try {
-    const client = new TelegramClient(new StringSession(session), TG_API_ID, TG_API_HASH, { connectionRetries: 3 })
+    const { TelegramClient } = require('telegram')
+    const { StringSession } = require('telegram/sessions')
+    const client = new TelegramClient(new StringSession(''), TG_API_ID, TG_API_HASH, { connectionRetries: 3 })
     await client.connect()
-    const dialogs = await client.getDialogs({ limit: 50 })
+    const result = await client.sendCode({ apiId: TG_API_ID, apiHash: TG_API_HASH }, phone)
+    _pendingClient = { client, phoneCodeHash: result.phoneCodeHash, phone }
+    log('OTP sent to ' + phone)
+    res.json({ ok: true, phoneCodeHash: result.phoneCodeHash })
+  } catch(e) { log('sendOTP: '+e.message); res.status(500).json({ error: e.message }) }
+})
+
+// ── AUTH: verify OTP ──
+app.post('/api/tg/verify-otp', requireAuth, async (req,res) => {
+  const { phone, code, phoneCodeHash, password } = req.body
+  if (!_pendingClient) return res.status(400).json({ error: 'No pending session. Send OTP first.' })
+  try {
+    const { client, phoneCodeHash: storedHash } = _pendingClient
+    try {
+      await client.invoke(new (require('telegram/tl').Api.auth.SignIn)({
+        phoneNumber: phone,
+        phoneCodeHash: phoneCodeHash || storedHash,
+        phoneCode: code
+      }))
+    } catch(e) {
+      if (e.message.includes('SESSION_PASSWORD_NEEDED') && password) {
+        const { computeCheck } = require('telegram/Password')
+        const pwd = await client.invoke(new (require('telegram/tl').Api.account.GetPassword)())
+        const check = await computeCheck(pwd, password)
+        await client.invoke(new (require('telegram/tl').Api.auth.CheckPassword)({ password: check }))
+      } else throw e
+    }
+    _session = client.session.save()
+    _pendingClient = null
+    log('✅ TG authenticated, session saved')
+    res.json({ ok: true })
+  } catch(e) { log('verifyOTP: '+e.message); res.status(500).json({ error: e.message }) }
+})
+
+// ── CHAT LIST ──
+app.get('/api/chat/list', requireAuth, async (req,res) => {
+  if (!_session) return res.json([])
+  try {
+    const client = await getClient()
+    const dialogs = await client.getDialogs({ limit: 60 })
     const chats = dialogs.map(d => ({
       id: d.id.toString(),
-      name: d.title || 'Unknown',
-      lastMsg: d.message?.message?.slice(0, 60) || '',
-      unread: d.unreadCount,
-      date: d.message?.date
+      name: d.title || d.name || 'Unknown',
+      lastMsg: d.message?.message?.slice(0,80) || '',
+      unread: d.unreadCount || 0,
+      date: d.message?.date,
+      isUser: d.isUser,
     }))
     await client.disconnect()
     res.json(chats)
-  } catch (e) { log('Chat list: ' + e.message); res.json([]) }
+  } catch(e) { log('chatList: '+e.message); res.json([]) }
 })
 
 // ── MESSAGES ──
-app.get('/api/chat/messages/:id', requireAuth, async (req, res) => {
-  const session = await getSession()
-  if (!session) return res.json([])
-  const { TelegramClient } = require('telegram')
-  const { StringSession } = require('telegram/sessions')
+app.get('/api/chat/messages/:id', requireAuth, async (req,res) => {
+  if (!_session) return res.json([])
   try {
-    const client = new TelegramClient(new StringSession(session), TG_API_ID, TG_API_HASH, { connectionRetries: 3 })
-    await client.connect()
+    const client = await getClient()
     const entity = await client.getEntity(req.params.id)
     const msgs = await client.getMessages(entity, { limit: 60 })
-    const results = msgs.reverse().map(m => ({ text: m.message, fromMe: m.out, date: m.date })).filter(m => m.text)
+    const results = msgs.reverse()
+      .map(m => ({ id: m.id, text: m.message, fromMe: m.out, date: m.date }))
+      .filter(m => m.text)
     await client.disconnect()
     res.json(results)
-  } catch (e) { log('Messages: ' + e.message); res.json([]) }
+  } catch(e) { log('messages: '+e.message); res.json([]) }
 })
 
 // ── SEND MESSAGE ──
-app.post('/api/chat/send', requireAuth, async (req, res) => {
+app.post('/api/chat/send', requireAuth, async (req,res) => {
   const { chatId, text } = req.body
-  const session = await getSession()
-  if (!session) return res.status(401).json({ error: 'No TG session' })
-  const { TelegramClient } = require('telegram')
-  const { StringSession } = require('telegram/sessions')
+  if (!_session) return res.status(401).json({ error: 'Not connected' })
   try {
-    const client = new TelegramClient(new StringSession(session), TG_API_ID, TG_API_HASH, { connectionRetries: 3 })
-    await client.connect()
-    await client.sendMessage(chatId, { message: text })
+    const client = await getClient()
+    const entity = await client.getEntity(chatId)
+    await client.sendMessage(entity, { message: text })
     await client.disconnect()
+    log('Sent to '+chatId+': '+text.slice(0,40))
     res.json({ ok: true })
-  } catch (e) { log('Send: ' + e.message); res.status(500).json({ error: e.message }) }
+  } catch(e) { log('send: '+e.message); res.status(500).json({ error: e.message }) }
 })
 
-app.get('/api/health', (req, res) => res.json({ ok: true }))
-app.get('/api/logs', requireAuth, (req, res) => res.json(logs))
-app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'dist', 'index.html')))
+// ── AI SUGGEST (Groq) ──
+app.post('/api/ai/suggest', requireAuth, async (req,res) => {
+  const { contactName, lastMessage, messages, stage, notes } = req.body
+  if (!GROQ_KEY) {
+    // Rule-based fallback
+    const msg = (lastMessage||'').toLowerCase()
+    let suggestion = ''
+    if (msg.includes('feedback')||msg.includes('users')) suggestion = "Got it. Are you collecting feedback mostly from users now, or also preparing visibility for the next public campaign?"
+    else if (msg.includes('budget')||msg.includes('price')||msg.includes('expensive')) suggestion = "Got it, budget timing is always a factor. Are you raising soon, or is this more of a timing issue for next quarter?"
+    else if (msg.includes('raising')||msg.includes('investor')||msg.includes('round')) suggestion = "That's great timing — investors do check media presence. Would it make sense to have Coincu coverage ready before your next round closes?"
+    else if (msg.includes('busy')||msg.includes('later')||msg.includes('not now')) suggestion = "No worries. When would be a better time to revisit? I'll follow up then."
+    else if (msg.includes('what')||msg.includes('sell')||msg.includes('offer')) suggestion = "Fair question. We mainly help Web3 projects get visibility through Coincu PR and CMC News. Is your current focus more awareness, users, or credibility before a milestone?"
+    else suggestion = `Thanks for the context. What's the main goal for your project right now — awareness, credibility, or users?`
+    return res.json({ suggestion })
+  }
+  try {
+    const recentMsgs = (messages||[]).slice(-10).map(m => `${m.fromMe?'Leon':contactName}: ${m.text}`).join('\n')
+    const prompt = `You are Leon, BD at Coincu — a crypto PR and media company in Vietnam.
+Contact: ${contactName}
+Sales stage: ${stage || 'Contacted'}
+Notes: ${notes || 'none'}
+Recent conversation:
+${recentMsgs}
+Last message from client: "${lastMessage}"
 
-app.listen(PORT, () => log('Listening on port ' + PORT))
+Write a SHORT, natural Telegram-style reply. Max 2 sentences. One open question max. Not salesy. Focus on Coincu PR or CMC News as visibility/credibility layer. Reply in the same language as the client.`
+
+    const r = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
+      model: 'llama3-8b-8192',
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 120,
+      temperature: 0.7
+    }, { headers: { Authorization: `Bearer ${GROQ_KEY}`, 'Content-Type': 'application/json' }})
+    const suggestion = r.data.choices[0].message.content.trim()
+    res.json({ suggestion })
+  } catch(e) { log('AI suggest: '+e.message); res.status(500).json({ error: e.message }) }
+})
+
+app.get('/api/health', (req,res) => res.json({ ok: true, tgConnected: _session.length > 10 }))
+app.get('/api/logs', requireAuth, (req,res) => res.json(logs))
+app.get('*', (req,res) => res.sendFile(path.join(__dirname,'dist','index.html')))
+
+app.listen(PORT, () => log('Listening on port '+PORT))
