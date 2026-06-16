@@ -5,7 +5,6 @@ const TG = {
   border:"#0d0618", blue:"#7c3aed", blueHover:"#6d2ed5", blueDim:"rgba(124,58,237,.15)",
   text:"#f0e6ff", textSec:"#9b7ec8", textMuted:"#6b4d94",
   green:"#4fae4e", red:"#e53935", msgOut:"#7c3aed", msgIn:"#1e0a3c",
-  inputBg:"#2d1155",
 }
 
 const STAGES = {
@@ -20,24 +19,29 @@ const STAGES = {
 const TEMPLATES = [
   {id:"t1",  cat:"Outreach",    label:"First Outreach",           text:"Hi [Name], I'm Leon from Coincu — we help Web3 projects get visibility through Coincu PR and CMC News. Is your team focused on any upcoming milestone?"},
   {id:"t2",  cat:"Follow-up",   label:"Follow-up after Seen",     text:"Hey [Name], just checking in — did you get a chance to look at what I shared? Happy to answer any questions."},
-  {id:"t3",  cat:"Pitch",       label:"Client asks what we sell",  text:"Good question — we mainly help Web3 projects get visibility through Coincu PR and CMC News. Is your current focus more awareness, users, or credibility before a milestone?"},
-  {id:"t4",  cat:"Objection",   label:"No budget",                 text:"Totally understand — budget timing is always a factor. Are you in a position to move this quarter, or should we plan for next?"},
-  {id:"t5",  cat:"Objection",   label:"Media doesn't convert",     text:"Fair point — PR isn't about direct conversion. It's the credibility layer that makes your ads, community, and investor conversations land better."},
-  {id:"t6",  cat:"Context",     label:"Client raising funds",      text:"Good timing actually — investors do check media presence. Would it make sense to have Coincu coverage ready before your round closes?"},
-  {id:"t7",  cat:"Context",     label:"Focused on users/growth",   text:"That makes sense. Are you also thinking about visibility for the next public milestone, or is that further down the road?"},
-  {id:"t8",  cat:"Context",     label:"Client is agency",          text:"We work well with agencies — either on referral or as a white-label partner. Would that kind of arrangement work for your clients?"},
-  {id:"t9",  cat:"Partnership", label:"Offer referral",            text:"By the way — if you know any Web3 projects who need PR or CMC News, we offer a referral commission on closed deals."},
-  {id:"t10", cat:"Pitch",       label:"Pitch Coincu PR",           text:"Coincu PR gets your project in front of 500K+ monthly readers. Great for announcement visibility and SEO. Want the rate card?"},
-  {id:"t11", cat:"Pitch",       label:"Pitch CMC News",            text:"CMC News puts your content directly on CoinMarketCap — strong for credibility before TGE. Interested?"},
-  {id:"t12", cat:"Pitch",       label:"Pitch Banner Ads",          text:"We also run banner placements on Coincu — good for retargeting during a campaign window."},
-  {id:"t13", cat:"Closing",     label:"Closing",                   text:"Based on what we've discussed, I think a bundled Coincu PR + CMC News package makes the most sense. Want me to put together a quick proposal?"},
+  {id:"t3",  cat:"Pitch",       label:"What do you sell?",        text:"Good question — we mainly help Web3 projects get visibility through Coincu PR and CMC News. Is your current focus more awareness, users, or credibility before a milestone?"},
+  {id:"t4",  cat:"Objection",   label:"No budget",                text:"Totally understand — budget timing is always a factor. Are you in a position to move this quarter, or should we plan for next?"},
+  {id:"t5",  cat:"Objection",   label:"Media doesn't convert",    text:"Fair point — PR isn't about direct conversion. It's the credibility layer that makes your ads, community, and investor conversations land better."},
+  {id:"t6",  cat:"Context",     label:"Client raising funds",     text:"Good timing actually — investors do check media presence. Would it make sense to have Coincu coverage ready before your round closes?"},
+  {id:"t7",  cat:"Context",     label:"Focused on users/growth",  text:"That makes sense. Are you also thinking about visibility for the next public milestone, or is that further down the road?"},
+  {id:"t8",  cat:"Context",     label:"Client is agency",         text:"We work well with agencies — either on referral or as a white-label partner. Would that kind of arrangement work for your clients?"},
+  {id:"t9",  cat:"Partnership", label:"Offer referral",           text:"By the way — if you know any Web3 projects who need PR or CMC News, we offer a referral commission on closed deals."},
+  {id:"t10", cat:"Pitch",       label:"Pitch Coincu PR",          text:"Coincu PR gets your project in front of 500K+ monthly readers. Great for announcement visibility and SEO. Want the rate card?"},
+  {id:"t11", cat:"Pitch",       label:"Pitch CMC News",           text:"CMC News puts your content directly on CoinMarketCap — strong for credibility before TGE. Interested?"},
+  {id:"t12", cat:"Pitch",       label:"Pitch Banner Ads",         text:"We also run banner placements on Coincu — good for retargeting during a campaign window."},
+  {id:"t13", cat:"Closing",     label:"Closing",                  text:"Based on what we've discussed, I think a bundled Coincu PR + CMC News package makes the most sense. Want me to put together a quick proposal?"},
 ]
 
-function Avatar({name,size=40}) {
+// ── Avatar with Telegram-style letter colors ──
+function Avatar({name, size=40}) {
   const colors=["#c03d33","#4fad2d","#d09306","#168acd","#8544d6","#cd4073","#2996ad","#ce671b"]
-  const color=colors[(name||"?").charCodeAt(0)%colors.length]
+  const i=(name||"?").charCodeAt(0)%colors.length
   const initials=(name||"?").split(" ").map(w=>w[0]).slice(0,2).join("").toUpperCase()
-  return <div style={{width:size,height:size,borderRadius:"50%",background:color,display:"flex",alignItems:"center",justifyContent:"center",fontSize:size*.38,fontWeight:600,color:"#fff",userSelect:"none",flexShrink:0}}>{initials}</div>
+  return (
+    <div style={{width:size,height:size,borderRadius:"50%",background:colors[i],display:"flex",alignItems:"center",justifyContent:"center",fontSize:size*.38,fontWeight:600,color:"#fff",userSelect:"none",flexShrink:0,letterSpacing:"-0.5px"}}>
+      {initials}
+    </div>
+  )
 }
 
 function StageBadge({stage}) {
@@ -49,116 +53,197 @@ function fmtTime(ts) {
   if(!ts) return ""
   try {
     const d=typeof ts==="number"?new Date(ts*1000):new Date(ts)
-    const now=new Date(), diff=now-d
+    const now=new Date(),diff=now-d
     if(diff<60000) return "now"
-    if(d.toDateString()===now.toDateString()) return d.toLocaleTimeString("vi-VN",{hour:"2-digit",minute:"2-digit"})
-    const yd=new Date(now); yd.setDate(yd.getDate()-1)
+    if(d.toDateString()===now.toDateString()) return d.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})
+    const yd=new Date(now);yd.setDate(yd.getDate()-1)
     if(d.toDateString()===yd.toDateString()) return "Yesterday"
-    return d.toLocaleDateString("vi-VN",{day:"2-digit",month:"2-digit"})
-  } catch {return ""}
+    return d.toLocaleDateString([],{day:"2-digit",month:"2-digit"})
+  } catch{return ""}
 }
 
 function fmtMsgTime(ts) {
   if(!ts) return ""
   try {
     const d=typeof ts==="number"?new Date(ts*1000):new Date(ts)
-    return d.toLocaleTimeString("vi-VN",{hour:"2-digit",minute:"2-digit"})
-  } catch {return ""}
+    return d.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})
+  } catch{return ""}
 }
 
-const css = `
-.crm-app{display:grid;grid-template-columns:56px 260px 1fr 290px;height:100%;background:${TG.bg};font-family:'Inter',system-ui,sans-serif;overflow:hidden}
-.sidebar{background:${TG.panel};display:flex;flex-direction:column;align-items:center;padding:14px 0;gap:6px;border-right:1px solid ${TG.border};flex-shrink:0}
-.sicon{width:40px;height:40px;display:flex;align-items:center;justify-content:center;border-radius:12px;cursor:pointer;color:${TG.textMuted};font-size:19px;transition:all .15s}
-.sicon:hover{background:${TG.elevated};color:${TG.textSec}}
-.sicon.active{background:#fff;color:${TG.blue}}
-.left-col{background:${TG.panel};border-right:1px solid ${TG.border};display:flex;flex-direction:column;overflow:hidden}
-.search-wrap{padding:10px 12px;position:relative}
-.search-icon{position:absolute;left:22px;top:50%;transform:translateY(-50%);color:${TG.textMuted};font-size:14px;pointer-events:none}
-.search-inp{width:100%;background:${TG.elevated};border:none;border-radius:20px;padding:8px 14px 8px 34px;color:${TG.text};font-size:13px;outline:none;font-family:inherit}
-.search-inp::placeholder{color:${TG.textMuted}}
-.contact-item{display:flex;gap:10px;padding:10px 14px;cursor:pointer;align-items:center;transition:background .1s;border-bottom:1px solid ${TG.border}}
-.contact-item:hover,.contact-item.active{background:${TG.elevated}}
-.contact-item.active{border-left:3px solid ${TG.blue}}
-.mid-col{display:flex;flex-direction:column;background:${TG.bg};overflow:hidden}
-.chat-header{height:58px;background:${TG.panel};border-bottom:1px solid ${TG.border};display:flex;align-items:center;padding:0 16px;gap:12px;flex-shrink:0}
-.hbtn{width:34px;height:34px;background:${TG.elevated};border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:${TG.textSec};font-size:16px;border:none;transition:background .1s}
-.hbtn:hover{background:#3d1f6a;color:${TG.text}}
-.msgs-area{flex:1;overflow-y:auto;padding:14px 16px;display:flex;flex-direction:column;gap:6px}
-.msgs-area::-webkit-scrollbar{width:4px}
-.msgs-area::-webkit-scrollbar-thumb{background:${TG.elevated};border-radius:2px}
-.bubble{max-width:70%;padding:9px 13px 6px;line-height:1.5;position:relative;word-break:break-word}
-.bubble.in{background:${TG.msgIn};color:${TG.text};border-radius:16px 16px 16px 4px;border:1px solid ${TG.elevated};font-size:14px}
-.bubble.out{background:${TG.msgOut};color:#fff;border-radius:16px 16px 4px 16px;font-size:14px}
-.bubble.pending{opacity:.7}
-.bfoot{display:flex;justify-content:flex-end;align-items:center;gap:4px;margin-top:3px}
-.btime{font-size:10px;color:rgba(255,255,255,.45)}
-.btime.in-t{color:${TG.textMuted}}
-.ai-bar{margin:0 16px 8px;padding:12px 14px;background:rgba(124,58,237,.12);border:1px solid rgba(124,58,237,.3);border-radius:12px;flex-shrink:0}
-.ai-label{font-size:11px;font-weight:600;color:#c4a8e8;margin-bottom:6px;display:flex;align-items:center;gap:5px}
-.ai-text{font-size:13px;color:${TG.text};line-height:1.6}
-.ai-btns{display:flex;gap:6px;margin-top:8px}
-.ai-btn{font-size:12px;padding:5px 12px;border-radius:7px;border:none;cursor:pointer;font-weight:600;transition:all .15s}
-.ai-btn.use{background:${TG.blue};color:#fff}
-.ai-btn.use:hover{background:${TG.blueHover}}
-.ai-btn.skip{background:${TG.elevated};color:${TG.textSec}}
-.tmpl-panel{margin:0 16px 8px;background:${TG.panel};border:1px solid ${TG.border};border-radius:12px;overflow:hidden;max-height:210px;flex-shrink:0}
-.tmpl-cats{padding:8px 12px;border-bottom:1px solid ${TG.border};display:flex;gap:6px;overflow-x:auto}
-.tmpl-cats::-webkit-scrollbar{height:0}
-.tcat{font-size:11px;padding:4px 10px;border:none;border-radius:99px;cursor:pointer;white-space:nowrap;font-weight:500;transition:all .15s}
-.tmpl-list{overflow-y:auto;max-height:160px}
-.tmpl-item{padding:10px 14px;cursor:pointer;border-bottom:1px solid ${TG.border};transition:background .1s}
-.tmpl-item:hover{background:${TG.elevated}}
-.input-area{padding:10px 14px 12px;background:${TG.panel};border-top:1px solid ${TG.border};flex-shrink:0}
-.reactions{display:flex;gap:6px;margin-bottom:10px}
-.react{font-size:17px;cursor:pointer;padding:2px 6px;border-radius:8px;background:${TG.elevated};transition:transform .1s;border:none}
-.react:hover{transform:scale(1.25)}
-.input-row{display:flex;gap:8px;align-items:flex-end}
-.msg-inp{flex:1;background:${TG.elevated};border:1px solid #3d1f6a;border-radius:20px;padding:9px 16px;color:${TG.text};font-size:14px;outline:none;font-family:inherit;resize:none;max-height:100px;line-height:1.5}
-.msg-inp::placeholder{color:${TG.textMuted}}
-.ibtn{width:38px;height:38px;border-radius:50%;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:17px;transition:all .15s;flex-shrink:0}
-.ibtn.ghost{background:${TG.elevated};color:${TG.textSec}}
-.ibtn.ghost:hover{background:#3d1f6a;color:${TG.text}}
-.ibtn.send{background:${TG.blue};color:#fff}
-.ibtn.send:hover{background:${TG.blueHover}}
-.ibtn.active-tmpl{background:rgba(124,58,237,.25);color:#c4a8e8}
-.right-col{background:${TG.panel};border-left:1px solid ${TG.border};overflow-y:auto;flex-shrink:0}
-.right-col::-webkit-scrollbar{width:4px}
-.right-col::-webkit-scrollbar-thumb{background:${TG.elevated};border-radius:2px}
-.profile-top{padding:22px 16px 16px;text-align:center;border-bottom:1px solid ${TG.border}}
-.pname{font-size:17px;font-weight:700;color:${TG.text};margin-top:12px}
-.prole{font-size:12px;color:${TG.textSec};margin-top:3px}
-.social-row{display:flex;justify-content:center;gap:8px;margin-top:12px}
-.sbtn{width:34px;height:34px;border-radius:50%;background:${TG.elevated};display:flex;align-items:center;justify-content:center;cursor:pointer;color:${TG.textSec};font-size:16px;border:none;transition:background .1s}
-.sbtn:hover{background:#3d1f6a;color:${TG.text}}
-.r-section{padding:14px 16px;border-bottom:1px solid ${TG.border}}
-.r-label{font-size:10px;font-weight:700;color:${TG.textMuted};text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px}
-.r-inp{width:100%;background:${TG.elevated};border:1px solid #3d1f6a;border-radius:8px;padding:8px 10px;color:${TG.text};font-size:13px;outline:none;font-family:inherit;margin-bottom:8px}
-.r-inp:focus{border-color:${TG.blue}}
-.r-row{display:flex;align-items:center;gap:8px;font-size:13px;color:${TG.textSec};margin-bottom:6px}
-.r-row i{color:${TG.blue};width:16px;font-size:15px}
-.prob-bar{height:4px;background:${TG.elevated};border-radius:99px;overflow:hidden;margin-bottom:10px}
-.prob-fill{height:100%;background:${TG.blue};border-radius:99px;transition:width .3s}
-.note-item{padding:9px 10px;background:${TG.bg};border-radius:8px;border:1px solid ${TG.elevated};margin-bottom:6px}
-.qbtn{width:100%;padding:9px 12px;border-radius:8px;font-size:12px;cursor:pointer;text-align:left;font-weight:500;transition:background .1s;margin-bottom:5px;font-family:inherit}
-.qbtn.default{background:${TG.elevated};border:1px solid #3d1f6a;color:${TG.textSec}}
-.qbtn.default:hover{background:#3d1f6a;color:${TG.text}}
-.qbtn.won{background:rgba(79,174,78,.12);border:1px solid rgba(79,174,78,.3);color:${TG.green}}
-.qbtn.lost{background:rgba(229,57,53,.1);border:1px solid rgba(229,57,53,.25);color:${TG.red}}
-.date-sep{text-align:center;font-size:11px;color:${TG.textMuted};margin:6px 0}
-.online{font-size:11px;color:${TG.green}}
-.tag{background:rgba(124,58,237,.2);color:#c4a8e8;padding:3px 9px;border-radius:99px;font-size:11px;border:1px solid rgba(124,58,237,.25)}
+function fmtDateSep(ts) {
+  if(!ts) return ""
+  try {
+    const d=typeof ts==="number"?new Date(ts*1000):new Date(ts)
+    const now=new Date()
+    if(d.toDateString()===now.toDateString()) return "Today"
+    const yd=new Date(now);yd.setDate(yd.getDate()-1)
+    if(d.toDateString()===yd.toDateString()) return "Yesterday"
+    return d.toLocaleDateString([],{weekday:"long",day:"numeric",month:"long"})
+  } catch{return ""}
+}
+
+// ── Context Menu (right-click) ──
+function ContextMenu({x,y,msg,onDelete,onCopy,onReply,onClose}) {
+  const ref=useRef(null)
+  useEffect(()=>{
+    function handler(e){if(ref.current&&!ref.current.contains(e.target))onClose()}
+    document.addEventListener("mousedown",handler)
+    return()=>document.removeEventListener("mousedown",handler)
+  },[onClose])
+
+  const items=[
+    {icon:"💬",label:"Reply",action:onReply},
+    {icon:"📋",label:"Copy Text",action:onCopy},
+    {icon:"🗑",label:"Delete",action:onDelete,danger:true},
+  ]
+
+  // Adjust position so menu doesn't overflow viewport
+  const menuW=180, menuH=items.length*40+8
+  const adjX=x+menuW>window.innerWidth?x-menuW:x
+  const adjY=y+menuH>window.innerHeight?y-menuH:y
+
+  return (
+    <div ref={ref} style={{
+      position:"fixed",left:adjX,top:adjY,zIndex:9999,
+      background:"#1e0a3c",border:"1px solid #3d1f6a",borderRadius:12,
+      padding:"4px 0",minWidth:180,
+      boxShadow:"0 8px 32px rgba(0,0,0,.6)",
+    }}>
+      {items.map(item=>(
+        <div key={item.label}
+          onClick={()=>{item.action();onClose()}}
+          style={{
+            padding:"9px 16px",cursor:"pointer",display:"flex",alignItems:"center",gap:10,
+            fontSize:13,color:item.danger?TG.red:TG.text,
+            transition:"background .1s",
+          }}
+          onMouseEnter={e=>e.currentTarget.style.background="#2d1155"}
+          onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+          <span style={{fontSize:15}}>{item.icon}</span>
+          {item.label}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// ── AI Suggest floating panel ──
+function AISuggestPanel({text,loading,onUse,onRegenerate,onClose}) {
+  if(!text&&!loading) return null
+  return (
+    <div style={{
+      margin:"0 16px 8px",padding:"12px 14px",
+      background:"rgba(124,58,237,.12)",border:"1px solid rgba(124,58,237,.35)",
+      borderRadius:12,flexShrink:0,
+    }}>
+      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}>
+        <span style={{fontSize:14}}>✨</span>
+        <span style={{fontSize:12,fontWeight:700,color:"#c4a8e8"}}>AI Suggest</span>
+        <div style={{flex:1}}/>
+        <button onClick={onClose} style={{background:"none",border:"none",color:TG.textMuted,cursor:"pointer",fontSize:16,padding:"0 2px",lineHeight:1}}>✕</button>
+      </div>
+      {loading?(
+        <div style={{display:"flex",gap:6,alignItems:"center",color:TG.textSec,fontSize:13}}>
+          <span style={{animation:"spin 1s linear infinite",display:"inline-block"}}>⏳</span>
+          Reading conversation...
+        </div>
+      ):(
+        <>
+          <div style={{fontSize:14,color:TG.text,lineHeight:1.6,marginBottom:10}}>{text}</div>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={onUse} style={{flex:1,padding:"7px",background:TG.blue,color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontWeight:600,fontSize:13}}>
+              Use this ↑
+            </button>
+            <button onClick={onRegenerate} style={{padding:"7px 12px",background:"#2d1155",color:TG.textSec,border:"1px solid #3d1f6a",borderRadius:8,cursor:"pointer",fontSize:13}}>
+              Try again
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+const STYLES = `
+.crm-root{display:grid;grid-template-columns:56px 270px 1fr 295px;height:100%;background:${TG.bg};font-family:'Inter',system-ui,sans-serif;overflow:hidden;color:${TG.text}}
+.sidebar{background:${TG.panel};display:flex;flex-direction:column;align-items:center;padding:14px 0;gap:4px;border-right:1px solid ${TG.border}}
+.si{width:42px;height:42px;display:flex;align-items:center;justify-content:center;border-radius:12px;cursor:pointer;color:${TG.textMuted};font-size:20px;transition:all .15s}
+.si:hover{background:${TG.elevated};color:${TG.textSec}}
+.si.on{background:#fff;color:${TG.blue}}
+.lc{background:${TG.panel};border-right:1px solid ${TG.border};display:flex;flex-direction:column;overflow:hidden}
+.sinp{width:100%;background:${TG.elevated};border:none;border-radius:20px;padding:8px 14px 8px 34px;color:${TG.text};font-size:13px;outline:none;font-family:inherit}
+.sinp::placeholder{color:${TG.textMuted}}
+.ci{display:flex;gap:10px;padding:10px 14px;cursor:pointer;align-items:center;transition:background .1s;border-bottom:1px solid ${TG.border};position:relative}
+.ci:hover{background:${TG.elevated}}
+.ci.sel{background:${TG.blue}22;border-left:3px solid ${TG.blue}}
+.mc{display:flex;flex-direction:column;background:${TG.bg};overflow:hidden}
+.chdr{height:58px;background:${TG.panel};border-bottom:1px solid ${TG.border};display:flex;align-items:center;padding:0 16px;gap:12px;flex-shrink:0}
+.hb{width:34px;height:34px;background:${TG.elevated};border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:${TG.textSec};font-size:16px;border:none;transition:all .15s}
+.hb:hover{background:#3d1f6a;color:${TG.text}}
+.hb.on{background:rgba(124,58,237,.25);color:#c4a8e8}
+.msgs{flex:1;overflow-y:auto;padding:12px 16px;display:flex;flex-direction:column;gap:3px}
+.msgs::-webkit-scrollbar{width:4px}
+.msgs::-webkit-scrollbar-thumb{background:${TG.elevated};border-radius:2px}
+.bbl{max-width:72%;padding:8px 12px 5px;line-height:1.55;word-break:break-word;font-size:14px;cursor:pointer;transition:opacity .1s}
+.bbl:hover{opacity:.92}
+.bbl.in{background:${TG.msgIn};color:${TG.text};border-radius:14px 14px 14px 3px;border:1px solid ${TG.elevated}}
+.bbl.out{background:${TG.msgOut};color:#fff;border-radius:14px 14px 3px 14px}
+.bbl.del{opacity:.4;font-style:italic}
+.bbl.rpl{border-left:3px solid rgba(124,58,237,.6);padding-left:10px}
+.bfoot{display:flex;justify-content:flex-end;align-items:center;gap:3px;margin-top:3px}
+.bt{font-size:10px;color:rgba(255,255,255,.4)}
+.bt.in{color:${TG.textMuted}}
+.dsep{text-align:center;font-size:11px;color:${TG.textMuted};padding:8px 0;user-select:none}
+.dsep span{background:${TG.elevated};padding:3px 12px;border-radius:99px}
+.ia{padding:10px 14px 12px;background:${TG.panel};border-top:1px solid ${TG.border};flex-shrink:0}
+.reacts{display:flex;gap:5px;margin-bottom:10px}
+.re{font-size:18px;cursor:pointer;padding:2px 5px;border-radius:7px;background:${TG.elevated};border:none;transition:transform .1s}
+.re:hover{transform:scale(1.25)}
+.ir{display:flex;gap:8px;align-items:flex-end}
+.mi{flex:1;background:${TG.elevated};border:1px solid #3d1f6a;border-radius:20px;padding:9px 16px;color:${TG.text};font-size:14px;outline:none;font-family:inherit;resize:none;max-height:100px;line-height:1.5;transition:border-color .15s}
+.mi:focus{border-color:${TG.blue}}
+.mi::placeholder{color:${TG.textMuted}}
+.ib{width:38px;height:38px;border-radius:50%;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:17px;transition:all .15s;flex-shrink:0}
+.ib.g{background:${TG.elevated};color:${TG.textSec}}
+.ib.g:hover{background:#3d1f6a;color:${TG.text}}
+.ib.s{background:${TG.blue};color:#fff}
+.ib.s:hover{background:${TG.blueHover}}
+.ib.on{background:rgba(124,58,237,.25);color:#c4a8e8}
+.ib:disabled{opacity:.4;cursor:default}
+.tp{margin:0 16px 8px;background:${TG.panel};border:1px solid ${TG.border};border-radius:12px;overflow:hidden;max-height:210px;flex-shrink:0}
+.tpcat{display:flex;gap:5px;padding:8px 10px;border-bottom:1px solid ${TG.border};overflow-x:auto}
+.tpcat::-webkit-scrollbar{height:0}
+.tc{font-size:11px;padding:4px 10px;border:none;border-radius:99px;cursor:pointer;white-space:nowrap;font-weight:500;font-family:inherit;transition:all .15s}
+.tlist{overflow-y:auto;max-height:160px}
+.ti{padding:10px 14px;cursor:pointer;border-bottom:1px solid ${TG.border};transition:background .1s}
+.ti:hover{background:${TG.elevated}}
+.rc{background:${TG.panel};border-left:1px solid ${TG.border};overflow-y:auto;flex-shrink:0}
+.rc::-webkit-scrollbar{width:4px}
+.rc::-webkit-scrollbar-thumb{background:${TG.elevated};border-radius:2px}
+.rs{padding:14px 16px;border-bottom:1px solid ${TG.border}}
+.rl{font-size:10px;font-weight:700;color:${TG.textMuted};text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px}
+.ri{width:100%;background:${TG.elevated};border:1px solid #3d1f6a;border-radius:8px;padding:8px 10px;color:${TG.text};font-size:13px;outline:none;font-family:inherit;margin-bottom:8px}
+.ri:focus{border-color:${TG.blue}}
+.rr{display:flex;align-items:center;gap:8px;font-size:13px;color:${TG.textSec};margin-bottom:7px}
+.rr i{color:${TG.blue};width:16px;font-size:15px}
+.qb{width:100%;padding:9px 12px;border-radius:8px;font-size:12px;cursor:pointer;text-align:left;font-weight:500;transition:all .1s;margin-bottom:5px;font-family:inherit}
+.qb.d{background:${TG.elevated};border:1px solid #3d1f6a;color:${TG.textSec}}
+.qb.d:hover{background:#3d1f6a;color:${TG.text}}
+.qb.w{background:rgba(79,174,78,.12);border:1px solid rgba(79,174,78,.3);color:${TG.green}}
+.qb.l{background:rgba(229,57,53,.1);border:1px solid rgba(229,57,53,.25);color:${TG.red}}
+.rpl-bar{background:#2d1155;border-left:3px solid ${TG.blue};padding:6px 10px;border-radius:0 8px 8px 0;margin-bottom:8px;font-size:12px;color:${TG.textSec};display:flex;align-items:center;gap:8px}
+@keyframes spin{to{transform:rotate(360deg)}}
 `
 
 export default function CRMChat({token}) {
   const [chats,setChats]=useState([])
-  const [selected,setSelected]=useState(null)
-  const [messages,setMessages]=useState([])
+  const [sel,setSel]=useState(null)
+  const [msgs,setMsgs]=useState([])
   const [search,setSearch]=useState("")
-  const [msgInput,setMsgInput]=useState("")
+  const [input,setInput]=useState("")
   const [sending,setSending]=useState(false)
-  const [loadingChats,setLoadingChats]=useState(true)
-  const [loadingMsgs,setLoadingMsgs]=useState(false)
+  const [loadChats,setLoadChats]=useState(true)
+  const [loadMsgs,setLoadMsgs]=useState(false)
   const [showTmpl,setShowTmpl]=useState(false)
   const [tmplCat,setTmplCat]=useState("all")
   const [aiText,setAiText]=useState("")
@@ -167,112 +252,149 @@ export default function CRMChat({token}) {
   const [stages,setStages]=useState({})
   const [probs,setProbs]=useState({})
   const [deals,setDeals]=useState({})
-  const [followUps,setFollowUps]=useState({})
+  const [fups,setFups]=useState({})
   const [notes,setNotes]=useState({})
-  const [noteInput,setNoteInput]=useState("")
-  const [addingNote,setAddingNote]=useState(false)
+  const [noteInp,setNoteInp]=useState("")
+  const [addNote,setAddNote]=useState(false)
+  const [ctxMenu,setCtxMenu]=useState(null) // {x,y,msg,idx}
+  const [replyTo,setReplyTo]=useState(null)
   const endRef=useRef(null)
 
-  const loadChats=useCallback(async()=>{
-    setLoadingChats(true)
+  // Load chats
+  const fetchChats=useCallback(async()=>{
+    setLoadChats(true)
     try {
       const r=await fetch("/api/chat/list",{headers:{"x-auth-token":token}})
       const d=await r.json()
-      if(Array.isArray(d)){setChats(d);if(!selected&&d.length>0)setSelected(d[0])}
-    } catch(e){console.error(e)}
-    setLoadingChats(false)
+      if(Array.isArray(d)){setChats(d);if(!sel&&d.length>0)setSel(d[0])}
+    }catch(e){console.error("chats:",e)}
+    setLoadChats(false)
   },[token])
 
-  useEffect(()=>{loadChats()},[loadChats])
+  useEffect(()=>{fetchChats()},[fetchChats])
 
+  // Load messages when chat selected
   useEffect(()=>{
-    if(!selected)return
-    setMessages([]);setAiText("");setLoadingMsgs(true)
-    const qs=selected.username?`?username=${encodeURIComponent(selected.username)}`:""
-    fetch(`/api/chat/messages/${selected.id}${qs}`,{headers:{"x-auth-token":token}})
-      .then(r=>r.json()).then(d=>{if(Array.isArray(d))setMessages(d)})
-      .catch(e=>console.error(e)).finally(()=>setLoadingMsgs(false))
-  },[selected?.id,token])
+    if(!sel)return
+    setMsgs([]);setAiText("");setReplyTo(null);setLoadMsgs(true)
+    const qs=sel.username?`?username=${encodeURIComponent(sel.username)}`:""
+    fetch(`/api/chat/messages/${sel.id}${qs}`,{headers:{"x-auth-token":token}})
+      .then(r=>r.json()).then(d=>{if(Array.isArray(d))setMsgs(d)})
+      .catch(e=>console.error("msgs:",e)).finally(()=>setLoadMsgs(false))
+  },[sel?.id,token])
 
-  useEffect(()=>{endRef.current?.scrollIntoView({behavior:"smooth"})},[messages])
+  useEffect(()=>{endRef.current?.scrollIntoView({behavior:"smooth"})},[msgs])
 
-  async function sendMsg(){
-    const text=msgInput.trim()
-    if(!text||!selected)return
+  // Send message
+  async function send(){
+    const text=input.trim();if(!text||!sel)return
     setSending(true)
-    const opt={text,fromMe:true,date:Math.floor(Date.now()/1000),pending:true}
-    setMessages(p=>[...p,opt]);setMsgInput("");setAiText("")
-    try {
-      await fetch("/api/chat/send",{method:"POST",headers:{"Content-Type":"application/json","x-auth-token":token},body:JSON.stringify({chatId:selected.id,text})})
-      setMessages(p=>p.map(m=>m===opt?{...m,pending:false}:m))
-    } catch(e){setMessages(p=>p.filter(m=>m!==opt));setMsgInput(text);alert("Failed: "+e.message)}
+    const opt={text,fromMe:true,date:Math.floor(Date.now()/1000),pending:true,
+      replyTo:replyTo?{text:replyTo.text,fromMe:replyTo.fromMe}:null}
+    setMsgs(p=>[...p,opt]);setInput("");setReplyTo(null)
+    try{
+      await fetch("/api/chat/send",{method:"POST",
+        headers:{"Content-Type":"application/json","x-auth-token":token},
+        body:JSON.stringify({chatId:sel.id,text})})
+      setMsgs(p=>p.map(m=>m===opt?{...m,pending:false}:m))
+    }catch(e){setMsgs(p=>p.filter(m=>m!==opt));setInput(text);alert("Failed: "+e.message)}
     setSending(false)
   }
 
+  // AI Suggest — reads full conversation
   async function getAI(){
-    if(!selected)return
-    setAiLoading(true)
-    const lastClient=[...messages].reverse().find(m=>!m.fromMe)?.text||""
-    try {
-      const r=await fetch("/api/ai/suggest",{method:"POST",headers:{"Content-Type":"application/json","x-auth-token":token},
-        body:JSON.stringify({contactName:selected.name,lastMessage:lastClient,messages:messages.slice(-15),stage:stages[selected.id]||"Contacted",notes:(notes[selected.id]||[]).map(n=>n.content).join(" | ")})})
+    if(!sel){alert("Select a chat first");return}
+    setAiText("");setAiLoading(true)
+    const lastClient=[...msgs].reverse().find(m=>!m.fromMe)?.text||""
+    try{
+      const r=await fetch("/api/ai/suggest",{method:"POST",
+        headers:{"Content-Type":"application/json","x-auth-token":token},
+        body:JSON.stringify({
+          contactName:sel.name,
+          lastMessage:lastClient,
+          messages:msgs.slice(-15).map(m=>({text:m.text,fromMe:m.fromMe})),
+          stage:stages[sel.id]||"Contacted",
+          notes:(notes[sel.id]||[]).map(n=>n.content).join(" | ")
+        })})
       const d=await r.json()
       if(d.suggestion)setAiText(d.suggestion)
-    } catch(e){console.error(e)}
+      else if(d.error)console.error("AI:",d.error)
+    }catch(e){console.error("AI fetch:",e)}
     setAiLoading(false)
   }
 
-  function addNote(){
-    if(!noteInput.trim()||!selected)return
-    const n={id:Date.now(),content:noteInput.trim(),date:new Date().toLocaleDateString("vi-VN")}
-    setNotes(p=>({...p,[selected.id]:[...(p[selected.id]||[]),n]}))
-    setNoteInput("");setAddingNote(false)
+  // Right-click context menu
+  function handleCtx(e,msg,idx){
+    e.preventDefault()
+    setCtxMenu({x:e.clientX,y:e.clientY,msg,idx})
+  }
+
+  function deleteMsg(idx){
+    setMsgs(p=>p.map((m,i)=>i===idx?{...m,deleted:true,text:"This message was deleted"}:m))
+  }
+
+  function copyMsg(text){
+    navigator.clipboard?.writeText(text).catch(()=>{})
+  }
+
+  // Save note
+  function saveNote(){
+    if(!noteInp.trim()||!sel)return
+    const n={id:Date.now(),content:noteInp.trim(),date:new Date().toLocaleDateString()}
+    setNotes(p=>({...p,[sel.id]:[...(p[sel.id]||[]),n]}))
+    setNoteInp("");setAddNote(false)
   }
 
   const filtered=chats.filter(c=>!search||c.name?.toLowerCase().includes(search.toLowerCase()))
-  const cStage=selected?stages[selected.id]||"Contacted":"New"
-  const cProb=selected?probs[selected.id]??50:50
-  const cDeal=selected?deals[selected.id]??0:0
-  const cFollowUp=selected?followUps[selected.id]||"":""
-  const cNotes=selected?notes[selected.id]||[]:[]
+  const cStage=sel?stages[sel.id]||"Contacted":"New"
+  const cProb=sel?probs[sel.id]??50:50
+  const cDeal=sel?deals[sel.id]??0:0
+  const cFup=sel?fups[sel.id]||"":""
+  const cNotes=sel?notes[sel.id]||[]:[]
   const tmplCats=["all",...new Set(TEMPLATES.map(t=>t.cat))]
 
   return (<>
-    <style>{css}</style>
-    <div className="crm-app">
+    <style>{STYLES}</style>
+    <div className="crm-root">
 
       {/* SIDEBAR */}
       <div className="sidebar">
-        <div style={{width:36,height:36,background:TG.blue,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:15,marginBottom:8}}>⚡</div>
-        {[["ti-layout-dashboard","Dashboard"],["ti-users","Leads"],["ti-message-2","Chat"],["ti-file-text","Reports"],["ti-settings","Settings"]].map(([icon,label],i)=>(
-          <div key={icon} className={`sicon${i===2?" active":""}`} title={label}>
+        <div style={{width:36,height:36,background:TG.blue,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:15,marginBottom:10}}>⚡</div>
+        {[["ti-layout-dashboard","Dashboard"],["ti-users","Leads"],["ti-message-2","Chat"],["ti-file-text","Reports"],["ti-chart-bar","Analytics"]].map(([icon,label],i)=>(
+          <div key={icon} className={`si${i===2?" on":""}`} title={label}>
             <i className={`ti ${icon}`} aria-hidden="true"/>
           </div>
         ))}
         <div style={{flex:1}}/>
-        <Avatar name="Leon" size={34}/>
+        <div className="si" title="Settings"><i className="ti ti-settings" aria-hidden="true"/></div>
+        <div style={{marginTop:6}}><Avatar name="Leon" size={34}/></div>
       </div>
 
       {/* LEFT COL */}
-      <div className="left-col">
-        <div style={{padding:"14px 14px 4px",fontSize:15,fontWeight:700,color:TG.text}}>Messages</div>
-        <div className="search-wrap">
-          <i className="ti ti-search search-icon" aria-hidden="true"/>
-          <input className="search-inp" placeholder="Search..." value={search} onChange={e=>setSearch(e.target.value)}/>
+      <div className="lc">
+        <div style={{padding:"14px 14px 6px",fontSize:15,fontWeight:700,color:TG.text,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <span>Messages</span>
+          <button onClick={fetchChats} disabled={loadChats} style={{background:"none",border:"none",color:TG.textMuted,cursor:"pointer",fontSize:16}} title="Refresh">
+            <i className="ti ti-refresh" aria-hidden="true"/>
+          </button>
+        </div>
+        <div style={{padding:"0 12px 8px",position:"relative"}}>
+          <i className="ti ti-search" aria-hidden="true" style={{position:"absolute",left:22,top:"50%",transform:"translateY(-50%)",color:TG.textMuted,fontSize:14,pointerEvents:"none"}}/>
+          <input className="sinp" placeholder="Search..." value={search} onChange={e=>setSearch(e.target.value)}/>
         </div>
         <div style={{flex:1,overflowY:"auto"}}>
-          {loadingChats&&<div style={{padding:20,textAlign:"center",color:TG.textMuted,fontSize:13}}>Loading...</div>}
+          {loadChats&&<div style={{padding:20,textAlign:"center",color:TG.textMuted,fontSize:13}}>Loading Telegram...</div>}
           {filtered.map(chat=>{
-            const isSel=selected?.id===chat.id
-            return (
-              <div key={chat.id} className={`contact-item${isSel?" active":""}`} onClick={()=>setSelected(chat)}>
+            const isSel=sel?.id===chat.id
+            return(
+              <div key={chat.id} className={`ci${isSel?" sel":""}`} onClick={()=>setSel(chat)}>
                 <div style={{position:"relative"}}>
-                  <Avatar name={chat.name} size={42}/>
+                  <Avatar name={chat.name} size={44}/>
                   {chat.unread>0&&<div style={{position:"absolute",bottom:-1,right:-1,background:TG.green,color:"#fff",fontSize:10,fontWeight:700,padding:"1px 5px",borderRadius:10,minWidth:17,textAlign:"center"}}>{chat.unread>99?"99+":chat.unread}</div>}
                 </div>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:2}}>
-                    <span style={{fontWeight:600,fontSize:13,color:TG.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:130}}>{chat.name}</span>
+                    <span style={{fontWeight:600,fontSize:14,color:TG.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:130}}>{chat.name}</span>
                     <span style={{fontSize:10,color:TG.textMuted,flexShrink:0,marginLeft:4}}>{fmtTime(chat.date)}</span>
                   </div>
                   <div style={{fontSize:12,color:TG.textSec,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:4}}>{chat.lastMsg||"No messages"}</div>
@@ -281,63 +403,76 @@ export default function CRMChat({token}) {
               </div>
             )
           })}
-          {!loadingChats&&filtered.length===0&&<div style={{padding:32,textAlign:"center",color:TG.textMuted,fontSize:13}}>No chats found</div>}
+          {!loadChats&&filtered.length===0&&<div style={{padding:32,textAlign:"center",color:TG.textMuted,fontSize:13}}>No chats found</div>}
         </div>
         <div style={{padding:"10px 12px",borderTop:`1px solid ${TG.border}`,display:"flex",gap:8}}>
-          <button style={{flex:1,padding:"8px",background:TG.blue,border:"none",borderRadius:8,color:"#fff",fontSize:12,cursor:"pointer",fontWeight:600}}>Meeting</button>
-          <button style={{flex:1,padding:"8px",background:TG.elevated,border:`1px solid #3d1f6a`,borderRadius:8,color:TG.textSec,fontSize:12,cursor:"pointer"}}>Schedule</button>
+          <button style={{flex:1,padding:"8px",background:TG.blue,border:"none",borderRadius:8,color:"#fff",fontSize:12,cursor:"pointer",fontWeight:600,fontFamily:"inherit"}}>+ Meeting</button>
+          <button style={{flex:1,padding:"8px",background:TG.elevated,border:"1px solid #3d1f6a",borderRadius:8,color:TG.textSec,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Schedule</button>
         </div>
       </div>
 
       {/* MID COL */}
-      <div className="mid-col">
-        {!selected?(
+      <div className="mc">
+        {!sel?(
           <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:14,color:TG.textSec}}>
             <div style={{width:80,height:80,background:TG.elevated,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:36}}>💬</div>
             <div style={{fontSize:16,fontWeight:500,color:TG.text}}>Select a conversation</div>
-            <div style={{fontSize:13}}>Choose from your Telegram chats on the left</div>
+            <div style={{fontSize:13}}>Pick a chat from your Telegram on the left</div>
           </div>
         ):<>
-          {/* Header */}
-          <div className="chat-header">
-            <Avatar name={selected.name} size={36}/>
+          {/* Chat header */}
+          <div className="chdr">
+            <Avatar name={sel.name} size={38}/>
             <div style={{flex:1}}>
-              <div style={{fontWeight:700,fontSize:15,color:TG.text}}>{selected.name}</div>
-              <div className="online">online</div>
+              <div style={{fontWeight:700,fontSize:15,color:TG.text,lineHeight:1.2}}>{sel.name}</div>
+              <div style={{fontSize:11,color:TG.green}}>online</div>
             </div>
             <StageBadge stage={cStage}/>
             <div style={{display:"flex",gap:6,marginLeft:8}}>
-              <button className="hbtn" title="Call"><i className="ti ti-phone" aria-hidden="true"/></button>
-              <button className="hbtn" title="Video"><i className="ti ti-video" aria-hidden="true"/></button>
-              <button className="hbtn" onClick={()=>setShowProfile(v=>!v)} title="Toggle profile">
-                <i className={`ti ti-layout-sidebar-right${showProfile?"-filled":""}`} aria-hidden="true"/>
+              <button className="hb" title="Call"><i className="ti ti-phone" aria-hidden="true"/></button>
+              <button className="hb" title="Video call"><i className="ti ti-video" aria-hidden="true"/></button>
+              <button className={`hb${showProfile?" on":""}`} onClick={()=>setShowProfile(v=>!v)} title="Toggle info">
+                <i className="ti ti-info-circle" aria-hidden="true"/>
               </button>
             </div>
           </div>
 
           {/* Messages */}
-          <div className="msgs-area">
-            {loadingMsgs&&<div style={{textAlign:"center",color:TG.textMuted,fontSize:13,marginTop:40}}>Loading messages...</div>}
-            {!loadingMsgs&&messages.length===0&&(
+          <div className="msgs">
+            {loadMsgs&&<div style={{textAlign:"center",color:TG.textMuted,fontSize:13,marginTop:40}}>Loading messages...</div>}
+            {!loadMsgs&&msgs.length===0&&(
               <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8,color:TG.textSec,marginTop:60}}>
                 <div style={{fontSize:36}}>👋</div>
                 <div style={{fontSize:14}}>No messages yet</div>
-                <div style={{fontSize:12,color:TG.textMuted}}>Use a template to start the conversation</div>
+                <div style={{fontSize:12,color:TG.textMuted}}>Start with a template or AI suggest</div>
               </div>
             )}
-            {messages.map((msg,i)=>{
-              const prevMsg=messages[i-1]
-              const showDate=i===0||(()=>{try{const a=typeof msg.date==="number"?new Date(msg.date*1000):new Date(msg.date);const b=typeof prevMsg.date==="number"?new Date(prevMsg.date*1000):new Date(prevMsg.date);return a.toDateString()!==b.toDateString()}catch{return false}})()
-              return (
+            {msgs.map((msg,i)=>{
+              const prev=msgs[i-1]
+              const showSep=i===0||(()=>{
+                try{
+                  const a=typeof msg.date==="number"?new Date(msg.date*1000):new Date(msg.date)
+                  const b=typeof prev.date==="number"?new Date(prev.date*1000):new Date(prev.date)
+                  return a.toDateString()!==b.toDateString()
+                }catch{return false}
+              })()
+              return(
                 <div key={i}>
-                  {showDate&&<div className="date-sep">{(()=>{try{const d=typeof msg.date==="number"?new Date(msg.date*1000):new Date(msg.date);return d.toLocaleDateString("vi-VN",{weekday:"long",day:"2-digit",month:"long"})}catch{return ""}})()}</div>}
+                  {showSep&&<div className="dsep"><span>{fmtDateSep(msg.date)}</span></div>}
                   <div style={{display:"flex",flexDirection:msg.fromMe?"row-reverse":"row",alignItems:"flex-end",gap:8,marginBottom:2}}>
-                    {!msg.fromMe&&<Avatar name={selected.name} size={26}/>}
-                    <div className={`bubble ${msg.fromMe?"out":"in"}${msg.pending?" pending":""}`}>
-                      {msg.text}
-                      <div className="bfoot">
-                        <span className={`btime${msg.fromMe?"":" in-t"}`}>{fmtMsgTime(msg.date)}</span>
-                        {msg.fromMe&&<span style={{fontSize:11,color:msg.pending?"rgba(255,255,255,.3)":"rgba(255,255,255,.55)"}}>{msg.pending?"⏳":"✓✓"}</span>}
+                    {!msg.fromMe&&<Avatar name={sel.name} size={26}/>}
+                    <div onContextMenu={e=>handleCtx(e,msg,i)}>
+                      {msg.replyTo&&(
+                        <div style={{background:"rgba(124,58,237,.15)",borderLeft:`3px solid ${TG.blue}`,padding:"4px 8px",borderRadius:"0 6px 6px 0",marginBottom:4,fontSize:11,color:TG.textSec,maxWidth:"100%",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                          ↩ {msg.replyTo.fromMe?"You":sel.name}: {msg.replyTo.text}
+                        </div>
+                      )}
+                      <div className={`bbl ${msg.fromMe?"out":"in"}${msg.deleted?" del":""}${msg.replyTo?" rpl":""}`}>
+                        {msg.text}
+                        <div className="bfoot">
+                          <span className={`bt${msg.fromMe?"":" in"}`}>{fmtMsgTime(msg.date)}</span>
+                          {msg.fromMe&&<span style={{fontSize:10,color:msg.pending?"rgba(255,255,255,.3)":"rgba(255,255,255,.6)"}}>{msg.pending?"⏳":"✓✓"}</span>}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -347,34 +482,39 @@ export default function CRMChat({token}) {
             <div ref={endRef}/>
           </div>
 
-          {/* AI suggest bar */}
-          {aiText&&(
-            <div className="ai-bar">
-              <div className="ai-label"><span>✨</span> AI Suggest</div>
-              <div className="ai-text">{aiText}</div>
-              <div className="ai-btns">
-                <button className="ai-btn use" onClick={()=>{setMsgInput(aiText);setAiText("")}}>Use this</button>
-                <button className="ai-btn skip" onClick={getAI}>Regenerate</button>
-                <button className="ai-btn skip" onClick={()=>setAiText("")} style={{marginLeft:"auto"}}>✕</button>
-              </div>
+          {/* AI Suggest panel */}
+          <AISuggestPanel
+            text={aiText} loading={aiLoading}
+            onUse={()=>{setInput(aiText);setAiText("")}}
+            onRegenerate={getAI}
+            onClose={()=>{setAiText("");setAiLoading(false)}}
+          />
+
+          {/* Reply bar */}
+          {replyTo&&(
+            <div className="rpl-bar" style={{margin:"0 16px 6px",flexShrink:0}}>
+              <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                ↩ Replying to: {replyTo.text}
+              </span>
+              <button onClick={()=>setReplyTo(null)} style={{background:"none",border:"none",color:TG.textMuted,cursor:"pointer",fontSize:15,flexShrink:0}}>✕</button>
             </div>
           )}
 
-          {/* Templates */}
+          {/* Template picker */}
           {showTmpl&&(
-            <div className="tmpl-panel">
-              <div className="tmpl-cats">
+            <div className="tp">
+              <div className="tpcat">
                 {tmplCats.map(cat=>(
-                  <button key={cat} className="tcat" onClick={()=>setTmplCat(cat)}
+                  <button key={cat} className="tc" onClick={()=>setTmplCat(cat)}
                     style={{background:tmplCat===cat?TG.blue:TG.elevated,color:tmplCat===cat?"#fff":TG.textSec}}>
                     {cat==="all"?"All":cat}
                   </button>
                 ))}
-                <button className="tcat" onClick={()=>setShowTmpl(false)} style={{background:"none",color:TG.textMuted,marginLeft:"auto"}}>✕</button>
+                <button className="tc" onClick={()=>setShowTmpl(false)} style={{background:"none",color:TG.textMuted,marginLeft:"auto"}}>✕</button>
               </div>
-              <div className="tmpl-list">
+              <div className="tlist">
                 {TEMPLATES.filter(t=>tmplCat==="all"||t.cat===tmplCat).map(t=>(
-                  <div key={t.id} className="tmpl-item" onClick={()=>{setMsgInput(t.text);setShowTmpl(false)}}>
+                  <div key={t.id} className="ti" onClick={()=>{setInput(t.text);setShowTmpl(false)}}>
                     <div style={{fontSize:13,fontWeight:600,color:TG.text,marginBottom:2}}>{t.label}</div>
                     <div style={{fontSize:12,color:TG.textSec,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.text}</div>
                   </div>
@@ -383,27 +523,27 @@ export default function CRMChat({token}) {
             </div>
           )}
 
-          {/* Input */}
-          <div className="input-area">
-            <div className="reactions">
-              {["👍","❤️","😂","😮","🔥","🎯","💪","✅"].map(e=>(
-                <button key={e} className="react" onClick={()=>setMsgInput(p=>p+e)}>{e}</button>
+          {/* Input area */}
+          <div className="ia">
+            <div className="reacts">
+              {["👍","❤️","😂","🔥","💪","✅","🙏","😎"].map(e=>(
+                <button key={e} className="re" onClick={()=>setInput(p=>p+e)}>{e}</button>
               ))}
             </div>
-            <div className="input-row">
-              <button className="ibtn ghost" title="Attach"><i className="ti ti-paperclip" aria-hidden="true"/></button>
-              <textarea className="msg-inp" placeholder="Type a message..."
-                value={msgInput} onChange={e=>setMsgInput(e.target.value)} rows={1}
-                onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMsg()}}}/>
-              <button className={`ibtn ghost${showTmpl?" active-tmpl":""}`} onClick={()=>setShowTmpl(v=>!v)} title="Templates">
+            <div className="ir">
+              <button className="ib g" title="Attach file"><i className="ti ti-paperclip" aria-hidden="true"/></button>
+              <textarea className="mi" placeholder="Type a message..."
+                value={input} onChange={e=>setInput(e.target.value)} rows={1}
+                onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send()}}}/>
+              <button className={`ib g${showTmpl?" on":""}`} onClick={()=>setShowTmpl(v=>!v)} title="Templates">
                 <i className="ti ti-template" aria-hidden="true"/>
               </button>
-              <button className="ibtn ghost" onClick={getAI} disabled={aiLoading} title="AI Suggest"
-                style={{background:aiLoading?"rgba(124,58,237,.2)":TG.elevated,color:aiLoading?"#c4a8e8":TG.textSec}}>
+              <button className="ib g" onClick={getAI} disabled={aiLoading} title="AI Suggest"
+                style={{background:aiLoading?"rgba(124,58,237,.25)":undefined,color:aiLoading?"#c4a8e8":undefined}}>
                 <i className="ti ti-sparkles" aria-hidden="true"/>
               </button>
-              <button className="ibtn send" onClick={sendMsg} disabled={!msgInput.trim()||sending} title="Send"
-                style={{opacity:msgInput.trim()?1:.5}}>
+              <button className="ib s" onClick={send} disabled={!input.trim()||sending}
+                style={{opacity:input.trim()&&!sending?1:.4}} title="Send">
                 <i className="ti ti-send" aria-hidden="true"/>
               </button>
             </div>
@@ -413,26 +553,28 @@ export default function CRMChat({token}) {
 
       {/* RIGHT COL */}
       {showProfile&&(
-        <div className="right-col">
-          {!selected?(
+        <div className="rc">
+          {!sel?(
             <div style={{padding:32,textAlign:"center",color:TG.textMuted,fontSize:13,marginTop:60}}>Select a chat</div>
           ):(
             <>
-              <div className="profile-top">
-                <Avatar name={selected.name} size={68}/>
-                <div className="pname">{selected.name}</div>
-                <div className="prole">Telegram · {selected.isUser?"Personal":"Group/Channel"}</div>
-                <div className="social-row">
-                  <button className="sbtn" title="Telegram"><i className="ti ti-brand-telegram" aria-hidden="true"/></button>
-                  <button className="sbtn" title="Email"><i className="ti ti-mail" aria-hidden="true"/></button>
-                  <button className="sbtn" title="Website"><i className="ti ti-world" aria-hidden="true"/></button>
-                  <button className="sbtn" title="Copy ID" onClick={()=>navigator.clipboard?.writeText(selected.id)}><i className="ti ti-copy" aria-hidden="true"/></button>
+              <div style={{padding:"22px 16px 16px",textAlign:"center",borderBottom:`1px solid ${TG.border}`}}>
+                <Avatar name={sel.name} size={70}/>
+                <div style={{fontWeight:700,fontSize:18,color:TG.text,marginTop:12}}>{sel.name}</div>
+                <div style={{fontSize:12,color:TG.textSec,marginTop:3}}>Telegram · {sel.isUser?"Contact":"Group"}</div>
+                <div style={{marginTop:10}}><StageBadge stage={cStage}/></div>
+                <div style={{display:"flex",justifyContent:"center",gap:8,marginTop:12}}>
+                  {[["ti-brand-telegram","Open in TG"],["ti-mail","Email"],["ti-world","Website"],["ti-copy","Copy ID"]].map(([ic,ttl])=>(
+                    <button key={ic} title={ttl} style={{width:34,height:34,borderRadius:"50%",background:TG.elevated,border:"none",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:TG.textSec,fontSize:16}} onClick={ic==="ti-copy"?()=>navigator.clipboard?.writeText(sel.id):undefined}>
+                      <i className={`ti ${ic}`} aria-hidden="true"/>
+                    </button>
+                  ))}
                 </div>
               </div>
 
-              <div className="r-section">
-                <div className="r-label">Deal</div>
-                <select className="r-inp" value={cStage} onChange={e=>setStages(p=>({...p,[selected.id]:e.target.value}))}>
+              <div className="rs">
+                <div className="rl">Deal</div>
+                <select className="ri" value={cStage} onChange={e=>setStages(p=>({...p,[sel.id]:e.target.value}))}>
                   {Object.keys(STAGES).map(s=><option key={s} value={s}>{s}</option>)}
                 </select>
                 <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:TG.textSec,marginBottom:4}}>
@@ -440,56 +582,68 @@ export default function CRMChat({token}) {
                   <span style={{color:TG.blue,fontWeight:700}}>{cProb}%</span>
                 </div>
                 <input type="range" min={0} max={100} step={5} value={cProb}
-                  onChange={e=>setProbs(p=>({...p,[selected.id]:+e.target.value}))}
-                  style={{width:"100%",accentColor:TG.blue,marginBottom:8}}/>
-                <div className="prob-bar"><div className="prob-fill" style={{width:cProb+"%"}}/></div>
-                <div className="r-row"><i className="ti ti-currency-dollar" aria-hidden="true"/>
-                  <input type="number" value={cDeal} onChange={e=>setDeals(p=>({...p,[selected.id]:+e.target.value||0}))}
+                  onChange={e=>setProbs(p=>({...p,[sel.id]:+e.target.value}))}
+                  style={{width:"100%",accentColor:TG.blue,marginBottom:6}}/>
+                <div style={{height:4,background:TG.elevated,borderRadius:99,overflow:"hidden",marginBottom:10}}>
+                  <div style={{height:"100%",width:cProb+"%",background:TG.blue,borderRadius:99,transition:"width .3s"}}/>
+                </div>
+                <div className="rr">
+                  <i className="ti ti-currency-dollar" aria-hidden="true"/>
+                  <input type="number" value={cDeal} onChange={e=>setDeals(p=>({...p,[sel.id]:+e.target.value||0}))}
                     placeholder="Deal value USD" style={{background:"transparent",border:"none",color:TG.text,fontSize:13,outline:"none",width:"100%",fontFamily:"inherit"}}/>
                 </div>
-                <div className="r-row"><i className="ti ti-calendar" aria-hidden="true"/>
-                  <input type="date" value={cFollowUp} onChange={e=>setFollowUps(p=>({...p,[selected.id]:e.target.value}))}
+                <div className="rr">
+                  <i className="ti ti-calendar" aria-hidden="true"/>
+                  <input type="date" value={cFup} onChange={e=>setFups(p=>({...p,[sel.id]:e.target.value}))}
                     style={{background:"transparent",border:"none",color:TG.text,fontSize:13,outline:"none",fontFamily:"inherit"}}/>
                 </div>
               </div>
 
-              <div className="r-section">
+              <div className="rs">
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-                  <div className="r-label" style={{marginBottom:0}}>Notes</div>
-                  <button onClick={()=>setAddingNote(v=>!v)}
-                    style={{fontSize:11,padding:"3px 9px",background:TG.blue,border:"none",borderRadius:6,color:"#fff",cursor:"pointer",fontWeight:600}}>
-                    + Add
-                  </button>
+                  <div className="rl" style={{marginBottom:0}}>Notes</div>
+                  <button onClick={()=>setAddNote(v=>!v)} style={{fontSize:11,padding:"3px 9px",background:TG.blue,border:"none",borderRadius:6,color:"#fff",cursor:"pointer",fontWeight:600,fontFamily:"inherit"}}>+ Add</button>
                 </div>
-                {addingNote&&(
+                {addNote&&(
                   <div style={{marginBottom:10}}>
-                    <textarea value={noteInput} onChange={e=>setNoteInput(e.target.value)} placeholder="Write a note..." rows={3}
-                      style={{width:"100%",background:TG.elevated,border:`1px solid #3d1f6a`,borderRadius:8,padding:"8px 10px",color:TG.text,fontSize:13,outline:"none",fontFamily:"inherit",resize:"none",marginBottom:6,boxSizing:"border-box"}}/>
+                    <textarea value={noteInp} onChange={e=>setNoteInp(e.target.value)} placeholder="Write a note..." rows={3}
+                      style={{width:"100%",background:TG.elevated,border:"1px solid #3d1f6a",borderRadius:8,padding:"8px 10px",color:TG.text,fontSize:13,outline:"none",fontFamily:"inherit",resize:"none",marginBottom:6,boxSizing:"border-box"}}/>
                     <div style={{display:"flex",gap:6}}>
-                      <button onClick={addNote} style={{flex:1,padding:"7px",background:TG.blue,color:"#fff",border:"none",borderRadius:7,cursor:"pointer",fontWeight:600,fontSize:13}}>Save</button>
-                      <button onClick={()=>setAddingNote(false)} style={{padding:"7px 12px",background:TG.elevated,color:TG.textSec,border:`1px solid #3d1f6a`,borderRadius:7,cursor:"pointer",fontSize:13}}>Cancel</button>
+                      <button onClick={saveNote} style={{flex:1,padding:"7px",background:TG.blue,color:"#fff",border:"none",borderRadius:7,cursor:"pointer",fontWeight:600,fontSize:13,fontFamily:"inherit"}}>Save</button>
+                      <button onClick={()=>setAddNote(false)} style={{padding:"7px 12px",background:TG.elevated,color:TG.textSec,border:"1px solid #3d1f6a",borderRadius:7,cursor:"pointer",fontSize:13,fontFamily:"inherit"}}>Cancel</button>
                     </div>
                   </div>
                 )}
-                {cNotes.length===0&&!addingNote&&<div style={{fontSize:12,color:TG.textMuted,fontStyle:"italic"}}>No notes yet</div>}
+                {cNotes.length===0&&!addNote&&<div style={{fontSize:12,color:TG.textMuted,fontStyle:"italic"}}>No notes yet</div>}
                 {cNotes.map(n=>(
-                  <div key={n.id} className="note-item">
+                  <div key={n.id} style={{padding:"9px 10px",background:TG.bg,borderRadius:8,border:`1px solid ${TG.elevated}`,marginBottom:6}}>
                     <div style={{fontSize:13,color:TG.text,lineHeight:1.5}}>{n.content}</div>
                     <div style={{fontSize:10,color:TG.textMuted,marginTop:4}}>{n.date}</div>
                   </div>
                 ))}
               </div>
 
-              <div className="r-section" style={{border:"none"}}>
-                <div className="r-label">Quick Actions</div>
-                <button className="qbtn default" onClick={()=>setStages(p=>({...p,[selected.id]:"Negotiating"}))}>🔥 Mark as Negotiating</button>
-                <button className="qbtn default" onClick={()=>setFollowUps(p=>({...p,[selected.id]:new Date(Date.now()+172800000).toISOString().split("T")[0]}))}>📅 Follow-up in 2 days</button>
-                <button className="qbtn won" onClick={()=>{setStages(p=>({...p,[selected.id]:"Closed Won"}));setProbs(p=>({...p,[selected.id]:100}))}}>✅ Closed Won</button>
-                <button className="qbtn lost" onClick={()=>{setStages(p=>({...p,[selected.id]:"Closed Lost"}));setProbs(p=>({...p,[selected.id]:0}))}}>✕ Mark as Lost</button>
+              <div className="rs" style={{border:"none"}}>
+                <div className="rl">Quick Actions</div>
+                <button className="qb d" onClick={()=>setStages(p=>({...p,[sel.id]:"Negotiating"}))}>🔥 Mark as Negotiating</button>
+                <button className="qb d" onClick={()=>setFups(p=>({...p,[sel.id]:new Date(Date.now()+172800000).toISOString().split("T")[0]}))}>📅 Follow-up in 2 days</button>
+                <button className="qb w" onClick={()=>{setStages(p=>({...p,[sel.id]:"Closed Won"}));setProbs(p=>({...p,[sel.id]:100}))}}>✅ Closed Won</button>
+                <button className="qb l" onClick={()=>{setStages(p=>({...p,[sel.id]:"Closed Lost"}));setProbs(p=>({...p,[sel.id]:0}))}}>✕ Mark as Lost</button>
               </div>
             </>
           )}
         </div>
+      )}
+
+      {/* Context menu */}
+      {ctxMenu&&(
+        <ContextMenu
+          x={ctxMenu.x} y={ctxMenu.y} msg={ctxMenu.msg}
+          onDelete={()=>deleteMsg(ctxMenu.idx)}
+          onCopy={()=>copyMsg(ctxMenu.msg.text)}
+          onReply={()=>setReplyTo(ctxMenu.msg)}
+          onClose={()=>setCtxMenu(null)}
+        />
       )}
     </div>
   </>)
