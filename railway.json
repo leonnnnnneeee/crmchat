@@ -8,5 +8,6 @@
     "startCommand": "node server.js",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 3
-  }
+  },
+  "_redeploy": "v3-context-menu-ai-avatar"
 }
