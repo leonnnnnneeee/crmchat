@@ -194,39 +194,91 @@ app.post('/api/chat/send', requireAuth, async (req,res) => {
 // ── AI SUGGEST (Groq) ──
 app.post('/api/ai/suggest', requireAuth, async (req,res) => {
   const { contactName, lastMessage, messages, stage, notes } = req.body
-  if (!GROQ_KEY) {
-    // Rule-based fallback
-    const msg = (lastMessage||'').toLowerCase()
-    let suggestion = ''
-    if (msg.includes('feedback')||msg.includes('users')) suggestion = "Got it. Are you collecting feedback mostly from users now, or also preparing visibility for the next public campaign?"
-    else if (msg.includes('budget')||msg.includes('price')||msg.includes('expensive')) suggestion = "Got it, budget timing is always a factor. Are you raising soon, or is this more of a timing issue for next quarter?"
-    else if (msg.includes('raising')||msg.includes('investor')||msg.includes('round')) suggestion = "That's great timing — investors do check media presence. Would it make sense to have Coincu coverage ready before your next round closes?"
-    else if (msg.includes('busy')||msg.includes('later')||msg.includes('not now')) suggestion = "No worries. When would be a better time to revisit? I'll follow up then."
-    else if (msg.includes('what')||msg.includes('sell')||msg.includes('offer')) suggestion = "Fair question. We mainly help Web3 projects get visibility through Coincu PR and CMC News. Is your current focus more awareness, users, or credibility before a milestone?"
-    else suggestion = `Thanks for the context. What's the main goal for your project right now — awareness, credibility, or users?`
-    return res.json({ suggestion })
-  }
-  try {
-    const recentMsgs = (messages||[]).slice(-10).map(m => `${m.fromMe?'Leon':contactName}: ${m.text}`).join('\n')
-    const prompt = `You are Leon, BD at Coincu — a crypto PR and media company in Vietnam.
-Contact: ${contactName}
-Sales stage: ${stage || 'Contacted'}
-Notes: ${notes || 'none'}
-Recent conversation:
-${recentMsgs}
-Last message from client: "${lastMessage}"
 
-Write a SHORT, natural Telegram-style reply. Max 2 sentences. One open question max. Not salesy. Focus on Coincu PR or CMC News as visibility/credibility layer. Reply in the same language as the client.`
+  // Build conversation thread for context
+  const thread = (messages||[]).slice(-15).map(m =>
+    `${m.fromMe ? 'Leon' : (contactName||'Client')}: ${m.text}`
+  ).join('\n')
+
+  // Smart rule-based fallback (English only)
+  function ruleBased() {
+    const msg = (lastMessage||'').toLowerCase()
+    if (msg.includes('price') || msg.includes('cost') || msg.includes('how much') || msg.includes('rate'))
+      return `CMC News starts at $800 and Coincu PR from $300 — I can bundle both at a better rate for your campaign. Want me to send a full proposal?`
+    if (msg.includes('budget') || msg.includes('expensive') || msg.includes('afford'))
+      return `Totally understand — budget timing is always a factor. Are you in a position to move on this quarter, or should we plan for next? Happy to keep it lightweight to start.`
+    if (msg.includes('feedback') || msg.includes('users') || msg.includes('community'))
+      return `That makes sense — building the user base first is solid. Are you also thinking about visibility for the next public milestone, or is that further down the road?`
+    if (msg.includes('raising') || msg.includes('round') || msg.includes('investor') || msg.includes('vc'))
+      return `Good timing actually — investors do check media presence before committing. Would it make sense to have Coincu or CMC coverage lined up before the round closes?`
+    if (msg.includes('busy') || msg.includes('later') || msg.includes('not now') || msg.includes('next month'))
+      return `No problem at all. When's a better time to pick this up? I'll follow up then and keep it short.`
+    if (msg.includes('what') || msg.includes('sell') || msg.includes('offer') || msg.includes('do you do'))
+      return `Good question — we mainly help Web3 projects get visibility and credibility through Coincu PR and CMC News placement. Is your current focus more awareness, user growth, or building credibility before a milestone?`
+    if (msg.includes('convert') || msg.includes('traffic') || msg.includes('roi'))
+      return `Fair point — PR isn't about direct conversion. It's the credibility layer that makes your ads, community growth, and investor conversations land better. Is that more relevant to where you are right now?`
+    if (msg.includes('tge') || msg.includes('launch') || msg.includes('listing') || msg.includes('mainnet'))
+      return `Perfect timing for a visibility push — CMC News right before a TGE or listing can really strengthen the narrative. Want me to walk you through what that would look like?`
+    if (msg.includes('agency') || msg.includes('partner') || msg.includes('resell'))
+      return `We work well with agencies — either on a referral basis or as a white-label partner. Would that kind of arrangement work for your clients?`
+    if (stage === 'Negotiating')
+      return `Based on what we've discussed, I think a bundled Coincu PR + CMC News package makes the most sense for your goals. Want me to put together a quick proposal you can share internally?`
+    if (stage === 'Closed Won')
+      return `Great working with you! Once this campaign wraps, let's sync on what worked well and plan the next one.`
+    return `Thanks for the context — what's the main priority for the project right now? I want to make sure whatever I recommend actually moves the needle for you.`
+  }
+
+  if (!GROQ_KEY) {
+    return res.json({ suggestion: ruleBased() })
+  }
+
+  try {
+    const prompt = `You are Leon, a BD at Coincu — a crypto PR and media company based in Vietnam. You sell Coincu PR articles, CMC News placements, and banner ads to Web3 projects.
+
+Your style: natural, short, Telegram-like. You never sound salesy. You ask only one question at a time. You focus on the client's actual situation before pitching anything.
+
+---
+Contact: ${contactName || 'Client'}
+Sales stage: ${stage || 'Contacted'}
+Internal notes: ${notes || 'none'}
+
+Full conversation so far:
+${thread || '(no messages yet)'}
+
+Last message from client:
+"${lastMessage || '(no message)'}"
+---
+
+Write ONE short reply as Leon. Rules:
+- English only
+- Max 2-3 sentences
+- Read the conversation carefully — reply specifically to what they said, not generically
+- If they asked about pricing, give real numbers (CMC News $800+, Coincu PR $300+)
+- If they asked what we sell, explain briefly and ask what their focus is
+- If they raised an objection, acknowledge it genuinely before responding
+- End with at most one open question
+- Do NOT use greetings like "Hi" or sign off with your name
+- Do NOT use phrases like "I understand" or "Great question"
+- Sound like a real person texting, not a sales bot`
 
     const r = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
-      model: 'llama3-8b-8192',
-      messages: [{ role: 'user', content: prompt }],
-      max_tokens: 120,
-      temperature: 0.7
+      model: 'llama3-70b-8192',
+      messages: [
+        { role: 'system', content: 'You are Leon, a crypto BD professional. Reply naturally and briefly.' },
+        { role: 'user', content: prompt }
+      ],
+      max_tokens: 150,
+      temperature: 0.75
     }, { headers: { Authorization: `Bearer ${GROQ_KEY}`, 'Content-Type': 'application/json' }})
-    const suggestion = r.data.choices[0].message.content.trim()
+
+    let suggestion = r.data.choices[0].message.content.trim()
+    // Clean up any quotes the model might wrap around the reply
+    suggestion = suggestion.replace(/^["']|["']$/g, '').trim()
     res.json({ suggestion })
-  } catch(e) { log('AI suggest: '+e.message); res.status(500).json({ error: e.message }) }
+  } catch(e) {
+    log('AI suggest error: ' + e.message)
+    res.json({ suggestion: ruleBased() })
+  }
 })
 
 app.get('/api/health', (req,res) => res.json({ ok: true, tgConnected: _session.length > 10 }))
