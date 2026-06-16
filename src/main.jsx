@@ -1,23 +1,21 @@
-import React from 'react'
-import ReactDOM from 'react-dom/client'
-import App from './App.jsx'
+import React from "react"
+import ReactDOM from "react-dom/client"
+import App from "./App.jsx"
 
-class ErrorBoundary extends React.Component {
-  constructor(props) { super(props); this.state = { error: null } }
-  static getDerivedStateFromError(e) { return { error: e } }
-  render() {
-    if (this.state.error) return (
-      <div style={{padding:40,color:'#ef4444',fontFamily:'monospace',background:'#0d0d12',minHeight:'100vh'}}>
-        <h2>App Error</h2>
-        <pre style={{marginTop:12,fontSize:12,color:'#f0f0f8'}}>{this.state.error.toString()}</pre>
+class Boundary extends React.Component {
+  constructor(p){super(p);this.state={err:null}}
+  static getDerivedStateFromError(e){return{err:e}}
+  render(){
+    if(this.state.err) return (
+      <div style={{padding:40,color:"#e53935",fontFamily:"monospace",background:"#17212b",minHeight:"100vh"}}>
+        <h2 style={{marginBottom:12}}>App Error</h2>
+        <pre style={{fontSize:13,color:"#aaa",whiteSpace:"pre-wrap"}}>{this.state.err.toString()}</pre>
       </div>
     )
     return this.props.children
   }
 }
 
-ReactDOM.createRoot(document.getElementById('root')).render(
-  <ErrorBoundary>
-    <App />
-  </ErrorBoundary>
+ReactDOM.createRoot(document.getElementById("root")).render(
+  <Boundary><App/></Boundary>
 )
