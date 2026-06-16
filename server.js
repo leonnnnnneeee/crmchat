@@ -16,6 +16,9 @@ const USERS = [
 const TG_API_ID   = parseInt(process.env.TG_API_ID   || '23444646')
 const TG_API_HASH =          process.env.TG_API_HASH  || '83816a4a3a3006b19549b2ba782acae0'
 const GROQ_KEY    =          process.env.GROQ_API_KEY || ''
+const SB_URL      =          process.env.SUPABASE_URL  || 'https://rgtodxxuwdusaacipokt.supabase.co'
+const SB_KEY      =          process.env.SUPABASE_KEY  || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJndG9keHh1d2R1c2FhY2lwb2t0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2MjkxMjcsImV4cCI6MjA5NDIwNTEyN30.8zORHPswWA-0uwJfmKN9TxbTrsNdEAdk4IB8pst7GzU'
+const SBH         = { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, 'Content-Type': 'application/json' }
 
 const logs = []
 function log(m) { const l='['+new Date().toLocaleTimeString('vi-VN')+'] '+m; console.log(l); logs.push(l); if(logs.length>200)logs.shift() }
@@ -37,6 +40,31 @@ app.post('/api/login',(req,res)=>{
 // ── TELEGRAM SESSION (in-memory + env fallback) ──
 let _session = process.env.TG_SESSION || ''
 let _pendingClient = null
+
+// ── LOAD SESSION FROM SUPABASE ON STARTUP ──
+async function loadSessionFromDB() {
+  if (_session && _session.length > 10) return
+  try {
+    const r = await axios.get(SB_URL + '/rest/v1/sessions?key=eq.crmchat_tg_session', { headers: SBH })
+    if (r.data && r.data[0] && r.data[0].value && r.data[0].value.length > 10) {
+      _session = r.data[0].value
+      log('✅ Session loaded from Supabase')
+    }
+  } catch(e) { log('loadSession: ' + e.message) }
+}
+
+async function saveSessionToDB(s) {
+  try {
+    const h = { ...SBH, Prefer: 'resolution=merge-duplicates' }
+    await axios.post(SB_URL + '/rest/v1/sessions',
+      { key: 'crmchat_tg_session', value: s, updated_at: new Date().toISOString() },
+      { headers: h }
+    )
+    log('✅ Session saved to Supabase')
+  } catch(e) { log('saveSession: ' + e.message) }
+}
+
+loadSessionFromDB()
 
 async function getClient() {
   const { TelegramClient } = require('telegram')
@@ -89,7 +117,8 @@ app.post('/api/tg/verify-otp', requireAuth, async (req,res) => {
     }
     _session = client.session.save()
     _pendingClient = null
-    log('✅ TG authenticated, session saved')
+    await saveSessionToDB(_session)
+    log('✅ TG authenticated, session saved to Supabase')
     res.json({ ok: true })
   } catch(e) { log('verifyOTP: '+e.message); res.status(500).json({ error: e.message }) }
 })
