@@ -6,6 +6,14 @@ const app = express()
 const PORT = process.env.PORT || 3002
 
 app.use(express.json())
+app.use((req, res, next) => {
+  if (req.path.match(/\.(js|css|html)$/)) {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate')
+    res.setHeader('Pragma', 'no-cache')
+    res.setHeader('Expires', '0')
+  }
+  next()
+})
 app.use(express.static(path.join(__dirname, 'dist')))
 
 const VALID_TOKEN = process.env.AUTH_TOKEN || 'coincu_crm_2024'
