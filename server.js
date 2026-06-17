@@ -569,6 +569,7 @@ app.get('/api/chat/topics/:id', requireAuth, async (req, res) => {
     const client = await getClient()
     const entity = await resolveEntity(client, req.params.id, req.query.username)
     const { Api } = require('telegram/tl')
+    log('Loading topics for: ' + req.params.id)
     const result = await client.invoke(new Api.channels.GetForumTopics({
       channel: entity,
       offsetDate: 0,
@@ -576,6 +577,7 @@ app.get('/api/chat/topics/:id', requireAuth, async (req, res) => {
       offsetTopic: 0,
       limit: 100
     }))
+    log('Topics result: ' + JSON.stringify(result?.topics?.length || 0) + ' topics')
     const topics = (result.topics || []).map(t => ({
       id: t.id,
       title: t.title,
@@ -589,8 +591,8 @@ app.get('/api/chat/topics/:id', requireAuth, async (req, res) => {
     }))
     res.json(topics)
   } catch(e) {
-    log('topics: ' + e.message)
-    res.json([]) // not a forum group or no topics
+    log('topics error for ' + req.params.id + ': ' + e.message)
+    res.json([])
   }
 })
 
