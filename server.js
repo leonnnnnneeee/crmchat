@@ -332,7 +332,7 @@ English only. No greeting. No "Makes sense". No repeating your previous messages
 })
 
 
-// ── PROFILE PHOTO (cached in memory) ──
+// ── PROFILE PHOTO (cached in memory, separate client) ──
 const photoCache = {}
 app.get('/api/chat/photo/:id', requireAuth, async (req,res) => {
   if (!_session) return res.status(404).send()
@@ -342,10 +342,15 @@ app.get('/api/chat/photo/:id', requireAuth, async (req,res) => {
     res.setHeader('Cache-Control', 'public, max-age=86400')
     return res.send(photoCache[cacheKey])
   }
+  // Use separate client for photo to avoid blocking main client
+  const { TelegramClient } = require('telegram')
+  const { StringSession } = require('telegram/sessions')
+  const photoClient = new TelegramClient(new StringSession(_session), TG_API_ID, TG_API_HASH, { connectionRetries: 2 })
   try {
-    const client = await getClient()
-    const entity = await resolveEntity(client, req.params.id, req.query.username)
-    const buffer = await client.downloadProfilePhoto(entity, { isBig: false })
+    await photoClient.connect()
+    const entity = await resolveEntity(photoClient, req.params.id, req.query.username)
+    const buffer = await photoClient.downloadProfilePhoto(entity, { isBig: false })
+    await photoClient.disconnect()
     if (buffer && buffer.length > 0) {
       const buf = Buffer.from(buffer)
       photoCache[cacheKey] = buf
@@ -355,7 +360,10 @@ app.get('/api/chat/photo/:id', requireAuth, async (req,res) => {
     } else {
       res.status(404).send()
     }
-  } catch(e) { log('photo: '+e.message); res.status(404).send() }
+  } catch(e) {
+    try { await photoClient.disconnect() } catch {}
+    res.status(404).send()
+  }
 })
 
 
