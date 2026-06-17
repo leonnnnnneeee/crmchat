@@ -8,5 +8,6 @@
     "startCommand": "node server.js",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 3
-  }
+  },
+  "_rebuild": "20260617_075921"
 }
