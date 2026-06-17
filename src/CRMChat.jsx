@@ -1,4 +1,4 @@
-// v081324
+// v082248
 // v035029
 import { useState, useEffect, useRef, useCallback } from "react"
 
@@ -319,21 +319,31 @@ export default function CRMChat({token}) {
   useEffect(()=>{endRef.current?.scrollIntoView({behavior:"smooth"})},[msgs])
 
   // Send message — send then reload (no polling = no duplicates)
+  const loadingRef = useRef(false)
   async function loadMessages(chat) {
     if(!chat) return
+    if(loadingRef.current) { console.log('LOAD BLOCKED - already loading'); return }
+    loadingRef.current = true
     setLoadMsgs(true)
+    console.log('LOAD MESSAGES START for', chat.id)
     try {
       const qs = chat.username ? '?username='+encodeURIComponent(chat.username) : ''
       const r = await fetch('/api/chat/messages/'+chat.id+qs, {headers:{"x-auth-token":token}})
       const d = await r.json()
+      console.log('LOAD MESSAGES GOT', Array.isArray(d) ? d.length : 'not array', 'messages')
       if(Array.isArray(d)) setMsgs(d)
     } catch(e) { console.error("loadMsgs:",e) }
+    loadingRef.current = false
     setLoadMsgs(false)
   }
 
+  const sendingRef = useRef(false)
   async function send(){
     const text=input.trim(); if(!text||!sel) return
+    if(sendingRef.current) { console.log('SEND BLOCKED - already sending'); return }
+    sendingRef.current = true
     setSending(true); setInput(""); setReplyTo(null)
+    console.log('SEND START:', text)
     try {
       const r = await fetch("/api/chat/send",{
         method:"POST", headers:{"Content-Type":"application/json","x-auth-token":token},
@@ -341,8 +351,11 @@ export default function CRMChat({token}) {
       })
       if(!r.ok) throw new Error("Send failed")
       await new Promise(res=>setTimeout(res,800))
+      console.log('LOAD MESSAGES AFTER SEND')
       await loadMessages(sel)
-    } catch(e) { setInput(text) }
+      console.log('LOAD MESSAGES DONE')
+    } catch(e) { setInput(text); console.error('SEND ERROR:',e) }
+    sendingRef.current = false
     setSending(false)
   }
 
