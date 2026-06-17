@@ -380,19 +380,28 @@ If client is an agency, VC, launchpad, or has multiple projects: mention bulk pr
       .replace(/^["'`]|["'`]$/g, '')
       .replace(/^(Leon:|Reply:|Sure,|Of course,|Great,|Absolutely,)/i, '')
       .trim()
-    // Fix formatting: join lines that are broken mid-sentence
-    s = s.split('\n')
-      .map(line => line.trim())
-      .filter(line => line.length > 0)
-      .reduce((acc, line) => {
-        if (!acc) return line
-        const prev = acc[acc.length - 1]
-        // If previous line ends with sentence-ending punctuation, keep as new line
-        if (/[.!?]$/.test(prev)) return acc + '\n' + line
-        // Otherwise join with space (broken mid-sentence)
-        return acc + ' ' + line
-      }, '')
-      .trim()
+
+    // ── Formatting correction pass ──
+    // 1. Split into lines and trim each
+    const rawLines = s.split('\n').map(l => l.trim()).filter(l => l.length > 0)
+    // 2. Merge lines that are broken mid-sentence
+    const merged = []
+    for (const line of rawLines) {
+      if (merged.length === 0) {
+        merged.push(line)
+      } else {
+        const prev = merged[merged.length - 1]
+        // Previous line ends with sentence-ending punctuation → new paragraph
+        if (/[.!?:]$/.test(prev)) {
+          merged.push(line)
+        } else {
+          // Broken mid-sentence → merge with space
+          merged[merged.length - 1] = prev + ' ' + line
+        }
+      }
+    }
+    // 3. Remove empty lines, join with single newline
+    s = merged.filter(l => l.trim().length > 0).join('\n').trim()
 
     log('AI reply: "' + s.slice(0,80) + '"')
     res.json({ suggestion: s })
