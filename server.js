@@ -6,15 +6,7 @@ const app = express()
 const PORT = process.env.PORT || 3002
 
 app.use(express.json())
-app.use((req, res, next) => {
-  if (req.path.match(/\.(js|css|html)$/)) {
-    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate')
-    res.setHeader('Pragma', 'no-cache')
-    res.setHeader('Expires', '0')
-  }
-  next()
-})
-app.use(express.static(path.join(__dirname, 'dist')))
+// static files served after API routes (see bottom)
 
 const VALID_TOKEN = process.env.AUTH_TOKEN || 'coincu_crm_2024'
 const USERS = [
@@ -287,6 +279,9 @@ Write my next reply. Strict rules:
 
 app.get('/api/health', (req,res) => res.json({ ok: true, tgConnected: _session.length > 10 }))
 app.get('/api/logs', requireAuth, (req,res) => res.json(logs))
+
+// Serve static files AFTER all API routes
+app.use(express.static(path.join(__dirname, 'dist')))
 app.get('*', (req,res) => res.sendFile(path.join(__dirname,'dist','index.html')))
 
 // ── SSE clients: Map<res, { token, chatId }> ──
