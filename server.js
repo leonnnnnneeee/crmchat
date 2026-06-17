@@ -339,27 +339,29 @@ If client is an agency, VC, launchpad, or has multiple projects: mention bulk pr
 
   try {
     const userPrompt = [
-      'Conversation with ' + contactName + ' (stage: ' + (stage||'Contacted') + '):',
+      'Conversation with ' + contactName + ':',
       thread,
       '',
-      'Client just said: "' + lastClientMsg + '"',
-      notes ? 'Internal notes: ' + notes : '',
-      'Leon already said: ' + (leonSaid || 'nothing yet'),
+      'Client last message: "' + lastClientMsg + '"',
+      'What Leon already said in this chat (DO NOT use any of these phrases): ' + (leonSaid || 'nothing'),
       '',
-      'Write Leon\'s next reply following the system instructions.',
-      'CRITICAL: Do NOT repeat any sentence from "Leon already said".',
-      'Reply directly to what client just said.',
-      'Max 2 sentences. No greeting. No sign-off.'
+      'Write ONE reply as Leon. Hard rules:',
+      '1. Max 1 sentence only',
+      '2. ONLY use prices from this list: Press release $240, Sponsored $390, Organic $520, Listicle $1650 (coincu.com) | CMC News Boost $1500 standalone',
+      '3. NEVER say $855 or any price not in the list above',
+      '4. CMC News Boost = $1500, there is no other CMC price',
+      '5. Reply directly to: "' + lastClientMsg + '"',
+      '6. No greeting, no sign-off, no long explanation'
     ].filter(Boolean).join('\n')
 
     const r = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
       model: 'llama-3.3-70b-versatile',
       messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'system', content: 'You are a sales assistant. Follow the user instructions exactly. Never invent prices. Only use the exact prices given.' },
         { role: 'user',   content: userPrompt }
       ],
-      max_tokens: 120,
-      temperature: 0.45
+      max_tokens: 60,
+      temperature: 0.1
     }, { headers: { Authorization: 'Bearer ' + GROQ_KEY, 'Content-Type': 'application/json' }})
 
     let s = r.data.choices[0].message.content.trim()
