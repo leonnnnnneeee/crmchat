@@ -312,68 +312,7 @@ export default function CRMChat({token}) {
       .catch(e=>console.error("msgs:",e)).finally(()=>setLoadMsgs(false))
   },[sel?.id,token])
 
-  // ── SSE for realtime messages (works on Railway) ──
-  const sseRef = useRef(null)
-  const [wsStatus, setWsStatus] = useState('disconnected')
 
-  useEffect(()=>{
-    if (!token) return
-    let es
-    let retryTimer
-
-    function connect() {
-      const url = `/api/events?token=${encodeURIComponent(token)}${sel?.id ? '&chatId='+sel.id : ''}`
-      es = new EventSource(url)
-      sseRef.current = es
-
-      es.onopen = () => setWsStatus('connected')
-
-      // Listen for named 'message' event
-      es.addEventListener('message', (e) => {
-        try {
-          const data = JSON.parse(e.data)
-          if (data.type === 'new_message') {
-            setMsgs(prev => {
-              const existingIds = new Set(prev.filter(m=>m.id).map(m=>m.id))
-              if (existingIds.has(data.message.id)) return prev
-              return [...prev, data.message]
-            })
-            setChats(prev => prev.map(c =>
-              c.id === data.chatId
-                ? { ...c, lastMsg: data.message.text, date: data.message.date,
-                    unread: data.message.fromMe ? (c.unread||0) : (c.unread||0)+1 }
-                : c
-            ))
-          }
-        } catch {}
-      })
-      // Keep onmessage as fallback
-      es.onmessage = (e) => {
-        try {
-          const data = JSON.parse(e.data)
-          if (data.type === 'new_message') {
-            setMsgs(prev => {
-              const existingIds = new Set(prev.filter(m=>m.id).map(m=>m.id))
-              if (existingIds.has(data.message.id)) return prev
-              return [...prev, data.message]
-            })
-          }
-        } catch {}
-      }
-
-      es.onerror = () => {
-        setWsStatus('disconnected')
-        es.close()
-        retryTimer = setTimeout(connect, 4000)
-      }
-    }
-
-    connect()
-    return () => {
-      clearTimeout(retryTimer)
-      es?.close()
-    }
-  }, [token, sel?.id])
 
   useEffect(()=>{endRef.current?.scrollIntoView({behavior:"smooth"})},[msgs])
 
