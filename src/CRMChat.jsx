@@ -1,4 +1,4 @@
-// v092121
+// v092543
 // v035029
 import { useState, useEffect, useRef, useCallback } from "react"
 
@@ -379,7 +379,7 @@ export default function CRMChat({token}) {
       setTimeout(async()=>{
         loadingRef.current = false
         await loadMessages(sel, selTopic?.id || null)
-      }, 1000)
+      }, 300)
     } catch(e) {
       setMsgs(p=>p.filter(m=>m.id!==tempMsg.id))
       setInput(text)
