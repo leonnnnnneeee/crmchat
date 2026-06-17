@@ -283,7 +283,6 @@ export default function CRMChat({token}) {
   const [aiLoading,setAiLoading]=useState(false)
   const msgsRef = useRef([])
   useEffect(()=>{ msgsRef.current = msgs },[msgs])
-  useEffect(()=>{ aiLoadingRef.current = aiLoading },[aiLoading])
   const [showProfile,setShowProfile]=useState(true)
   const [stages,setStages]=useState({})
   const [probs,setProbs]=useState({})
