@@ -207,7 +207,7 @@ app.post('/api/chat/send', requireAuth, async (req,res) => {
 
 // ── AI SUGGEST (Groq) ──
 app.post('/api/ai/suggest', requireAuth, async (req,res) => {
-  const { contactName, lastMessage, messages, stage, notes } = req.body
+  const { contactName, lastMessage, lastMessageFromMe, messages, stage, notes } = req.body
 
   // Build conversation thread for context
   const thread = (messages||[]).slice(-15).map(m =>
@@ -244,11 +244,14 @@ app.post('/api/ai/suggest', requireAuth, async (req,res) => {
     // Negotiating stage
     if (stage === 'Negotiating')
       return `Based on what we've discussed, a bundled Coincu PR + CMC News package seems like the best fit. Want me to put together a quick proposal?`
-    // Default — based on last message content
-    const preview = (lastMessage||'').slice(0,60)
-    if (preview.length > 10)
-      return `Got it — just to make sure I'm recommending the right thing, is the main goal right now awareness, credibility, or user growth?`
-    return `What's the main priority for your project right now — awareness, credibility, or user growth?`
+    // "both" — bundle offer
+    if (ctx.match(/both|bundle|all/))
+      return `We can package both Coincu PR + CMC News — bundle starts around $950. Want me to put together a quick proposal?`
+    // Short positive replies
+    if (msg.match(/^(ok|yes|sure|sounds good|great|perfect|👍|interested|okay)\.?$/i))
+      return `Perfect — I'll put together a quick proposal. Which would you prefer to start with, Coincu PR or CMC News?`
+    // Default
+    return `Got it — to make sure I recommend the right fit, is the main goal awareness, credibility, or user growth?`
   }
 
   if (!GROQ_KEY) {
@@ -278,33 +281,33 @@ Rules:
     const lastClientMsg = [...history].reverse().find(m => !m.fromMe)?.text || lastMessage || ''
     const thread = history.map(m => `${m.fromMe ? 'Leon' : contactName}: ${m.text}`).join('\n')
 
-    // Use multi-turn messages — model sees exact conversation flow
+    // Determine what to respond to
+    const respondTo = lastClientMsg || '(no message yet)'
+    const isMyTurn = !lastMessageFromMe // true if client sent last message
+
     const groqMessages = [
       {
         role: 'system',
         content: `You are Leon, BD at Coincu — crypto PR company in Vietnam.
-Services: Coincu PR ($300+), CMC News ($800+), Banner Ads.
-Style: short, direct, natural Telegram. Never salesy. Never repeat yourself.
-You MUST reply specifically to the client's latest message.`
+Products: Coincu PR ($300+), CMC News ($800+), Banner Ads.
+Write short, natural Telegram replies. Never repeat what you already said. Never generic.`
       },
       {
         role: 'user',
-        content: `Here is my conversation with ${contactName} (stage: ${stage}):
-
+        content: `Conversation with ${contactName}:
+---
 ${thread}
+---
+Their last message: "${respondTo}"
 
-Their latest message is: "${lastClientMsg}"
-
-Write my next reply. Rules:
-- 1-2 sentences max
-- Reply DIRECTLY to "${lastClientMsg}" — not generic
-- If they said "credibility" → pitch CMC News as credibility tool
-- If they said "awareness" → pitch Coincu PR  
-- If they said "users/growth" → ask about their current channels
-- If they want to buy → ask which service + send proposal
-- If they asked price → give real numbers
-- English only, no greeting, no sign-off
-- Sound like texting, not email`
+Write ONE reply (1-2 sentences). Be specific:
+- "credibility" or "both" → "CMC News is the strongest credibility play — goes live on CoinMarketCap directly. Want me to send the rate card?"
+- "awareness" → pitch Coincu PR reach (500K readers)
+- "both" → bundle offer: "We can do both — Coincu PR + CMC News bundle starts around $950. Want a quick proposal?"
+- want to buy → confirm which service, offer proposal
+- price question → give exact numbers
+- short reply like "ok" / "yes" → move forward, ask next step
+English only. No greeting. No "Makes sense". No repeating your previous messages.`
       }
     ]
 
