@@ -1,4 +1,4 @@
-// v085635
+// v085652
 // v035029
 import { useState, useEffect, useRef, useCallback } from "react"
 
@@ -38,7 +38,7 @@ const TEMPLATES = [
 const photoCache = {}
 let _authToken = ''
 
-function Avatar({name, chatId, username, token: avatarToken, size=40}) {
+function Avatar({name, chatId, username, size=40}) {
   const colors=["#c03d33","#4fad2d","#d09306","#168acd","#8544d6","#cd4073","#2996ad","#ce671b"]
   const colorIdx = (name||"?").charCodeAt(0) % colors.length
   const initials = (name||"?").split(" ").map(w=>w[0]).slice(0,2).join("").toUpperCase()
@@ -46,10 +46,10 @@ function Avatar({name, chatId, username, token: avatarToken, size=40}) {
   const [failed, setFailed] = useState(false)
 
   useEffect(()=>{
-    if (!chatId || !avatarToken || failed) return
+    if (!chatId || !_authToken || failed) return
     if (photoCache[chatId]) { setPhotoUrl(photoCache[chatId]); return }
     const qs = username ? `?username=${encodeURIComponent(username)}` : ""
-    fetch(`/api/chat/photo/${chatId}${qs}`, {headers:{"x-auth-token":avatarToken}})
+    fetch(`/api/chat/photo/${chatId}${qs}`, {headers:{"x-auth-token":_authToken}})
       .then(r => { if (!r.ok) throw new Error("no photo"); return r.blob() })
       .then(blob => {
         const url = URL.createObjectURL(blob)
@@ -57,7 +57,7 @@ function Avatar({name, chatId, username, token: avatarToken, size=40}) {
         setPhotoUrl(url)
       })
       .catch(() => setFailed(true))
-  }, [chatId, token])
+  }, [chatId])
 
   if (photoUrl && !failed) {
     return (
