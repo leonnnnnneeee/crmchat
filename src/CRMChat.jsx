@@ -336,6 +336,7 @@ export default function CRMChat({token}) {
       if(!serverMsgs.length) return
       const lastId = Math.max(...serverMsgs.map(m=>m.id))
       try {
+        if(pollPausedRef.current) return  // skip poll while sending
         const qs = 'since='+lastId+(s.username?'&username='+encodeURIComponent(s.username):'')
         const r  = await fetch('/api/chat/poll/'+s.id+'?'+qs, {headers:{"x-auth-token":token}})
         if(!r.ok) return
@@ -359,25 +360,28 @@ export default function CRMChat({token}) {
 
   useEffect(()=>{endRef.current?.scrollIntoView({behavior:"smooth"})},[msgs])
 
-  // Send message — no optimistic, reload after send to avoid duplicates
+  // Send message — pause poll, send, reload, resume
+  const pollPausedRef = useRef(false)
   async function send(){
     const text=input.trim(); if(!text||!sel) return
     setSending(true); setInput(""); setReplyTo(null)
+    pollPausedRef.current = true  // pause poll during send+reload
     try {
       const r = await fetch("/api/chat/send",{
         method:"POST", headers:{"Content-Type":"application/json","x-auth-token":token},
         body:JSON.stringify({chatId:sel.id, text})
       })
       if(!r.ok) throw new Error("Send failed")
-      // Reload messages after send — simplest way to avoid all duplicate issues
+      // Wait 500ms for TG to process, then reload full message list
+      await new Promise(res=>setTimeout(res,500))
       const qs = sel.username ? '?username='+encodeURIComponent(sel.username) : ''
       const r2 = await fetch('/api/chat/messages/'+sel.id+qs, {headers:{"x-auth-token":token}})
-      const msgs2 = await r2.json()
-      if(Array.isArray(msgs2)) setMsgs(msgs2)
+      const fresh = await r2.json()
+      if(Array.isArray(fresh)) setMsgs(fresh)
     } catch(e) {
       setInput(text)
-      console.error("Send failed:", e)
     }
+    pollPausedRef.current = false  // resume poll
     setSending(false)
   }
 
