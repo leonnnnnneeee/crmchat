@@ -328,7 +328,8 @@ export default function CRMChat({token}) {
 
       es.onopen = () => setWsStatus('connected')
 
-      es.onmessage = (e) => {
+      // Listen for named 'message' event
+      es.addEventListener('message', (e) => {
         try {
           const data = JSON.parse(e.data)
           if (data.type === 'new_message') {
@@ -343,6 +344,19 @@ export default function CRMChat({token}) {
                     unread: data.message.fromMe ? (c.unread||0) : (c.unread||0)+1 }
                 : c
             ))
+          }
+        } catch {}
+      })
+      // Keep onmessage as fallback
+      es.onmessage = (e) => {
+        try {
+          const data = JSON.parse(e.data)
+          if (data.type === 'new_message') {
+            setMsgs(prev => {
+              const existingIds = new Set(prev.filter(m=>m.id).map(m=>m.id))
+              if (existingIds.has(data.message.id)) return prev
+              return [...prev, data.message]
+            })
           }
         } catch {}
       }
