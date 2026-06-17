@@ -277,75 +277,30 @@ Write my next reply. Strict rules:
 })
 
 
+
+// ── POLL new messages since a given message ID ──
+app.get('/api/chat/poll/:id', requireAuth, async (req, res) => {
+  if (!_session) return res.json([])
+  const since = parseInt(req.query.since) || 0
+  try {
+    const client = await getClient()
+    const entity = await resolveEntity(client, req.params.id, req.query.username)
+    const msgs = await client.getMessages(entity, { limit: 5, minId: since })
+    const results = msgs
+      .map(m => ({ id: m.id, text: m.message, fromMe: m.out, date: m.date }))
+      .filter(m => m.text && m.id > since)
+      .reverse()
+    res.json(results)
+  } catch(e) {
+    res.json([])
+  }
+})
+
 app.get('/api/health', (req,res) => res.json({ ok: true, tgConnected: _session.length > 10 }))
 app.get('/api/logs', requireAuth, (req,res) => res.json(logs))
 
 
-// ── SSE clients: Map<res, { token, chatId }> ──
-const sseClients = new Map()
 
-app.get('/api/events', requireAuth, (req, res) => {
-  // HTTP/2 compatible SSE headers
-  res.status(200)
-  res.setHeader('Content-Type', 'text/event-stream; charset=utf-8')
-  res.setHeader('Cache-Control', 'no-cache, no-transform')
-  res.setHeader('X-Accel-Buffering', 'no')
-  res.setHeader('Access-Control-Allow-Origin', '*')
-  // Force chunked transfer
-  res.setHeader('Transfer-Encoding', 'chunked')
-
-  // Send initial comment to establish connection
-  res.write(':ok\n\n')
-
-  const chatId = req.query.chatId || null
-  sseClients.set(res, { chatId })
-  log('SSE connected, chatId: ' + chatId)
-
-  // Heartbeat every 20s
-  const heartbeat = setInterval(() => {
-    try {
-      res.write(':ping\n\n')
-    } catch(e) {
-      clearInterval(heartbeat)
-      sseClients.delete(res)
-    }
-  }, 20000)
-
-  req.on('close', () => {
-    clearInterval(heartbeat)
-    sseClients.delete(res)
-    log('SSE disconnected')
-  })
-
-  req.on('error', () => {
-    clearInterval(heartbeat)
-    sseClients.delete(res)
-  })
-})
-
-// Update subscribed chatId for a client
-app.post('/api/events/subscribe', requireAuth, (req, res) => {
-  const { chatId } = req.body
-  // Find the SSE client for this token and update chatId
-  // (In practice each browser tab has 1 SSE connection)
-  res.json({ ok: true })
-})
-
-function broadcast(chatId, message) {
-  const data = JSON.stringify({ type: 'new_message', chatId, message })
-  const payload = `event: message\ndata: ${data}\n\n`
-  const dead = []
-  for (const [res, info] of sseClients) {
-    if (!info.chatId || info.chatId === chatId) {
-      try {
-        res.write(payload)
-      } catch(e) {
-        dead.push(res)
-      }
-    }
-  }
-  dead.forEach(r => sseClients.delete(r))
-}
 
 // Start Telegram event listener for incoming messages
 async function startTGListener() {
@@ -375,7 +330,7 @@ async function startTGListener() {
           fromMe: msg.out,
           date: msg.date
         }
-        broadcast(chatId, message)
+        // broadcast removed — using polling
       } catch(e) { log('TG event error: ' + e.message) }
     }, new events.NewMessage({}))
 
