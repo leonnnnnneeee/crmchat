@@ -32,13 +32,46 @@ const TEMPLATES = [
   {id:"t13", cat:"Closing",     label:"Closing",                  text:"Based on what we've discussed, I think a bundled Coincu PR + CMC News package makes the most sense. Want me to put together a quick proposal?"},
 ]
 
-// ── Avatar with Telegram-style letter colors ──
-function Avatar({name, size=40}) {
+// ── Avatar — loads real TG photo, falls back to colored initials ──
+const photoCache = {}
+
+function Avatar({name, chatId, username, size=40}) {
   const colors=["#c03d33","#4fad2d","#d09306","#168acd","#8544d6","#cd4073","#2996ad","#ce671b"]
-  const i=(name||"?").charCodeAt(0)%colors.length
-  const initials=(name||"?").split(" ").map(w=>w[0]).slice(0,2).join("").toUpperCase()
+  const colorIdx = (name||"?").charCodeAt(0) % colors.length
+  const initials = (name||"?").split(" ").map(w=>w[0]).slice(0,2).join("").toUpperCase()
+  const [photoUrl, setPhotoUrl] = useState(chatId ? (photoCache[chatId] || null) : null)
+  const [photoFailed, setPhotoFailed] = useState(false)
+  const token = useRef(localStorage.getItem("crm_token")||"")
+
+  useEffect(()=>{
+    if (!chatId || photoFailed) return
+    if (photoCache[chatId]) { setPhotoUrl(photoCache[chatId]); return }
+    const qs = username ? `?username=${encodeURIComponent(username)}` : ""
+    fetch(`/api/chat/photo/${chatId}${qs}`, {headers:{"x-auth-token":token.current}})
+      .then(r => {
+        if (!r.ok) throw new Error("no photo")
+        return r.blob()
+      })
+      .then(blob => {
+        const url = URL.createObjectURL(blob)
+        photoCache[chatId] = url
+        setPhotoUrl(url)
+      })
+      .catch(() => setPhotoFailed(true))
+  }, [chatId])
+
+  if (photoUrl && !photoFailed) {
+    return (
+      <div style={{width:size,height:size,borderRadius:"50%",overflow:"hidden",flexShrink:0,background:colors[colorIdx]}}>
+        <img src={photoUrl} alt={name} width={size} height={size}
+          style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}
+          onError={()=>setPhotoFailed(true)}/>
+      </div>
+    )
+  }
+
   return (
-    <div style={{width:size,height:size,borderRadius:"50%",background:colors[i],display:"flex",alignItems:"center",justifyContent:"center",fontSize:size*.38,fontWeight:600,color:"#fff",userSelect:"none",flexShrink:0,letterSpacing:"-0.5px"}}>
+    <div style={{width:size,height:size,borderRadius:"50%",background:colors[colorIdx],display:"flex",alignItems:"center",justifyContent:"center",fontSize:size*.38,fontWeight:600,color:"#fff",userSelect:"none",flexShrink:0,letterSpacing:"-0.5px"}}>
       {initials}
     </div>
   )
@@ -360,14 +393,14 @@ export default function CRMChat({token}) {
       {/* SIDEBAR */}
       <div className="sidebar">
         <div style={{width:36,height:36,background:TG.blue,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:15,marginBottom:10}}>⚡</div>
-        {[["ti-layout-dashboard","Dashboard"],["ti-users","Leads"],["ti-message-2","Chat"],["ti-file-text","Reports"],["ti-chart-bar","Analytics"]].map(([icon,label],i)=>(
-          <div key={icon} className={`si${i===2?" on":""}`} title={label}>
-            <i className={`ti ${icon}`} aria-hidden="true"/>
+        {[["🏠","Dashboard"],["👥","Leads"],["💬","Chat"],["📊","Reports"],["📈","Analytics"]].map(([icon,label],i)=>(
+          <div key={label} className={`si${i===2?" on":""}`} title={label} style={{fontSize:18}}>
+            {icon}
           </div>
         ))}
         <div style={{flex:1}}/>
-        <div className="si" title="Settings"><i className="ti ti-settings" aria-hidden="true"/></div>
-        <div style={{marginTop:6}}><Avatar name="Leon" size={34}/></div>
+        <div className="si" title="Settings" style={{fontSize:18}}>⚙️</div>
+        <div style={{marginTop:6,width:34,height:34,borderRadius:"50%",background:"#7c3aed",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:700,fontSize:13}}>L</div>
       </div>
 
       {/* LEFT COL */}
@@ -375,7 +408,7 @@ export default function CRMChat({token}) {
         <div style={{padding:"14px 14px 6px",fontSize:15,fontWeight:700,color:TG.text,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
           <span>Messages</span>
           <button onClick={fetchChats} disabled={loadChats} style={{background:"none",border:"none",color:TG.textMuted,cursor:"pointer",fontSize:16}} title="Refresh">
-            <i className="ti ti-refresh" aria-hidden="true"/>
+            🔄
           </button>
         </div>
         <div style={{padding:"0 12px 8px",position:"relative"}}>
@@ -389,7 +422,7 @@ export default function CRMChat({token}) {
             return(
               <div key={chat.id} className={`ci${isSel?" sel":""}`} onClick={()=>setSel(chat)}>
                 <div style={{position:"relative"}}>
-                  <Avatar name={chat.name} size={44}/>
+                  <Avatar name={chat.name} chatId={chat.id} username={chat.username} size={44}/>
                   {chat.unread>0&&<div style={{position:"absolute",bottom:-1,right:-1,background:TG.green,color:"#fff",fontSize:10,fontWeight:700,padding:"1px 5px",borderRadius:10,minWidth:17,textAlign:"center"}}>{chat.unread>99?"99+":chat.unread}</div>}
                 </div>
                 <div style={{flex:1,minWidth:0}}>
@@ -422,17 +455,17 @@ export default function CRMChat({token}) {
         ):<>
           {/* Chat header */}
           <div className="chdr">
-            <Avatar name={sel.name} size={38}/>
+            <Avatar name={sel.name} chatId={sel.id} username={sel.username} size={38}/>
             <div style={{flex:1}}>
               <div style={{fontWeight:700,fontSize:15,color:TG.text,lineHeight:1.2}}>{sel.name}</div>
               <div style={{fontSize:11,color:TG.green}}>online</div>
             </div>
             <StageBadge stage={cStage}/>
             <div style={{display:"flex",gap:6,marginLeft:8}}>
-              <button className="hb" title="Call"><i className="ti ti-phone" aria-hidden="true"/></button>
-              <button className="hb" title="Video call"><i className="ti ti-video" aria-hidden="true"/></button>
-              <button className={`hb${showProfile?" on":""}`} onClick={()=>setShowProfile(v=>!v)} title="Toggle info">
-                <i className="ti ti-info-circle" aria-hidden="true"/>
+              <button className="hb" title="Call" style={{fontSize:16}}>📞</button>
+              <button className="hb" title="Search in chat" style={{fontSize:16}}>🔍</button>
+              <button className={`hb${showProfile?" on":""}`} onClick={()=>setShowProfile(v=>!v)} title="Toggle info" style={{fontSize:16}}>
+                ℹ️
               </button>
             </div>
           </div>
@@ -460,7 +493,7 @@ export default function CRMChat({token}) {
                 <div key={i}>
                   {showSep&&<div className="dsep"><span>{fmtDateSep(msg.date)}</span></div>}
                   <div style={{display:"flex",flexDirection:msg.fromMe?"row-reverse":"row",alignItems:"flex-end",gap:8,marginBottom:2}}>
-                    {!msg.fromMe&&<Avatar name={sel.name} size={26}/>}
+                    {!msg.fromMe&&<Avatar name={sel.name} chatId={sel.id} username={sel.username} size={26}/>}
                     <div onContextMenu={e=>handleCtx(e,msg,i)}>
                       {msg.replyTo&&(
                         <div style={{background:"rgba(124,58,237,.15)",borderLeft:`3px solid ${TG.blue}`,padding:"4px 8px",borderRadius:"0 6px 6px 0",marginBottom:4,fontSize:11,color:TG.textSec,maxWidth:"100%",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
@@ -531,20 +564,20 @@ export default function CRMChat({token}) {
               ))}
             </div>
             <div className="ir">
-              <button className="ib g" title="Attach file"><i className="ti ti-paperclip" aria-hidden="true"/></button>
+              <button className="ib g" title="Attach file" style={{fontSize:17}}>📎</button>
               <textarea className="mi" placeholder="Type a message..."
                 value={input} onChange={e=>setInput(e.target.value)} rows={1}
                 onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send()}}}/>
-              <button className={`ib g${showTmpl?" on":""}`} onClick={()=>setShowTmpl(v=>!v)} title="Templates">
-                <i className="ti ti-template" aria-hidden="true"/>
+              <button className={`ib g${showTmpl?" on":""}`} onClick={()=>setShowTmpl(v=>!v)} title="Templates" style={{fontSize:17}}>
+                📋
               </button>
               <button className="ib g" onClick={getAI} disabled={aiLoading} title="AI Suggest"
-                style={{background:aiLoading?"rgba(124,58,237,.25)":undefined,color:aiLoading?"#c4a8e8":undefined}}>
-                <i className="ti ti-sparkles" aria-hidden="true"/>
+                style={{background:aiLoading?"rgba(124,58,237,.25)":TG.elevated,fontSize:17}}>
+                {aiLoading?"⏳":"✨"}
               </button>
               <button className="ib s" onClick={send} disabled={!input.trim()||sending}
-                style={{opacity:input.trim()&&!sending?1:.4}} title="Send">
-                <i className="ti ti-send" aria-hidden="true"/>
+                style={{opacity:input.trim()&&!sending?1:.4,fontSize:17}} title="Send">
+                ➤
               </button>
             </div>
           </div>
@@ -559,14 +592,14 @@ export default function CRMChat({token}) {
           ):(
             <>
               <div style={{padding:"22px 16px 16px",textAlign:"center",borderBottom:`1px solid ${TG.border}`}}>
-                <Avatar name={sel.name} size={70}/>
+                <Avatar name={sel.name} chatId={sel.id} username={sel.username} size={70}/>
                 <div style={{fontWeight:700,fontSize:18,color:TG.text,marginTop:12}}>{sel.name}</div>
                 <div style={{fontSize:12,color:TG.textSec,marginTop:3}}>Telegram · {sel.isUser?"Contact":"Group"}</div>
                 <div style={{marginTop:10}}><StageBadge stage={cStage}/></div>
                 <div style={{display:"flex",justifyContent:"center",gap:8,marginTop:12}}>
-                  {[["ti-brand-telegram","Open in TG"],["ti-mail","Email"],["ti-world","Website"],["ti-copy","Copy ID"]].map(([ic,ttl])=>(
-                    <button key={ic} title={ttl} style={{width:34,height:34,borderRadius:"50%",background:TG.elevated,border:"none",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:TG.textSec,fontSize:16}} onClick={ic==="ti-copy"?()=>navigator.clipboard?.writeText(sel.id):undefined}>
-                      <i className={`ti ${ic}`} aria-hidden="true"/>
+                  {[["📱","Open in TG",null],["📧","Email",null],["🌐","Website",null],["📋","Copy ID",()=>navigator.clipboard?.writeText(sel.id)]].map(([icon,ttl,action])=>(
+                    <button key={ttl} title={ttl} onClick={action||undefined} style={{width:34,height:34,borderRadius:"50%",background:TG.elevated,border:"none",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:16}}>
+                      {icon}
                     </button>
                   ))}
                 </div>
@@ -588,12 +621,12 @@ export default function CRMChat({token}) {
                   <div style={{height:"100%",width:cProb+"%",background:TG.blue,borderRadius:99,transition:"width .3s"}}/>
                 </div>
                 <div className="rr">
-                  <i className="ti ti-currency-dollar" aria-hidden="true"/>
+                  <span style={{fontSize:15}}>💵</span>
                   <input type="number" value={cDeal} onChange={e=>setDeals(p=>({...p,[sel.id]:+e.target.value||0}))}
                     placeholder="Deal value USD" style={{background:"transparent",border:"none",color:TG.text,fontSize:13,outline:"none",width:"100%",fontFamily:"inherit"}}/>
                 </div>
                 <div className="rr">
-                  <i className="ti ti-calendar" aria-hidden="true"/>
+                  <span style={{fontSize:15}}>📅</span>
                   <input type="date" value={cFup} onChange={e=>setFups(p=>({...p,[sel.id]:e.target.value}))}
                     style={{background:"transparent",border:"none",color:TG.text,fontSize:13,outline:"none",fontFamily:"inherit"}}/>
                 </div>
