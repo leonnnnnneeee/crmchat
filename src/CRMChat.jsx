@@ -281,6 +281,7 @@ export default function CRMChat({token}) {
   const [aiAnalysis,setAiAnalysis]=useState("")
   const [aiAlt,setAiAlt]=useState("")
   const [aiLoading,setAiLoading]=useState(false)
+  useEffect(()=>{ aiLoadingRef.current = aiLoading },[aiLoading])
   const [showProfile,setShowProfile]=useState(true)
   const [stages,setStages]=useState({})
   const [probs,setProbs]=useState({})
@@ -319,6 +320,7 @@ export default function CRMChat({token}) {
   // ── Poll new messages every 2s ──
   const msgsRef = useRef([])
   const selRef  = useRef(null)
+  const aiLoadingRef = useRef(false)
   useEffect(()=>{ msgsRef.current = msgs }, [msgs])
   useEffect(()=>{ selRef.current  = sel  }, [sel])
 
@@ -327,9 +329,8 @@ export default function CRMChat({token}) {
     const iv = setInterval(async ()=>{
       const s = selRef.current
       if(!s) return
-      const all    = msgsRef.current
-      // Only use real server IDs (positive), skip optimistic (negative tempId)
-      const realMsgs = all.filter(m => m.id && m.id > 0)
+      const all = msgsRef.current
+      const realMsgs = all.filter(m => m.id && m.id > 0 && !m.pending)
       if(!realMsgs.length) return
       const lastId = Math.max(...realMsgs.map(m=>m.id))
       try {
@@ -338,20 +339,33 @@ export default function CRMChat({token}) {
         if(!r.ok) return
         const fresh = await r.json()
         if(!Array.isArray(fresh) || !fresh.length) return
+
         setMsgs(prev => {
-          const realIds = new Set(prev.filter(m=>m.id&&m.id>0).map(m=>m.id))
-          // Truly new messages from server
-          const news = fresh.filter(m => m.id && !realIds.has(m.id))
-          if(!news.length) return prev
-          // Remove optimistic duplicates: pending fromMe msgs whose text matches a new server msg
-          const newTexts = new Set(news.filter(m=>m.fromMe).map(m=>m.text))
-          const cleaned = prev.filter(m => !(m.pending && m.fromMe && newTexts.has(m.text)))
-          return [...cleaned, ...news]
+          // Deduplicate by message ID
+          const existIds = new Set(prev.filter(m=>m.id&&m.id>0).map(m=>m.id))
+          const truly_new = fresh.filter(m => m.id > 0 && !existIds.has(m.id))
+          if(!truly_new.length) return prev
+
+          // Remove optimistic messages that are now confirmed by server
+          const confirmedTexts = new Set(truly_new.filter(m=>m.fromMe).map(m=>m.text))
+          const withoutPending = prev.filter(m => {
+            if(m.id && m.id < 0 && m.fromMe && confirmedTexts.has(m.text)) return false
+            return true
+          })
+
+          // Auto-trigger AI on new incoming message
+          const hasIncoming = truly_new.some(m=>!m.fromMe)
+          if(hasIncoming && !aiLoadingRef.current) {
+            setTimeout(()=>getAI(true), 1000)
+          }
+
+          return [...withoutPending, ...truly_new]
         })
       } catch {}
     }, 2000)
     return ()=>clearInterval(iv)
   },[sel?.id, token])
+
 
   useEffect(()=>{endRef.current?.scrollIntoView({behavior:"smooth"})},[msgs])
 
@@ -359,15 +373,17 @@ export default function CRMChat({token}) {
   async function send(){
     const text=input.trim(); if(!text||!sel) return
     setSending(true)
-    const tempId = -(Date.now()) // negative ID = optimistic, never conflicts with server IDs
+    const tempId = -Date.now() // negative = optimistic, never conflicts with real server IDs
     const opt = {id:tempId, text, fromMe:true, date:Math.floor(Date.now()/1000), pending:true}
-    setMsgs(p=>[...p,opt]); setInput(""); setReplyTo(null)
+    setMsgs(p=>[...p, opt]); setInput(""); setReplyTo(null)
     try {
-      await fetch("/api/chat/send",{
+      const r = await fetch("/api/chat/send",{
         method:"POST", headers:{"Content-Type":"application/json","x-auth-token":token},
         body:JSON.stringify({chatId:sel.id, text})
       })
-      // Leave as pending — poll will confirm with real ID and remove pending flag
+      if(!r.ok) throw new Error("Send failed")
+      // Mark as sent — poll will replace with real server message
+      setMsgs(p=>p.map(m=>m.id===tempId ? {...m, pending:false} : m))
     } catch(e) {
       setMsgs(p=>p.filter(m=>m.id!==tempId))
       setInput(text)
