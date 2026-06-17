@@ -561,6 +561,83 @@ app.post('/api/accounts/verify', requireAuth, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }) }
 })
 
+
+// ── FORUM TOPICS (for supergroups with topics enabled) ──
+app.get('/api/chat/topics/:id', requireAuth, async (req, res) => {
+  if (!_session) return res.json([])
+  try {
+    const client = await getClient()
+    const entity = await resolveEntity(client, req.params.id, req.query.username)
+    const { Api } = require('telegram/tl')
+    const result = await client.invoke(new Api.channels.GetForumTopics({
+      channel: entity,
+      offsetDate: 0,
+      offsetId: 0,
+      offsetTopic: 0,
+      limit: 100
+    }))
+    const topics = (result.topics || []).map(t => ({
+      id: t.id,
+      title: t.title,
+      unread: t.unreadCount || 0,
+      unreadMentions: t.unreadMentionsCount || 0,
+      topMessage: t.topMessage,
+      lastMsg: result.messages?.find(m => m.id === t.topMessage)?.message?.slice(0,80) || '',
+      date: result.messages?.find(m => m.id === t.topMessage)?.date || null,
+      iconEmoji: t.iconEmojiId ? '📌' : null,
+      isClosed: t.closed || false,
+    }))
+    res.json(topics)
+  } catch(e) {
+    log('topics: ' + e.message)
+    res.json([]) // not a forum group or no topics
+  }
+})
+
+// ── TOPIC MESSAGES ──
+app.get('/api/chat/topics/:id/:topicId/messages', requireAuth, async (req, res) => {
+  if (!_session) return res.json([])
+  try {
+    const client = await getClient()
+    const entity = await resolveEntity(client, req.params.id, req.query.username)
+    const { Api } = require('telegram/tl')
+    const result = await client.invoke(new Api.messages.GetReplies({
+      peer: entity,
+      msgId: parseInt(req.params.topicId),
+      offsetId: 0,
+      offsetDate: 0,
+      addOffset: 0,
+      limit: 80,
+      maxId: 0,
+      minId: 0,
+      hash: BigInt(0)
+    }))
+    const msgs = (result.messages || [])
+      .reverse()
+      .map(m => ({ id: m.id, text: m.message, fromMe: m.out, date: m.date }))
+      .filter(m => m.text)
+    res.json(msgs)
+  } catch(e) {
+    log('topic messages: ' + e.message)
+    res.json([])
+  }
+})
+
+// ── SEND TO TOPIC ──
+app.post('/api/chat/topics/:id/:topicId/send', requireAuth, async (req, res) => {
+  const { text } = req.body
+  if (!_session) return res.status(401).json({ error: 'Not connected' })
+  try {
+    const client = await getClient()
+    const entity = await resolveEntity(client, req.params.id, req.query.username)
+    await client.sendMessage(entity, {
+      message: text,
+      replyTo: parseInt(req.params.topicId)
+    })
+    res.json({ ok: true })
+  } catch(e) { res.status(500).json({ error: e.message }) }
+})
+
 app.get('/api/health', (req,res) => res.json({ ok: true, tgConnected: _session.length > 10 }))
 app.get('/api/logs', requireAuth, (req,res) => res.json(logs))
 
