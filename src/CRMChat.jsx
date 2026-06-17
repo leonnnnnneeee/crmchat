@@ -1,4 +1,4 @@
-// v082248
+// v083704
 // v035029
 import { useState, useEffect, useRef, useCallback } from "react"
 
@@ -114,7 +114,7 @@ function fmtDateSep(ts) {
 }
 
 // ── Context Menu (right-click) ──
-function ContextMenu({x,y,msg,onDelete,onCopy,onReply,onClose}) {
+function ContextMenu({x,y,msg,onDelete,onCopy,onReply,onClose,onDeleteAll}) {
   const ref=useRef(null)
   useEffect(()=>{
     function handler(e){if(ref.current&&!ref.current.contains(e.target))onClose()}
@@ -122,38 +122,36 @@ function ContextMenu({x,y,msg,onDelete,onCopy,onReply,onClose}) {
     return()=>document.removeEventListener("mousedown",handler)
   },[onClose])
 
-  const items=[
-    {icon:"💬",label:"Reply",action:onReply},
-    {icon:"📋",label:"Copy Text",action:onCopy},
-    {icon:"🗑",label:"Delete",action:onDelete,danger:true},
-  ]
-
-  // Adjust position so menu doesn't overflow viewport
-  const menuW=180, menuH=items.length*40+8
+  const menuW=200
+  const menuH=220
   const adjX=x+menuW>window.innerWidth?x-menuW:x
   const adjY=y+menuH>window.innerHeight?y-menuH:y
+
+  const Item = ({icon,label,action,danger,sep}) => sep ? (
+    <div style={{height:1,background:"#2d1155",margin:"3px 0"}}/>
+  ) : (
+    <div onClick={()=>{action();onClose()}}
+      style={{padding:"9px 16px",cursor:"pointer",display:"flex",alignItems:"center",gap:10,
+        fontSize:13,color:danger?"#e53935":TG.text,transition:"background .1s"}}
+      onMouseEnter={e=>e.currentTarget.style.background="#2d1155"}
+      onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+      <span style={{fontSize:15}}>{icon}</span>
+      {label}
+    </div>
+  )
 
   return (
     <div ref={ref} style={{
       position:"fixed",left:adjX,top:adjY,zIndex:9999,
-      background:"#1e0a3c",border:"1px solid #3d1f6a",borderRadius:12,
-      padding:"4px 0",minWidth:180,
-      boxShadow:"0 8px 32px rgba(0,0,0,.6)",
+      background:"#1a0533",border:"1px solid #3d1f6a",borderRadius:12,
+      padding:"4px 0",minWidth:200,
+      boxShadow:"0 8px 32px rgba(0,0,0,.7)",
     }}>
-      {items.map(item=>(
-        <div key={item.label}
-          onClick={()=>{item.action();onClose()}}
-          style={{
-            padding:"9px 16px",cursor:"pointer",display:"flex",alignItems:"center",gap:10,
-            fontSize:13,color:item.danger?TG.red:TG.text,
-            transition:"background .1s",
-          }}
-          onMouseEnter={e=>e.currentTarget.style.background="#2d1155"}
-          onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-          <span style={{fontSize:15}}>{item.icon}</span>
-          {item.label}
-        </div>
-      ))}
+      <Item icon="↩️" label="Reply"     action={onReply}/>
+      <Item icon="📋" label="Copy Text" action={onCopy}/>
+      <Item sep/>
+      <Item icon="🗑" label="Delete Message"  action={onDelete} danger/>
+      <Item icon="🗑" label="Delete All Messages" action={onDeleteAll} danger/>
     </div>
   )
 }
@@ -309,8 +307,10 @@ export default function CRMChat({token}) {
   useEffect(()=>{fetchChats()},[fetchChats])
 
   // Load messages when chat selected
+  const initialLoadRef = useRef(false)
   useEffect(()=>{
     if(!sel) return
+    initialLoadRef.current = false
     setMsgs([]); setAiText(""); setAiAnalysis(""); setAiAlt(""); setReplyTo(null)
     loadMessages(sel)
   },[sel?.id,token])
@@ -322,15 +322,13 @@ export default function CRMChat({token}) {
   const loadingRef = useRef(false)
   async function loadMessages(chat) {
     if(!chat) return
-    if(loadingRef.current) { console.log('LOAD BLOCKED - already loading'); return }
+    if(loadingRef.current) return
     loadingRef.current = true
     setLoadMsgs(true)
-    console.log('LOAD MESSAGES START for', chat.id)
     try {
       const qs = chat.username ? '?username='+encodeURIComponent(chat.username) : ''
       const r = await fetch('/api/chat/messages/'+chat.id+qs, {headers:{"x-auth-token":token}})
       const d = await r.json()
-      console.log('LOAD MESSAGES GOT', Array.isArray(d) ? d.length : 'not array', 'messages')
       if(Array.isArray(d)) setMsgs(d)
     } catch(e) { console.error("loadMsgs:",e) }
     loadingRef.current = false
@@ -343,7 +341,6 @@ export default function CRMChat({token}) {
     if(sendingRef.current) { console.log('SEND BLOCKED - already sending'); return }
     sendingRef.current = true
     setSending(true); setInput(""); setReplyTo(null)
-    console.log('SEND START:', text)
     try {
       const r = await fetch("/api/chat/send",{
         method:"POST", headers:{"Content-Type":"application/json","x-auth-token":token},
@@ -351,10 +348,8 @@ export default function CRMChat({token}) {
       })
       if(!r.ok) throw new Error("Send failed")
       await new Promise(res=>setTimeout(res,800))
-      console.log('LOAD MESSAGES AFTER SEND')
       await loadMessages(sel)
-      console.log('LOAD MESSAGES DONE')
-    } catch(e) { setInput(text); console.error('SEND ERROR:',e) }
+    } catch(e) { setInput(text) }
     sendingRef.current = false
     setSending(false)
   }
@@ -395,10 +390,24 @@ export default function CRMChat({token}) {
   async function deleteMsg(idx){
     const msg = msgs[idx]
     if(!msg) return
-    // Optimistically mark as deleted in UI
     setMsgs(p=>p.map((m,i)=>i===idx?{...m,deleted:true,text:"This message was deleted"}:m))
-    // Call API to delete on Telegram (only works for our own messages)
     if(msg.id && msg.id > 0 && msg.fromMe) {
+      try {
+        await fetch("/api/chat/delete",{
+          method:"POST", headers:{"Content-Type":"application/json","x-auth-token":token},
+          body:JSON.stringify({chatId:sel.id, messageId:msg.id})
+        })
+      } catch(e) { console.error("Delete failed:", e) }
+    }
+  }
+
+  async function deleteAllMsgs(){
+    if(!sel || !window.confirm("Delete all your messages in this chat?")) return
+    const myMsgs = msgs.filter(m=>m.fromMe && m.id && m.id>0)
+    // Mark all as deleted in UI immediately
+    setMsgs(p=>p.map(m=>m.fromMe?{...m,deleted:true,text:"This message was deleted"}:m))
+    // Delete each on server
+    for(const msg of myMsgs) {
       try {
         await fetch("/api/chat/delete",{
           method:"POST", headers:{"Content-Type":"application/json","x-auth-token":token},
@@ -500,7 +509,7 @@ export default function CRMChat({token}) {
             <Avatar name={sel.name} chatId={sel.id} username={sel.username} token={token} size={38}/>
             <div style={{flex:1}}>
               <div style={{fontWeight:700,fontSize:15,color:TG.text,lineHeight:1.2}}>{sel.name}</div>
-              <div style={{fontSize:11,color:TG.green}}>● live</div>
+              <div style={{fontSize:11,color:TG.green}}>● online</div>
             </div>
             <StageBadge stage={cStage}/>
             <div style={{display:"flex",gap:6,marginLeft:8}}>
@@ -722,6 +731,7 @@ export default function CRMChat({token}) {
           onDelete={()=>deleteMsg(ctxMenu.idx)}
           onCopy={()=>copyMsg(ctxMenu.msg.text)}
           onReply={()=>setReplyTo(ctxMenu.msg)}
+          onDeleteAll={deleteAllMsgs}
           onClose={()=>setCtxMenu(null)}
         />
       )}
