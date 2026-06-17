@@ -1,4 +1,4 @@
-// v090609
+// v091546
 // v035029
 import { useState, useEffect, useRef, useCallback } from "react"
 
@@ -270,6 +270,9 @@ export default function CRMChat({token}) {
   _authToken = token
   const [chats,setChats]=useState([])
   const [sel,setSel]=useState(null)
+  const [topics,setTopics]=useState({})
+  const [selTopic,setSelTopic]=useState(null)
+  const [loadingTopics,setLoadingTopics]=useState(false)
   const [msgs,setMsgs]=useState([])
   const [search,setSearch]=useState("")
   const [input,setInput]=useState("")
@@ -317,30 +320,31 @@ export default function CRMChat({token}) {
     if(!sel) return
     initialLoadRef.current = false
     setMsgs([]); setAiText(""); setAiAnalysis(""); setAiAlt(""); setReplyTo(null)
-    loadMessages(sel)
-  },[sel?.id,token])
+    loadMessages(sel, selTopic?.id || null)
+  },[sel?.id, selTopic?.id, token])
 
 
   useEffect(()=>{endRef.current?.scrollIntoView({behavior:"smooth"})},[msgs])
 
   // Send message — send then reload (no polling = no duplicates)
   const loadingRef = useRef(false)
-  async function loadMessages(chat) {
+  async function loadMessages(chat, topicId=null) {
     if(!chat) return
     if(loadingRef.current) return
     loadingRef.current = true
     setLoadMsgs(true)
     try {
-      const qs = chat.username ? '?username='+encodeURIComponent(chat.username) : ''
-      const r = await fetch('/api/chat/messages/'+chat.id+qs, {headers:{"x-auth-token":token}})
+      let url, qs = chat.username ? '?username='+encodeURIComponent(chat.username) : ''
+      if(topicId) {
+        url = '/api/chat/topics/'+chat.id+'/'+topicId+'/messages'+qs
+      } else {
+        url = '/api/chat/messages/'+chat.id+qs
+      }
+      const r = await fetch(url, {headers:{"x-auth-token":token}})
       const d = await r.json()
       if(Array.isArray(d)) {
-        // Keep any pending optimistic messages that haven't been confirmed yet
         setMsgs(prev => {
-          const pending = prev.filter(m => m.pending && m.id < 0)
-          const serverIds = new Set(d.map(m=>m.id))
-          // Only keep pending if not yet in server response
-          const stillPending = pending.filter(m => !d.some(s=>s.text===m.text&&s.fromMe))
+          const stillPending = prev.filter(m => m.pending && m.id < 0 && !d.some(s=>s.text===m.text&&s.fromMe))
           return [...d, ...stillPending]
         })
       }
@@ -361,14 +365,20 @@ export default function CRMChat({token}) {
     const tempMsg = {id: -Date.now(), text, fromMe:true, date:Math.floor(Date.now()/1000), pending:true}
     setMsgs(p=>[...p, tempMsg])
     try {
-      await fetch("/api/chat/send",{
-        method:"POST", headers:{"Content-Type":"application/json","x-auth-token":token},
-        body:JSON.stringify({chatId:sel.id, text})
-      })
-      // Reload in background after 1s — replace optimistic with real
+      if(selTopic) {
+        await fetch('/api/chat/topics/'+sel.id+'/'+selTopic.id+'/send', {
+          method:"POST", headers:{"Content-Type":"application/json","x-auth-token":token},
+          body:JSON.stringify({text})
+        })
+      } else {
+        await fetch("/api/chat/send",{
+          method:"POST", headers:{"Content-Type":"application/json","x-auth-token":token},
+          body:JSON.stringify({chatId:sel.id, text})
+        })
+      }
       setTimeout(async()=>{
         loadingRef.current = false
-        await loadMessages(sel)
+        await loadMessages(sel, selTopic?.id || null)
       }, 1000)
     } catch(e) {
       setMsgs(p=>p.filter(m=>m.id!==tempMsg.id))
@@ -526,15 +536,54 @@ export default function CRMChat({token}) {
             <div style={{fontSize:16,fontWeight:500,color:TG.text}}>Select a conversation</div>
             <div style={{fontSize:13}}>Pick a chat from your Telegram on the left</div>
           </div>
+        ): sel && topics[sel.id]?.length > 0 && !selTopic ? (
+          // ── FORUM TOPICS VIEW ──
+          <div style={{display:"flex",flexDirection:"column",height:"100%",background:TG.bg}}>
+            <div style={{height:58,background:TG.panel,borderBottom:"1px solid "+TG.border,display:"flex",alignItems:"center",padding:"0 16px",gap:12,flexShrink:0}}>
+              <Avatar name={sel.name} chatId={sel.id} username={sel.username} size={38}/>
+              <div style={{flex:1}}>
+                <div style={{fontWeight:700,fontSize:15,color:TG.text}}>{sel.name}</div>
+                <div style={{fontSize:12,color:TG.textSec}}>{sel.memberCount} members · {topics[sel.id].length} topics</div>
+              </div>
+            </div>
+            <div style={{flex:1,overflowY:"auto",padding:"8px 0"}}>
+              {loadingTopics&&<div style={{padding:20,textAlign:"center",color:TG.textSec,fontSize:13}}>Loading topics...</div>}
+              {topics[sel.id]?.map(topic=>(
+                <div key={topic.id} onClick={()=>{setSelTopic(topic)}}
+                  style={{display:"flex",gap:12,padding:"12px 16px",cursor:"pointer",borderBottom:"1px solid "+TG.border,transition:"background .1s"}}
+                  onMouseEnter={e=>e.currentTarget.style.background=TG.elevated}
+                  onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                  <div style={{width:46,height:46,borderRadius:"50%",background:TG.elevated,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0}}>
+                    {topic.id===1?"📌":"#"}
+                  </div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:3}}>
+                      <span style={{fontWeight:600,fontSize:15,color:TG.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:200}}>{topic.title}</span>
+                      <span style={{fontSize:11,color:TG.textMuted,flexShrink:0,marginLeft:8}}>{fmtTime(topic.date)}</span>
+                    </div>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                      <span style={{fontSize:13,color:TG.textSec,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{topic.lastMsg||"No messages"}</span>
+                      {topic.unread>0&&<div style={{background:TG.green,color:"#fff",fontSize:11,fontWeight:700,padding:"1px 6px",borderRadius:10,minWidth:20,textAlign:"center",flexShrink:0,marginLeft:6}}>{topic.unread}</div>}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         ):<>
           {/* Chat header */}
           <div className="chdr">
+            {selTopic&&(
+              <button onClick={()=>setSelTopic(null)} style={{background:"none",border:"none",color:TG.textSec,cursor:"pointer",fontSize:20,padding:"0 4px",flexShrink:0}}>←</button>
+            )}
             <Avatar name={sel.name} chatId={sel.id} username={sel.username} size={38}/>
             <div style={{flex:1}}>
-              <div style={{fontWeight:700,fontSize:15,color:TG.text,lineHeight:1.2}}>{sel.name}</div>
-              <div style={{fontSize:12,color:sel?.isUser?TG.green:TG.textSec}}>
-              {sel?.memberCount ? sel.memberCount+' members' : sel?.isUser ? '● online' : sel?.isChannel ? 'Channel' : 'Group'}
-            </div>
+              <div style={{fontWeight:700,fontSize:15,color:TG.text,lineHeight:1.2}}>
+                {selTopic ? selTopic.title : sel.name}
+              </div>
+              <div style={{fontSize:12,color:TG.textSec}}>
+                {selTopic ? sel.name : sel?.memberCount ? sel.memberCount+' members' : sel?.isUser ? '● online' : 'Group'}
+              </div>
             </div>
             <StageBadge stage={cStage}/>
             <div style={{display:"flex",gap:6,marginLeft:8}}>
