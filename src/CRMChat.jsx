@@ -213,7 +213,7 @@ const STYLES = `
 .msgs{flex:1;overflow-y:auto;padding:12px 16px;display:flex;flex-direction:column;gap:3px}
 .msgs::-webkit-scrollbar{width:4px}
 .msgs::-webkit-scrollbar-thumb{background:${TG.elevated};border-radius:2px}
-.bbl{max-width:72%;padding:8px 12px 5px;line-height:1.55;overflow-wrap:break-word;word-break:normal;font-size:14px;cursor:pointer;transition:opacity .1s;min-width:60px}
+.bbl{max-width:72%;padding:8px 12px 5px;line-height:1.55;font-size:14px;cursor:pointer;transition:opacity .1s;white-space:pre-wrap;word-wrap:break-word;hyphens:none}
 .bbl:hover{opacity:.92}
 .bbl.in{background:${TG.msgIn};color:${TG.text};border-radius:14px 14px 14px 3px;border:1px solid ${TG.elevated}}
 .bbl.out{background:${TG.msgOut};color:#fff;border-radius:14px 14px 3px 14px}
@@ -401,25 +401,36 @@ export default function CRMChat({token}) {
     setSending(false)
   }
 
-  // AI Suggest — reads full conversation
+  // AI Suggest — reads full conversation context
   async function getAI(){
     if(!sel){alert("Select a chat first");return}
     setAiText("");setAiLoading(true)
-    const lastClient=[...msgs].reverse().find(m=>!m.fromMe)?.text||""
+
+    // Get ALL messages including most recent
+    const allMsgs = msgs.filter(m => m.text && !m.deleted)
+    const lastClientMsg = [...allMsgs].reverse().find(m => !m.fromMe)?.text || ""
+    const lastMsg = allMsgs[allMsgs.length - 1]
+
+    console.log("AI context — last client msg:", lastClientMsg)
+    console.log("AI context — total msgs:", allMsgs.length)
+
     try{
-      const r=await fetch("/api/ai/suggest",{method:"POST",
+      const r=await fetch("/api/ai/suggest",{
+        method:"POST",
         headers:{"Content-Type":"application/json","x-auth-token":token},
         body:JSON.stringify({
-          contactName:sel.name,
-          lastMessage:lastClient,
-          messages:msgs.slice(-15).map(m=>({text:m.text,fromMe:m.fromMe})),
-          stage:stages[sel.id]||"Contacted",
-          notes:(notes[sel.id]||[]).map(n=>n.content).join(" | ")
-        })})
+          contactName: sel.name,
+          lastMessage: lastClientMsg,
+          lastMessageFromMe: lastMsg?.fromMe || false,
+          messages: allMsgs.slice(-20).map(m=>({text:m.text, fromMe:m.fromMe})),
+          stage: stages[sel.id]||"Contacted",
+          notes: (notes[sel.id]||[]).map(n=>n.content).join(" | ")
+        })
+      })
       const d=await r.json()
-      if(d.suggestion)setAiText(d.suggestion)
-      else if(d.error)console.error("AI:",d.error)
-    }catch(e){console.error("AI fetch:",e)}
+      if(d.suggestion) setAiText(d.suggestion)
+      else if(d.error) console.error("AI error:",d.error)
+    }catch(e){console.error("AI fetch error:",e)}
     setAiLoading(false)
   }
 
