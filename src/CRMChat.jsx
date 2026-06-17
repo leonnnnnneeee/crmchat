@@ -491,7 +491,7 @@ export default function CRMChat({token}) {
             <Avatar name={sel.name} chatId={sel.id} username={sel.username} token={token} size={38}/>
             <div style={{flex:1}}>
               <div style={{fontWeight:700,fontSize:15,color:TG.text,lineHeight:1.2}}>{sel.name}</div>
-              <div style={{fontSize:11,color:wsStatus==="connected"?TG.green:TG.textMuted}}>{wsStatus==="connected"?"● live":"● connecting..."}</div>
+              <div style={{fontSize:11,color:TG.green}}>● live</div>
             </div>
             <StageBadge stage={cStage}/>
             <div style={{display:"flex",gap:6,marginLeft:8}}>
