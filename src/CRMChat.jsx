@@ -281,6 +281,8 @@ export default function CRMChat({token}) {
   const [aiAnalysis,setAiAnalysis]=useState("")
   const [aiAlt,setAiAlt]=useState("")
   const [aiLoading,setAiLoading]=useState(false)
+  const msgsRef = useRef([])
+  useEffect(()=>{ msgsRef.current = msgs },[msgs])
   useEffect(()=>{ aiLoadingRef.current = aiLoading },[aiLoading])
   const [showProfile,setShowProfile]=useState(true)
   const [stages,setStages]=useState({})
@@ -317,71 +319,22 @@ export default function CRMChat({token}) {
       .catch(e=>console.error("msgs:",e)).finally(()=>setLoadMsgs(false))
   },[sel?.id,token])
 
-  // ── Poll new messages every 3s ──
-  const msgsRef = useRef([])
-  const selRef  = useRef(null)
-  const aiLoadingRef = useRef(false)
-  useEffect(()=>{ msgsRef.current = msgs }, [msgs])
-  useEffect(()=>{ selRef.current  = sel  }, [sel])
-  useEffect(()=>{ aiLoadingRef.current = aiLoading }, [aiLoading])
-
-  useEffect(()=>{
-    if(!sel) return
-    const iv = setInterval(async ()=>{
-      const s = selRef.current
-      if(!s) return
-      const all = msgsRef.current
-      // Get highest real server ID (positive only)
-      const serverMsgs = all.filter(m => m.id && m.id > 0)
-      if(!serverMsgs.length) return
-      const lastId = Math.max(...serverMsgs.map(m=>m.id))
-      try {
-        if(pollPausedRef.current) return  // skip poll while sending
-        const qs = 'since='+lastId+(s.username?'&username='+encodeURIComponent(s.username):'')
-        const r  = await fetch('/api/chat/poll/'+s.id+'?'+qs, {headers:{"x-auth-token":token}})
-        if(!r.ok) return
-        const fresh = await r.json()
-        if(!Array.isArray(fresh) || !fresh.length) return
-        setMsgs(prev => {
-          const knownIds = new Set(prev.filter(m=>m.id&&m.id>0).map(m=>m.id))
-          const newMsgs  = fresh.filter(m => m.id > 0 && !knownIds.has(m.id))
-          if(!newMsgs.length) return prev
-          // Auto-trigger AI on incoming message
-          if(newMsgs.some(m=>!m.fromMe) && !aiLoadingRef.current) {
-            setTimeout(()=>getAI(true), 800)
-          }
-          return [...prev, ...newMsgs]
-        })
-      } catch {}
-    }, 3000)
-    return ()=>clearInterval(iv)
-  },[sel?.id, token])
-
 
   useEffect(()=>{endRef.current?.scrollIntoView({behavior:"smooth"})},[msgs])
 
-  // Send message — pause poll, send, reload, resume
-  const pollPausedRef = useRef(false)
+  // Send message — send then reload (no polling = no duplicates)
   async function send(){
     const text=input.trim(); if(!text||!sel) return
     setSending(true); setInput(""); setReplyTo(null)
-    pollPausedRef.current = true  // pause poll during send+reload
     try {
       const r = await fetch("/api/chat/send",{
         method:"POST", headers:{"Content-Type":"application/json","x-auth-token":token},
         body:JSON.stringify({chatId:sel.id, text})
       })
       if(!r.ok) throw new Error("Send failed")
-      // Wait 500ms for TG to process, then reload full message list
-      await new Promise(res=>setTimeout(res,500))
-      const qs = sel.username ? '?username='+encodeURIComponent(sel.username) : ''
-      const r2 = await fetch('/api/chat/messages/'+sel.id+qs, {headers:{"x-auth-token":token}})
-      const fresh = await r2.json()
-      if(Array.isArray(fresh)) setMsgs(fresh)
-    } catch(e) {
-      setInput(text)
-    }
-    pollPausedRef.current = false  // resume poll
+      await new Promise(res=>setTimeout(res,800))
+      await loadMessages(sel)
+    } catch(e) { setInput(text) }
     setSending(false)
   }
 
@@ -532,6 +485,10 @@ export default function CRMChat({token}) {
             <div style={{display:"flex",gap:6,marginLeft:8}}>
               <button className="hb" title="Call" style={{fontSize:16}}>📞</button>
               <button className="hb" title="Search in chat" style={{fontSize:16}}>🔍</button>
+              <button onClick={()=>loadMessages(sel)} title="Refresh messages"
+                style={{width:34,height:34,background:TG.elevated,borderRadius:8,border:"none",cursor:"pointer",fontSize:15}}>
+                🔄
+              </button>
               <button className={`hb${showProfile?" on":""}`} onClick={()=>setShowProfile(v=>!v)} title="Toggle info" style={{fontSize:16}}>
                 ℹ️
               </button>
