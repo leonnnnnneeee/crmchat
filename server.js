@@ -256,47 +256,69 @@ app.post('/api/ai/suggest', requireAuth, async (req,res) => {
   }
 
   try {
-    const prompt = `You are Leon, a BD at Coincu — a crypto PR and media company based in Vietnam. You sell Coincu PR articles, CMC News placements, and banner ads to Web3 projects.
-
-Your style: natural, short, Telegram-like. You never sound salesy. You ask only one question at a time. You focus on the client's actual situation before pitching anything.
-
----
-Contact: ${contactName || 'Client'}
-Sales stage: ${stage || 'Contacted'}
-Internal notes: ${notes || 'none'}
-
-Full conversation so far:
-${thread || '(no messages yet)'}
-
-Last message from client:
-"${lastMessage || '(no message)'}"
----
-
-Write ONE short reply as Leon. Rules:
+    // Build system prompt — who Leon is and how he writes
+    const systemPrompt = `You are Leon, BD at Coincu — a crypto PR and media company in Vietnam.
+You sell: Coincu PR articles ($300+), CMC News placements ($800+), banner ads.
+Your writing style: short, direct, natural Telegram messages. Never salesy. Never generic.
+You read the full conversation carefully and reply to exactly what the client just said.
+Rules:
 - English only
-- Max 2-3 sentences
-- Read the conversation carefully — reply specifically to what they said, not generically
-- If they asked about pricing, give real numbers (CMC News $800+, Coincu PR $300+)
-- If they asked what we sell, explain briefly and ask what their focus is
-- If they raised an objection, acknowledge it genuinely before responding
-- End with at most one open question
-- Do NOT use greetings like "Hi" or sign off with your name
-- Do NOT use phrases like "I understand" or "Great question"
-- Sound like a real person texting, not a sales bot`
+- Max 2 sentences
+- Reply specifically to their last message — not a generic sales pitch
+- If they asked about price: give real numbers
+- If they raised an objection: acknowledge it first, then one soft follow-up
+- If they mentioned a milestone (TGE, launch, raise): connect it to visibility
+- End with at most ONE question — and only if it moves the conversation forward
+- Never start with "Hi", "Hey", "Great", "I understand", "Sure"
+- Never sign off with your name
+- Sound like a real person texting on Telegram`
+
+    // Build conversation as proper multi-turn messages for better context understanding
+    const convMessages = []
+
+    // Add context as first user message if we have notes/stage
+    if (notes && notes !== 'none') {
+      convMessages.push({
+        role: 'user',
+        content: `[Context: contact is ${contactName}, stage: ${stage}, notes: ${notes}]`
+      })
+      convMessages.push({
+        role: 'assistant',
+        content: 'Understood, I have the context.'
+      })
+    }
+
+    // Add actual conversation history as alternating messages
+    const history = (messages||[]).slice(-20)
+    for (const msg of history) {
+      convMessages.push({
+        role: msg.fromMe ? 'assistant' : 'user',
+        content: msg.text || ''
+      })
+    }
+
+    // Final instruction — what to do next
+    convMessages.push({
+      role: 'user',
+      content: `Based on this conversation, write ONE short reply as Leon to send to ${contactName}. Reply directly to their last message. No greeting, no sign-off.`
+    })
 
     const r = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
       model: 'llama3-70b-8192',
       messages: [
-        { role: 'system', content: 'You are Leon, a crypto BD professional. Reply naturally and briefly.' },
-        { role: 'user', content: prompt }
+        { role: 'system', content: systemPrompt },
+        ...convMessages
       ],
-      max_tokens: 150,
-      temperature: 0.75
+      max_tokens: 120,
+      temperature: 0.7,
+      stop: ['\n\n', 'Leon:', 'Client:']
     }, { headers: { Authorization: `Bearer ${GROQ_KEY}`, 'Content-Type': 'application/json' }})
 
     let suggestion = r.data.choices[0].message.content.trim()
-    // Clean up any quotes the model might wrap around the reply
-    suggestion = suggestion.replace(/^["']|["']$/g, '').trim()
+    suggestion = suggestion.replace(/^["'`]|["'`]$/g, '').trim()
+    suggestion = suggestion.replace(/^(Leon:|Me:|Assistant:)/i, '').trim()
+
+    log('AI suggest: ' + suggestion.slice(0,80))
     res.json({ suggestion })
   } catch(e) {
     log('AI suggest error: ' + e.message)
