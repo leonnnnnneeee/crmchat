@@ -208,27 +208,54 @@ app.post('/api/ai/suggest', requireAuth, async (req,res) => {
   const leonSaid  = leonLines.join(' | ')
   const thread    = history.map(m=>(m.fromMe?'Leon':'Client')+': '+m.text).join('\n')
 
-  // Rule-based fallback
+  // Rule-based fallback — checks last 3 client messages for context
   function ruleBased() {
+    const recentClient = history.filter(m=>!m.fromMe).slice(-3).map(m=>(m.text||'').toLowerCase()).join(' ')
     const m = lastClientMsg.toLowerCase()
-    if (/same thing|repeat|again|always say/.test(m))
-      return "Sorry about that — let me be specific. Coincu PR is an article on coincu.com (500K readers/month, great for SEO). CMC News is content on CoinMarketCap — one of the top crypto sites, stronger credibility signal. Which of these fits your goal right now?"
-    if (/tell me more|what is it|what are|explain|more detail|how does/.test(m))
-      return "Coincu PR = article on coincu.com, 500K crypto readers monthly, good for SEO and announcements. CMC News = content directly on CoinMarketCap, top crypto site, much stronger credibility signal. Which matters more for you right now?"
-    if (/sounds interesting|interested|sounds good|nice/.test(m))
-      return "Great — want me to put together a quick proposal? I can have it ready today. Should I include Coincu PR, CMC News, or both?"
-    if (/yes|ok|sure|okay|perfect|go ahead/.test(m))
-      return "Perfect — I'll prepare the proposal now. Can you share your project name and website so I can tailor it?"
-    if (/both/.test(m))
-      return "Coincu PR + CMC News bundle starts around $950. Want me to send a full proposal with the breakdown?"
-    if (/price|cost|how much|rate|budget/.test(m))
-      return "CMC News starts at $800, Coincu PR from $300. Bundle of both around $950. Want me to send the full rate card?"
-    if (/raising|investor|round|funding/.test(m))
-      return "Good timing — investors do check media presence. CMC News on CoinMarketCap would be the strongest signal before a raise. Want details?"
-    if (/tge|launch|listing|mainnet/.test(m))
-      return "Perfect timing for a visibility push. CMC News right before a TGE is one of the strongest credibility moves. Want me to walk you through it?"
-    return "What's the main goal right now — awareness, credibility, or user growth? That'll help me recommend the right fit."
+    const ctx = m + ' ' + recentClient
+
+    // Single word / short replies — use conversation context
+    if (/^(cmc|cmc news|coinmarketcap)$/.test(m.trim()))
+      return "CMC News puts your content directly on CoinMarketCap — reaches millions of crypto users, strong credibility signal before TGE or any campaign. Want me to send the rate card?"
+    if (/^(pr|coincu pr|coincu)$/.test(m.trim()))
+      return "Coincu PR is a featured article on coincu.com — 500K+ monthly readers, great for SEO and announcement visibility. Want me to send the rate card?"
+    if (/^(all|all of them|both|everything)$/.test(m.trim()))
+      return "Perfect — Coincu PR + CMC News bundle starts around $950. That covers both SEO visibility and CoinMarketCap credibility. Want me to put together a proposal?"
+    if (/^(yes|ok|okay|sure|yep|yeah|great|perfect|sounds good|go ahead|let'?s? go)$/.test(m.trim()))
+      return "Perfect — can you share your project name and website? I'll put together a tailored proposal and have it ready today."
+    if (/^(no|nope|not now|later|busy)$/.test(m.trim()))
+      return "No worries — when would be a better time to revisit? I'll follow up then."
+
+    // Longer messages
+    if (/same thing|repeat|always say|generic/.test(ctx))
+      return "Fair point — let me be specific. CMC News = content on CoinMarketCap (top crypto site, credibility). Coincu PR = article on coincu.com (500K readers/month, SEO). Which fits your goal better?"
+    if (/tell me more|what is it|explain|how does|what do you|more detail|more info/.test(ctx))
+      return "Coincu PR = featured article on coincu.com, 500K crypto readers/month, strong for SEO. CMC News = content on CoinMarketCap, top crypto site globally, stronger credibility signal. Which matters more for you?"
+    if (/interested|sounds good|sounds interesting|looks good/.test(ctx))
+      return "Glad it resonates — want me to put together a quick proposal? Just need your project name and website to tailor it."
+    if (/cmc|coinmarketcap/.test(ctx))
+      return "CMC News puts your content directly on CoinMarketCap — reaches millions of crypto users and gives strong credibility. Starts at $800. Want the full rate card?"
+    if (/coincu pr|coincu news|article/.test(ctx))
+      return "Coincu PR gets you a featured article on coincu.com — 500K+ monthly readers, great for SEO and announcements. Starts at $300. Want the rate card?"
+    if (/both|bundle|all|everything|package/.test(ctx))
+      return "Coincu PR + CMC News bundle starts around $950 — covers both visibility and credibility. Want me to send a full proposal?"
+    if (/price|cost|how much|rate|expensive|budget/.test(ctx))
+      return "CMC News from $800, Coincu PR from $300, bundle $950. Want me to send the full rate card with all options?"
+    if (/raising|investor|round|funding|vc/.test(ctx))
+      return "Good timing — investors check media presence. CMC News on CoinMarketCap is the strongest signal before a raise. Want details?"
+    if (/tge|launch|listing|mainnet|token/.test(ctx))
+      return "CMC News right before a TGE is one of the best visibility moves — content on CoinMarketCap when people are looking. Want me to walk you through it?"
+    if (/proposal|quote|send me|rate card/.test(ctx))
+      return "On it — can you share your project name and website? I'll have a tailored proposal ready today."
+
+    // Default — but use last client message as context
+    if (lastClientMsg.length > 2)
+      return "Got it — based on what you've shared, I'd recommend starting with CMC News for the credibility angle. Want me to put together a quick proposal?"
+    return "What's the main goal right now — awareness, credibility, or user growth?"
   }
+
+  // Log what we're working with for debugging
+  log('AI suggest — last: "' + lastClientMsg + '" | leonSaid: ' + leonSaid.slice(0,60))
 
   if (!GROQ_KEY) return res.json({ suggestion: ruleBased() })
 
@@ -265,7 +292,7 @@ app.post('/api/ai/suggest', requireAuth, async (req,res) => {
     log('AI: ' + s.slice(0,80))
     res.json({ suggestion: s })
   } catch(e) {
-    log('AI error: ' + e.message)
+    log('AI error: ' + e.message + (e.response ? ' | ' + JSON.stringify(e.response.data) : ''))
     res.json({ suggestion: ruleBased() })
   }
 })
