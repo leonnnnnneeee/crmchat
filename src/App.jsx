@@ -222,10 +222,12 @@ export default function App() {
 
   useEffect(()=>{
     if (!token) { setChecking(false); return }
-    fetch("/api/tg/status",{headers:{"x-auth-token":token}})
+    const controller = new AbortController()
+    const timeout = setTimeout(()=>{ controller.abort(); setChecking(false) }, 5000)
+    fetch("/api/tg/status",{headers:{"x-auth-token":token}, signal:controller.signal})
       .then(r=>r.json())
-      .then(d=>{ setTgOk(d.connected); setChecking(false) })
-      .catch(()=>setChecking(false))
+      .then(d=>{ clearTimeout(timeout); setTgOk(d.connected); setChecking(false) })
+      .catch(()=>{ clearTimeout(timeout); setChecking(false) })
   },[token])
 
   function login(t) { setToken(t); localStorage.setItem("crm_token",t) }
