@@ -280,9 +280,6 @@ Write my next reply. Strict rules:
 app.get('/api/health', (req,res) => res.json({ ok: true, tgConnected: _session.length > 10 }))
 app.get('/api/logs', requireAuth, (req,res) => res.json(logs))
 
-// Serve static files AFTER all API routes
-app.use(express.static(path.join(__dirname, 'dist')))
-app.get('*', (req,res) => res.sendFile(path.join(__dirname,'dist','index.html')))
 
 // ── SSE clients: Map<res, { token, chatId }> ──
 const sseClients = new Map()
@@ -367,5 +364,9 @@ async function startTGListener() {
 
 // Start listener after session is loaded
 setTimeout(startTGListener, 3000)
+
+// ── STATIC FILES — must be LAST, after all API routes ──
+app.use(express.static(require('path').join(__dirname, 'dist')))
+app.get('*', (req,res) => res.sendFile(require('path').join(__dirname,'dist','index.html')))
 
 app.listen(PORT, () => log('Listening on port ' + PORT))
