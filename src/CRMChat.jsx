@@ -1,4 +1,4 @@
-// v080942
+// v081324
 // v035029
 import { useState, useEffect, useRef, useCallback } from "react"
 
@@ -310,12 +310,9 @@ export default function CRMChat({token}) {
 
   // Load messages when chat selected
   useEffect(()=>{
-    if(!sel)return
-    setMsgs([]);setAiText("");setReplyTo(null);setLoadMsgs(true)
-    const qs=sel.username?`?username=${encodeURIComponent(sel.username)}`:""
-    fetch(`/api/chat/messages/${sel.id}${qs}`,{headers:{"x-auth-token":token}})
-      .then(r=>r.json()).then(d=>{if(Array.isArray(d))setMsgs(d)})
-      .catch(e=>console.error("msgs:",e)).finally(()=>setLoadMsgs(false))
+    if(!sel) return
+    setMsgs([]); setAiText(""); setAiAnalysis(""); setAiAlt(""); setReplyTo(null)
+    loadMessages(sel)
   },[sel?.id,token])
 
 
