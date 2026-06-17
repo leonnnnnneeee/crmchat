@@ -1,4 +1,4 @@
-// build:034539 //20260617034351
+// v035627
 // v035029
 import { useState, useEffect, useRef, useCallback } from "react"
 
@@ -215,7 +215,7 @@ const STYLES = `
 .msgs{flex:1;overflow-y:auto;padding:12px 16px;display:flex;flex-direction:column;gap:3px}
 .msgs::-webkit-scrollbar{width:4px}
 .msgs::-webkit-scrollbar-thumb{background:${TG.elevated};border-radius:2px}
-.bbl{max-width:72%;padding:8px 12px 5px;line-height:1.55;font-size:14px;cursor:pointer;transition:opacity .1s;white-space:pre-wrap;word-wrap:break-word;hyphens:none}
+.bbl{max-width:70%;padding:9px 13px 6px;line-height:1.6;font-size:14px;cursor:pointer;overflow-wrap:break-word;word-break:break-word}
 .bbl:hover{opacity:.92}
 .bbl.in{background:${TG.msgIn};color:${TG.text};border-radius:14px 14px 14px 3px;border:1px solid ${TG.elevated}}
 .bbl.out{background:${TG.msgOut};color:#fff;border-radius:14px 14px 3px 14px}
@@ -323,47 +323,28 @@ export default function CRMChat({token}) {
   useEffect(()=>{
     if(!sel) return
     const iv = setInterval(async ()=>{
-      const curSel = selRef.current
-      if(!curSel) return
+      const s = selRef.current
+      if(!s) return
+      const all    = msgsRef.current
+      // Only use real server IDs (positive), skip optimistic (negative tempId)
+      const realMsgs = all.filter(m => m.id && m.id > 0)
+      if(!realMsgs.length) return
+      const lastId = Math.max(...realMsgs.map(m=>m.id))
       try {
-        const all    = msgsRef.current
-        // Only consider messages with real server IDs (not optimistic)
-        const withId = all.filter(m => m.id && m.id > 0 && !m.pending)
-        const lastId = withId.length > 0 ? Math.max(...withId.map(m=>m.id)) : 0
-        if(!lastId) return
-
-        const qs = 'since='+lastId+(curSel.username?'&username='+encodeURIComponent(curSel.username):'')
-        const r  = await fetch('/api/chat/poll/'+curSel.id+'?'+qs, {headers:{"x-auth-token":token}})
+        const qs = 'since='+lastId+(s.username?'&username='+encodeURIComponent(s.username):'')
+        const r  = await fetch('/api/chat/poll/'+s.id+'?'+qs, {headers:{"x-auth-token":token}})
         if(!r.ok) return
         const fresh = await r.json()
         if(!Array.isArray(fresh) || !fresh.length) return
-
         setMsgs(prev => {
-          const existIds = new Set(prev.filter(m=>m.id&&m.id>0).map(m=>m.id))
-          // Also deduplicate by text+time for optimistic messages
-          const existTexts = new Set(prev.filter(m=>m.pending).map(m=>m.text))
-          const news = fresh.filter(m => {
-            if(existIds.has(m.id)) return false  // already have this ID
-            if(m.fromMe && existTexts.has(m.text)) {
-              // This is the server version of our optimistic message — replace it
-              return false
-            }
-            return true
-          })
-          // Replace pending messages that now have server confirmation
-          const updated = prev.map(m => {
-            if(m.pending && m.fromMe) {
-              const confirmed = fresh.find(f => f.fromMe && f.text === m.text)
-              if(confirmed) return {...confirmed, pending: false}
-            }
-            return m
-          })
-          if(!news.length && JSON.stringify(updated) === JSON.stringify(prev)) return prev
-          const result = [...updated, ...news]
-          setChats(p=>p.map(c=> c.id===curSel.id
-            ? {...c, lastMsg: result[result.length-1]?.text, date: result[result.length-1]?.date}
-            : c))
-          return result
+          const realIds = new Set(prev.filter(m=>m.id&&m.id>0).map(m=>m.id))
+          // Truly new messages from server
+          const news = fresh.filter(m => m.id && !realIds.has(m.id))
+          if(!news.length) return prev
+          // Remove optimistic duplicates: pending fromMe msgs whose text matches a new server msg
+          const newTexts = new Set(news.filter(m=>m.fromMe).map(m=>m.text))
+          const cleaned = prev.filter(m => !(m.pending && m.fromMe && newTexts.has(m.text)))
+          return [...cleaned, ...news]
         })
       } catch {}
     }, 2000)
@@ -376,18 +357,15 @@ export default function CRMChat({token}) {
   async function send(){
     const text=input.trim(); if(!text||!sel) return
     setSending(true)
-    const tempId = -Date.now() // negative = optimistic, never conflicts with real IDs
-    const opt = {id:tempId, text, fromMe:true, date:Math.floor(Date.now()/1000), pending:true,
-      replyTo: replyTo ? {text:replyTo.text, fromMe:replyTo.fromMe} : null}
-    setMsgs(p=>[...p, opt]); setInput(""); setReplyTo(null)
+    const tempId = -(Date.now()) // negative ID = optimistic, never conflicts with server IDs
+    const opt = {id:tempId, text, fromMe:true, date:Math.floor(Date.now()/1000), pending:true}
+    setMsgs(p=>[...p,opt]); setInput(""); setReplyTo(null)
     try {
-      await fetch("/api/chat/send", {
-        method:"POST",
-        headers:{"Content-Type":"application/json","x-auth-token":token},
-        body: JSON.stringify({chatId:sel.id, text})
+      await fetch("/api/chat/send",{
+        method:"POST", headers:{"Content-Type":"application/json","x-auth-token":token},
+        body:JSON.stringify({chatId:sel.id, text})
       })
-      // Mark as sent — poll will replace with real server message
-      setMsgs(p=>p.map(m=>m.id===tempId ? {...m,pending:false} : m))
+      // Leave as pending — poll will confirm with real ID and remove pending flag
     } catch(e) {
       setMsgs(p=>p.filter(m=>m.id!==tempId))
       setInput(text)
