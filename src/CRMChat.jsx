@@ -215,13 +215,13 @@ const STYLES = `
 .msgs{flex:1;overflow-y:auto;padding:12px 16px;display:flex;flex-direction:column;gap:3px}
 .msgs::-webkit-scrollbar{width:4px}
 .msgs::-webkit-scrollbar-thumb{background:${TG.elevated};border-radius:2px}
-.bbl{max-width:70%;padding:9px 13px 6px;line-height:1.6;font-size:14px;cursor:pointer;overflow-wrap:break-word;word-break:break-word}
+.bbl{display:inline-block;width:fit-content;max-width:72%;min-width:80px;padding:8px 12px 4px;line-height:1.55;font-size:14px;cursor:pointer;white-space:normal;word-break:break-word;overflow-wrap:break-word}
 .bbl:hover{opacity:.92}
 .bbl.in{background:${TG.msgIn};color:${TG.text};border-radius:14px 14px 14px 3px;border:1px solid ${TG.elevated}}
 .bbl.out{background:${TG.msgOut};color:#fff;border-radius:14px 14px 3px 14px}
 .bbl.del{opacity:.4;font-style:italic}
 .bbl.rpl{border-left:3px solid rgba(124,58,237,.6);padding-left:10px}
-.bfoot{display:flex;justify-content:flex-end;align-items:center;gap:3px;margin-top:3px}
+.bfoot{display:flex;justify-content:flex-end;align-items:center;gap:3px;margin-top:3px;white-space:nowrap;flex-wrap:nowrap}
 .bt{font-size:10px;color:rgba(255,255,255,.4)}
 .bt.in{color:${TG.textMuted}}
 .dsep{text-align:center;font-size:11px;color:${TG.textMuted};padding:8px 0;user-select:none}
@@ -545,7 +545,7 @@ export default function CRMChat({token}) {
                         </div>
                       )}
                       <div className={`bbl ${msg.fromMe?"out":"in"}${msg.deleted?" del":""}${msg.replyTo?" rpl":""}`}>
-                        {msg.text}
+                        <span style={{display:"block",whiteSpace:"normal"}}>{msg.text}</span>
                         <div className="bfoot">
                           <span className={`bt${msg.fromMe?"":" in"}`}>{fmtMsgTime(msg.date)}</span>
                           {msg.fromMe&&<span style={{fontSize:10,color:msg.pending?"rgba(255,255,255,.3)":"rgba(255,255,255,.6)"}}>{msg.pending?"⏳":"✓✓"}</span>}
