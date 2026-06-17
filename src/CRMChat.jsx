@@ -1,4 +1,4 @@
-// v092543
+// v093209
 // v035029
 import { useState, useEffect, useRef, useCallback } from "react"
 
@@ -215,7 +215,7 @@ const STYLES = `
 .msgs{flex:1;overflow-y:auto;padding:12px 16px;display:flex;flex-direction:column;gap:3px}
 .msgs::-webkit-scrollbar{width:4px}
 .msgs::-webkit-scrollbar-thumb{background:${TG.elevated};border-radius:2px}
-.bbl{display:inline-block;width:fit-content;max-width:72%;min-width:80px;padding:8px 12px 4px;line-height:1.55;font-size:14px;cursor:pointer;white-space:normal;word-break:break-word;overflow-wrap:break-word}
+.bbl{display:inline-block;max-width:70%;padding:8px 12px 4px;line-height:1.55;font-size:14px;cursor:pointer;border-radius:14px;word-break:normal;overflow-wrap:break-word;white-space:normal}
 .bbl:hover{opacity:.92}
 .bbl.in{background:#182533;color:${TG.text};border-radius:14px 14px 14px 3px}
 .bbl.out{background:${TG.msgOut};color:#fff;border-radius:14px 14px 3px 14px}
