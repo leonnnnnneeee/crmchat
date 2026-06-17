@@ -347,7 +347,7 @@ If client is an agency, VC, launchpad, or has multiple projects: mention bulk pr
       '',
       'Write ONE reply as Leon. Hard rules:',
       '1. Max 1 sentence only',
-      '2. ONLY use prices from this list: Press release $240, Sponsored $390, Organic $520, Listicle $1650 (coincu.com) | CMC News Boost $1500 standalone',
+      '2. ONLY use prices from this list: Press release $240, Sponsored $390, Organic $520, Listicle $1650 (coincu.com) | CMC News Boost $1500 standalone | Bulk: 15% off (partner), 25% off (10+/mo), 35% off (20+/mo), 50% off (30+/mo)',
       '3. NEVER say $855 or any price not in the list above',
       '4. CMC News Boost = $1500, there is no other CMC price',
       '5. Reply directly to: "' + lastClientMsg + '"',
