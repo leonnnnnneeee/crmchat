@@ -209,160 +209,78 @@ app.post('/api/chat/send', requireAuth, async (req,res) => {
 app.post('/api/ai/suggest', requireAuth, async (req,res) => {
   const { contactName, lastMessage, lastMessageFromMe, messages, stage, notes } = req.body
 
-  // Build conversation thread for context
-  const thread = (messages||[]).slice(-15).map(m =>
-    `${m.fromMe ? 'Leon' : (contactName||'Client')}: ${m.text}`
-  ).join('\n')
+  // Build conversation thread
+  const history = (messages||[]).slice(-20)
+  const lastClientMsg = (lastMessage || [...history].reverse().find(m => !m.fromMe)?.text || '').trim()
+  const thread = history.map(m => `${m.fromMe ? 'Leon' : (contactName||'Client')}: ${m.text}`).join('\n')
 
-  // Smart rule-based fallback — reads actual last message content
+  log('AI suggest — last client: "' + lastClientMsg + '"')
+
+  // Smart English rule-based fallback
   function ruleBased() {
-    const msg = (lastMessage||'').toLowerCase()
-    const lastFew = (messages||[]).slice(-5).map(m=>m.text||'').join(' ').toLowerCase()
-    const ctx = msg + ' ' + lastFew
-
-    // Pricing questions
-    if (ctx.match(/price|cost|how much|rate|bao nhiêu|giá|phí|chi phí/))
-      return `CMC News starts at $800 and Coincu PR from $300 — I can bundle both at a better rate. Want me to send a full proposal?`
-    // Budget objection
-    if (ctx.match(/budget|expensive|afford|no fund|tight|ngân sách|đắt|không có tiền/))
-      return `Totally understand — budget timing is always a factor. Are you raising soon, or is this more of a timing issue for next quarter?`
-    // Focused on product/feedback
-    if (ctx.match(/feedback|user|community|product|phản hồi|người dùng|cộng đồng|sản phẩm/))
-      return `Makes sense — are you also thinking about visibility for the next public milestone, or is that further down the road?`
-    // Raising funds
-    if (ctx.match(/raising|round|investor|vc|funding|gọi vốn|nhà đầu tư/))
-      return `Good timing — investors do check media presence. Would it make sense to have Coincu coverage ready before the round closes?`
-    // Busy / not now
-    if (ctx.match(/busy|later|not now|next month|bận|sau|chưa|tháng sau/))
-      return `No problem. When's a better time? I'll follow up then and keep it short.`
-    // What do you sell
-    if (ctx.match(/what.*sell|what.*offer|bán gì|làm gì|dịch vụ gì/))
-      return `We mainly help Web3 projects get visibility through Coincu PR and CMC News placement. Is your current focus more awareness, users, or credibility before a milestone?`
-    // TGE / launch
-    if (ctx.match(/tge|launch|listing|mainnet|token|ra mắt/))
-      return `Perfect timing — CMC News right before a TGE or listing really strengthens the narrative. Want me to walk you through what that looks like?`
-    // Negotiating stage
-    if (stage === 'Negotiating')
-      return `Based on what we've discussed, a bundled Coincu PR + CMC News package seems like the best fit. Want me to put together a quick proposal?`
-    // "both" — bundle offer
-    if (ctx.match(/both|bundle|all/))
-      return `We can package both Coincu PR + CMC News — bundle starts around $950. Want me to put together a quick proposal?`
-    // Short positive replies
-    if (msg.match(/^(ok|yes|sure|sounds good|great|perfect|👍|interested|okay)\.?$/i))
-      return `Perfect — I'll put together a quick proposal. Which would you prefer to start with, Coincu PR or CMC News?`
-    // Default
-    return `Got it — to make sure I recommend the right fit, is the main goal awareness, credibility, or user growth?`
+    const msg = lastClientMsg.toLowerCase()
+    const ctx = msg + ' ' + history.slice(-5).map(m=>m.text||'').join(' ').toLowerCase()
+    if (ctx.match(/\bboth\b/)) return "We can do both — Coincu PR + CMC News bundle starts around $950. Want me to put together a quick proposal?"
+    if (ctx.match(/credib/)) return "CMC News is the strongest credibility play — content goes live directly on CoinMarketCap. Want me to send the rate card?"
+    if (ctx.match(/aware/)) return "Coincu PR reaches 500K+ monthly readers — great for announcement visibility and SEO. Want the rate card?"
+    if (ctx.match(/user|growth|community/)) return "Makes sense. Are you also thinking about visibility for the next public milestone, or is that further down the road?"
+    if (ctx.match(/price|cost|how much|rate|bao nhiêu|giá/)) return "CMC News starts at $800 and Coincu PR from $300 — I can bundle both at $950. Want a full proposal?"
+    if (ctx.match(/budget|expensive|afford|ngân sách/)) return "Totally understand — are you raising soon, or is this more of a timing issue for next quarter?"
+    if (ctx.match(/raising|round|investor|gọi vốn/)) return "Good timing — investors do check media presence. Would it make sense to have Coincu coverage ready before the round closes?"
+    if (ctx.match(/tge|launch|listing|mainnet/)) return "Perfect timing — CMC News right before a TGE really strengthens the narrative. Want me to walk you through what that looks like?"
+    if (ctx.match(/yes|ok|sure|sounds good|interested|👍|okay|perfect/)) return "Perfect — I'll put together a quick proposal. Should I include both Coincu PR and CMC News, or just one to start?"
+    if (ctx.match(/buy|purchase|want.*service|order/)) return "Great — which would you like to start with: Coincu PR, CMC News, or a bundle of both? I can have a proposal ready today."
+    if (stage === 'Negotiating') return "Based on what we've discussed, a Coincu PR + CMC News bundle makes the most sense. Want me to put together a proposal?"
+    return "Got it — to make sure I recommend the right fit, is the main goal awareness, credibility, or user growth?"
   }
 
-  if (!GROQ_KEY) {
-    return res.json({ suggestion: ruleBased() })
-  }
+  if (!GROQ_KEY) return res.json({ suggestion: ruleBased() })
 
   try {
-    // Build system prompt — who Leon is and how he writes
-    const systemPrompt = `You are Leon, BD at Coincu — a crypto PR and media company in Vietnam.
-You sell: Coincu PR articles ($300+), CMC News placements ($800+), banner ads.
-Your writing style: short, direct, natural Telegram messages. Never salesy. Never generic.
-You read the full conversation carefully and reply to exactly what the client just said.
-Rules:
-- English only
-- Max 2 sentences
-- Reply specifically to their last message — not a generic sales pitch
-- If they asked about price: give real numbers
-- If they raised an objection: acknowledge it first, then one soft follow-up
-- If they mentioned a milestone (TGE, launch, raise): connect it to visibility
-- End with at most ONE question — and only if it moves the conversation forward
-- Never start with "Hi", "Hey", "Great", "I understand", "Sure"
-- Never sign off with your name
-- Sound like a real person texting on Telegram`
-
-    // Build full conversation thread
-    const history = (messages||[]).slice(-20)
-    const lastClientMsg = [...history].reverse().find(m => !m.fromMe)?.text || lastMessage || ''
-    const thread = history.map(m => `${m.fromMe ? 'Leon' : contactName}: ${m.text}`).join('\n')
-
-    // Determine what to respond to
-    const respondTo = lastClientMsg || '(no message yet)'
-    const isMyTurn = !lastMessageFromMe // true if client sent last message
-
-    const groqMessages = [
-      {
-        role: 'system',
-        content: `You are Leon, BD at Coincu — crypto PR company in Vietnam.
-Products: Coincu PR ($300+), CMC News ($800+), Banner Ads.
-Write short, natural Telegram replies. Never repeat what you already said. Never generic.`
-      },
-      {
-        role: 'user',
-        content: `Conversation with ${contactName}:
+    const r = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
+      model: 'llama3-70b-8192',
+      messages: [
+        {
+          role: 'system',
+          content: `You are Leon, BD at Coincu — crypto PR company in Vietnam.
+Products: Coincu PR ($300+), CMC News on CoinMarketCap ($800+), Banner Ads.
+Write short, natural Telegram replies. Never repeat your previous messages. Never generic.
+Always reply to what the client JUST said.`
+        },
+        {
+          role: 'user',
+          content: `My conversation with ${contactName} (stage: ${stage}):
 ---
 ${thread}
 ---
-Their last message: "${respondTo}"
+Their latest message: "${lastClientMsg}"
 
-Write ONE reply (1-2 sentences). Be specific:
-- "credibility" or "both" → "CMC News is the strongest credibility play — goes live on CoinMarketCap directly. Want me to send the rate card?"
-- "awareness" → pitch Coincu PR reach (500K readers)
-- "both" → bundle offer: "We can do both — Coincu PR + CMC News bundle starts around $950. Want a quick proposal?"
-- want to buy → confirm which service, offer proposal
+Write my next reply. Strict rules:
+- 1-2 sentences ONLY
+- Reply DIRECTLY to "${lastClientMsg}"
+- "both" → offer bundle ($950 for PR+CMC News), ask if they want proposal
+- "credibility" → CMC News is best for credibility (on CoinMarketCap)
+- "awareness" → Coincu PR (500K readers)  
+- "yes/ok/sure" → move to proposal, ask which service
 - price question → give exact numbers
-- short reply like "ok" / "yes" → move forward, ask next step
-English only. No greeting. No "Makes sense". No repeating your previous messages.`
-      }
-    ]
-
-    const r = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
-      model: 'llama3-70b-8192',
-      messages: groqMessages,
+- Do NOT repeat what Leon already said in the conversation above
+- English only, no greeting, no "Makes sense", no sign-off`
+        }
+      ],
       max_tokens: 80,
-      temperature: 0.5
+      temperature: 0.4
     }, { headers: { Authorization: `Bearer ${GROQ_KEY}`, 'Content-Type': 'application/json' }})
 
     let suggestion = r.data.choices[0].message.content.trim()
-    suggestion = suggestion.replace(/^["'`]|["'`]$/g, '').trim()
-    suggestion = suggestion.replace(/^(Leon:|Reply:|REPLY:|Sure,|Of course,)/i, '').trim()
-    suggestion = suggestion.split('\n')[0].trim()
+      .replace(/^["'`]|["'`]$/g, '')
+      .replace(/^(Leon:|Reply:|Sure,|Of course,|Great,|Makes sense,)/i, '')
+      .split('\n')[0].trim()
 
-    log('AI suggest for "' + lastClientMsg.slice(0,30) + '": ' + suggestion.slice(0,60))
+    log('AI reply: "' + suggestion.slice(0,80) + '"')
     res.json({ suggestion })
   } catch(e) {
-    log('AI suggest error: ' + e.message)
+    log('AI error: ' + e.message)
     res.json({ suggestion: ruleBased() })
-  }
-})
-
-
-// ── PROFILE PHOTO (cached in memory, separate client) ──
-const photoCache = {}
-app.get('/api/chat/photo/:id', requireAuth, async (req,res) => {
-  if (!_session) return res.status(404).send()
-  const cacheKey = req.params.id
-  if (photoCache[cacheKey]) {
-    res.setHeader('Content-Type', 'image/jpeg')
-    res.setHeader('Cache-Control', 'public, max-age=86400')
-    return res.send(photoCache[cacheKey])
-  }
-  // Use separate client for photo to avoid blocking main client
-  const { TelegramClient } = require('telegram')
-  const { StringSession } = require('telegram/sessions')
-  const photoClient = new TelegramClient(new StringSession(_session), TG_API_ID, TG_API_HASH, { connectionRetries: 2 })
-  try {
-    await photoClient.connect()
-    const entity = await resolveEntity(photoClient, req.params.id, req.query.username)
-    const buffer = await photoClient.downloadProfilePhoto(entity, { isBig: false })
-    await photoClient.disconnect()
-    if (buffer && buffer.length > 0) {
-      const buf = Buffer.from(buffer)
-      photoCache[cacheKey] = buf
-      res.setHeader('Content-Type', 'image/jpeg')
-      res.setHeader('Cache-Control', 'public, max-age=86400')
-      res.send(buf)
-    } else {
-      res.status(404).send()
-    }
-  } catch(e) {
-    try { await photoClient.disconnect() } catch {}
-    res.status(404).send()
   }
 })
 
