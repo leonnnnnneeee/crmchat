@@ -1,4 +1,4 @@
-// v083704
+// v084342
 // v035029
 import { useState, useEffect, useRef, useCallback } from "react"
 
@@ -114,7 +114,7 @@ function fmtDateSep(ts) {
 }
 
 // ── Context Menu (right-click) ──
-function ContextMenu({x,y,msg,onDelete,onCopy,onReply,onClose,onDeleteAll}) {
+function ContextMenu({x,y,msg,onDelete,onCopy,onReply,onClose,onDeleteAll,onSelect}) {
   const ref=useRef(null)
   useEffect(()=>{
     function handler(e){if(ref.current&&!ref.current.contains(e.target))onClose()}
@@ -147,11 +147,12 @@ function ContextMenu({x,y,msg,onDelete,onCopy,onReply,onClose,onDeleteAll}) {
       padding:"4px 0",minWidth:200,
       boxShadow:"0 8px 32px rgba(0,0,0,.7)",
     }}>
-      <Item icon="↩️" label="Reply"     action={onReply}/>
-      <Item icon="📋" label="Copy Text" action={onCopy}/>
+      <Item icon="↩️" label="Reply"        action={onReply}/>
+      <Item icon="📋" label="Copy Text"     action={onCopy}/>
+      <Item icon="☑️" label="Select Message" action={onSelect}/>
       <Item sep/>
-      <Item icon="🗑" label="Delete Message"  action={onDelete} danger/>
-      <Item icon="🗑" label="Delete All Messages" action={onDeleteAll} danger/>
+      <Item icon="🗑" label="Delete Message"      action={onDelete} danger/>
+      <Item icon="🗑" label="Delete All Messages"  action={onDeleteAll} danger/>
     </div>
   )
 }
@@ -289,7 +290,9 @@ export default function CRMChat({token}) {
   const [notes,setNotes]=useState({})
   const [noteInp,setNoteInp]=useState("")
   const [addNote,setAddNote]=useState(false)
-  const [ctxMenu,setCtxMenu]=useState(null) // {x,y,msg,idx}
+  const [ctxMenu,setCtxMenu]=useState(null)
+  const [selectedMsgs,setSelectedMsgs]=useState(new Set())
+  const [selectMode,setSelectMode]=useState(false) // {x,y,msg,idx}
   const [replyTo,setReplyTo]=useState(null)
   const endRef=useRef(null)
 
@@ -329,7 +332,16 @@ export default function CRMChat({token}) {
       const qs = chat.username ? '?username='+encodeURIComponent(chat.username) : ''
       const r = await fetch('/api/chat/messages/'+chat.id+qs, {headers:{"x-auth-token":token}})
       const d = await r.json()
-      if(Array.isArray(d)) setMsgs(d)
+      if(Array.isArray(d)) {
+        // Keep any pending optimistic messages that haven't been confirmed yet
+        setMsgs(prev => {
+          const pending = prev.filter(m => m.pending && m.id < 0)
+          const serverIds = new Set(d.map(m=>m.id))
+          // Only keep pending if not yet in server response
+          const stillPending = pending.filter(m => !d.some(s=>s.text===m.text&&s.fromMe))
+          return [...d, ...stillPending]
+        })
+      }
     } catch(e) { console.error("loadMsgs:",e) }
     loadingRef.current = false
     setLoadMsgs(false)
@@ -338,18 +350,26 @@ export default function CRMChat({token}) {
   const sendingRef = useRef(false)
   async function send(){
     const text=input.trim(); if(!text||!sel) return
-    if(sendingRef.current) { console.log('SEND BLOCKED - already sending'); return }
+    if(sendingRef.current) return
     sendingRef.current = true
     setSending(true); setInput(""); setReplyTo(null)
+    // Show message instantly (optimistic)
+    const tempMsg = {id: -Date.now(), text, fromMe:true, date:Math.floor(Date.now()/1000), pending:true}
+    setMsgs(p=>[...p, tempMsg])
     try {
-      const r = await fetch("/api/chat/send",{
+      await fetch("/api/chat/send",{
         method:"POST", headers:{"Content-Type":"application/json","x-auth-token":token},
         body:JSON.stringify({chatId:sel.id, text})
       })
-      if(!r.ok) throw new Error("Send failed")
-      await new Promise(res=>setTimeout(res,800))
-      await loadMessages(sel)
-    } catch(e) { setInput(text) }
+      // Reload in background after 1s — replace optimistic with real
+      setTimeout(async()=>{
+        loadingRef.current = false
+        await loadMessages(sel)
+      }, 1000)
+    } catch(e) {
+      setMsgs(p=>p.filter(m=>m.id!==tempMsg.id))
+      setInput(text)
+    }
     sendingRef.current = false
     setSending(false)
   }
@@ -547,7 +567,11 @@ export default function CRMChat({token}) {
               return(
                 <div key={i}>
                   {showSep&&<div className="dsep"><span>{fmtDateSep(msg.date)}</span></div>}
-                  <div style={{display:"flex",flexDirection:msg.fromMe?"row-reverse":"row",alignItems:"flex-end",gap:8,marginBottom:2}}>
+                  <div style={{display:"flex",flexDirection:msg.fromMe?"row-reverse":"row",alignItems:"flex-end",gap:8,marginBottom:2,cursor:selectMode?"pointer":"default"}}
+                    onClick={selectMode?()=>setSelectedMsgs(prev=>{const s=new Set(prev);s.has(i)?s.delete(i):s.add(i);return s}):undefined}>
+                  {selectMode&&<div style={{width:20,height:20,borderRadius:"50%",border:"2px solid #7c3aed",background:selectedMsgs.has(i)?"#7c3aed":"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,alignSelf:"center",fontSize:12,color:"#fff",cursor:"pointer"}}>
+                    {selectedMsgs.has(i)?"✓":""}
+                  </div>}
                     {!msg.fromMe&&<Avatar name={sel.name} chatId={sel.id} username={sel.username} token={token} size={26}/>}
                     <div onContextMenu={e=>handleCtx(e,msg,i)}>
                       {msg.replyTo&&(
@@ -612,6 +636,24 @@ export default function CRMChat({token}) {
             </div>
           )}
 
+          {/* Select mode action bar */}
+          {selectMode&&(
+            <div style={{padding:"10px 16px",background:"#1a0533",borderTop:"1px solid #0d0618",display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
+              <span style={{fontSize:13,color:"#c4a8e8",flex:1}}>{selectedMsgs.size} selected</span>
+              <button onClick={()=>{
+                const toDelete = [...selectedMsgs].map(i=>msgs[i]).filter(m=>m&&m.fromMe&&m.id>0)
+                setMsgs(p=>p.map((m,i)=>selectedMsgs.has(i)?{...m,deleted:true,text:"This message was deleted"}:m))
+                toDelete.forEach(m=>fetch("/api/chat/delete",{method:"POST",headers:{"Content-Type":"application/json","x-auth-token":token},body:JSON.stringify({chatId:sel.id,messageId:m.id})}))
+                setSelectMode(false);setSelectedMsgs(new Set())
+              }} style={{padding:"7px 14px",background:"rgba(229,57,53,.15)",color:"#e53935",border:"1px solid rgba(229,57,53,.3)",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600}}>
+                🗑 Delete
+              </button>
+              <button onClick={()=>{setSelectMode(false);setSelectedMsgs(new Set())}}
+                style={{padding:"7px 14px",background:"#2d1155",color:"#9b7ec8",border:"1px solid #3d1f6a",borderRadius:8,cursor:"pointer",fontSize:13}}>
+                Cancel
+              </button>
+            </div>
+          )}
           {/* Input area */}
           <div className="ia">
             <div className="reacts">
@@ -732,6 +774,7 @@ export default function CRMChat({token}) {
           onCopy={()=>copyMsg(ctxMenu.msg.text)}
           onReply={()=>setReplyTo(ctxMenu.msg)}
           onDeleteAll={deleteAllMsgs}
+          onSelect={()=>{setSelectMode(true);setSelectedMsgs(new Set([ctxMenu.idx]))}}
           onClose={()=>setCtxMenu(null)}
         />
       )}
