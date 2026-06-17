@@ -1,4 +1,4 @@
-// v084342
+// v084811
 // v035029
 import { useState, useEffect, useRef, useCallback } from "react"
 
@@ -37,7 +37,7 @@ const TEMPLATES = [
 // ── Avatar — loads real TG photo, falls back to colored initials ──
 const photoCache = {}
 
-function Avatar({name, chatId, username, token, size=40}) {
+function Avatar({name, chatId, username, token: avatarToken, size=40}) {
   const colors=["#c03d33","#4fad2d","#d09306","#168acd","#8544d6","#cd4073","#2996ad","#ce671b"]
   const colorIdx = (name||"?").charCodeAt(0) % colors.length
   const initials = (name||"?").split(" ").map(w=>w[0]).slice(0,2).join("").toUpperCase()
@@ -45,10 +45,10 @@ function Avatar({name, chatId, username, token, size=40}) {
   const [failed, setFailed] = useState(false)
 
   useEffect(()=>{
-    if (!chatId || !token || failed) return
+    if (!chatId || !avatarToken || failed) return
     if (photoCache[chatId]) { setPhotoUrl(photoCache[chatId]); return }
     const qs = username ? `?username=${encodeURIComponent(username)}` : ""
-    fetch(`/api/chat/photo/${chatId}${qs}`, {headers:{"x-auth-token":token}})
+    fetch(`/api/chat/photo/${chatId}${qs}`, {headers:{"x-auth-token":avatarToken}})
       .then(r => { if (!r.ok) throw new Error("no photo"); return r.blob() })
       .then(blob => {
         const url = URL.createObjectURL(blob)
@@ -349,10 +349,12 @@ export default function CRMChat({token}) {
 
   const sendingRef = useRef(false)
   async function send(){
-    const text=input.trim(); if(!text||!sel) return
+    const text=input.trim(); if(!text||!sel||!text.length) return
     if(sendingRef.current) return
+    // Clear input immediately so user sees it's been captured
+    setInput("")
     sendingRef.current = true
-    setSending(true); setInput(""); setReplyTo(null)
+    setSending(true); setReplyTo(null)
     // Show message instantly (optimistic)
     const tempMsg = {id: -Date.now(), text, fromMe:true, date:Math.floor(Date.now()/1000), pending:true}
     setMsgs(p=>[...p, tempMsg])
@@ -529,7 +531,7 @@ export default function CRMChat({token}) {
             <Avatar name={sel.name} chatId={sel.id} username={sel.username} token={token} size={38}/>
             <div style={{flex:1}}>
               <div style={{fontWeight:700,fontSize:15,color:TG.text,lineHeight:1.2}}>{sel.name}</div>
-              <div style={{fontSize:11,color:TG.green}}>● online</div>
+              <div style={{fontSize:11,color:sel?.isUser?TG.green:TG.textSec}}>{sel?.isUser?"● online":sel?.memberCount?(sel.memberCount+" members"):(sel?.isGroup?"Group":sel?.isChannel?"Channel":"")}</div>
             </div>
             <StageBadge stage={cStage}/>
             <div style={{display:"flex",gap:6,marginLeft:8}}>
