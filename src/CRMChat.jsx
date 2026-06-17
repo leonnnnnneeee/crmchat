@@ -312,7 +312,31 @@ export default function CRMChat({token}) {
       .catch(e=>console.error("msgs:",e)).finally(()=>setLoadMsgs(false))
   },[sel?.id,token])
 
-
+  // ── Poll new messages every 1.5s ──
+  const msgsRef = useRef([])
+  useEffect(()=>{ msgsRef.current = msgs },[msgs])
+  useEffect(()=>{
+    if(!sel) return
+    const iv = setInterval(async ()=>{
+      try {
+        const all = msgsRef.current
+        const lastId = all.length>0 ? Math.max(...all.filter(m=>m.id>0).map(m=>m.id)) : 0
+        if(!lastId) return
+        const qs = 'since='+lastId+(sel.username?'&username='+encodeURIComponent(sel.username):'')
+        const r = await fetch('/api/chat/poll/'+sel.id+'?'+qs,{headers:{"x-auth-token":token}})
+        const fresh = await r.json()
+        if(!Array.isArray(fresh)||!fresh.length) return
+        setMsgs(prev=>{
+          const ids=new Set(prev.filter(m=>m.id).map(m=>m.id))
+          const news=fresh.filter(m=>!ids.has(m.id))
+          if(!news.length) return prev
+          setChats(p=>p.map(c=>c.id===sel.id?{...c,lastMsg:news[news.length-1].text,date:news[news.length-1].date}:c))
+          return [...prev,...news]
+        })
+      } catch {}
+    },1500)
+    return ()=>clearInterval(iv)
+  },[sel?.id,token])
 
   useEffect(()=>{endRef.current?.scrollIntoView({behavior:"smooth"})},[msgs])
 
