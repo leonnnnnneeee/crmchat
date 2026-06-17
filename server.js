@@ -446,6 +446,26 @@ app.get('/api/chat/poll/:id', requireAuth, async (req, res) => {
   } catch(e) { res.json([]) }
 })
 
+
+// ── DELETE MESSAGE ──
+app.post('/api/chat/delete', requireAuth, async (req, res) => {
+  if (!_session) return res.status(401).json({ error: 'Not connected' })
+  const { chatId, messageId } = req.body
+  try {
+    const client = await getClient()
+    const entity = await resolveEntity(client, chatId)
+    const { Api } = require('telegram/tl')
+    await client.invoke(new Api.messages.DeleteMessages({
+      id: [parseInt(messageId)],
+      revoke: true  // delete for everyone like Telegram
+    }))
+    res.json({ ok: true })
+  } catch(e) {
+    log('delete msg: ' + e.message)
+    res.status(500).json({ error: e.message })
+  }
+})
+
 app.get('/api/health', (req,res) => res.json({ ok: true, tgConnected: _session.length > 10 }))
 app.get('/api/logs', requireAuth, (req,res) => res.json(logs))
 
