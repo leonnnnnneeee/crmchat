@@ -35,37 +35,33 @@ const TEMPLATES = [
 // ── Avatar — loads real TG photo, falls back to colored initials ──
 const photoCache = {}
 
-function Avatar({name, chatId, username, size=40}) {
+function Avatar({name, chatId, username, token, size=40}) {
   const colors=["#c03d33","#4fad2d","#d09306","#168acd","#8544d6","#cd4073","#2996ad","#ce671b"]
   const colorIdx = (name||"?").charCodeAt(0) % colors.length
   const initials = (name||"?").split(" ").map(w=>w[0]).slice(0,2).join("").toUpperCase()
-  const [photoUrl, setPhotoUrl] = useState(chatId ? (photoCache[chatId] || null) : null)
-  const [photoFailed, setPhotoFailed] = useState(false)
-  const token = useRef(localStorage.getItem("crm_token")||"")
+  const [photoUrl, setPhotoUrl] = useState(photoCache[chatId] || null)
+  const [failed, setFailed] = useState(false)
 
   useEffect(()=>{
-    if (!chatId || photoFailed) return
+    if (!chatId || !token || failed) return
     if (photoCache[chatId]) { setPhotoUrl(photoCache[chatId]); return }
     const qs = username ? `?username=${encodeURIComponent(username)}` : ""
-    fetch(`/api/chat/photo/${chatId}${qs}`, {headers:{"x-auth-token":token.current}})
-      .then(r => {
-        if (!r.ok) throw new Error("no photo")
-        return r.blob()
-      })
+    fetch(`/api/chat/photo/${chatId}${qs}`, {headers:{"x-auth-token":token}})
+      .then(r => { if (!r.ok) throw new Error("no photo"); return r.blob() })
       .then(blob => {
         const url = URL.createObjectURL(blob)
         photoCache[chatId] = url
         setPhotoUrl(url)
       })
-      .catch(() => setPhotoFailed(true))
-  }, [chatId])
+      .catch(() => setFailed(true))
+  }, [chatId, token])
 
-  if (photoUrl && !photoFailed) {
+  if (photoUrl && !failed) {
     return (
-      <div style={{width:size,height:size,borderRadius:"50%",overflow:"hidden",flexShrink:0,background:colors[colorIdx]}}>
+      <div style={{width:size,height:size,borderRadius:"50%",overflow:"hidden",flexShrink:0}}>
         <img src={photoUrl} alt={name} width={size} height={size}
           style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}
-          onError={()=>setPhotoFailed(true)}/>
+          onError={()=>setFailed(true)}/>
       </div>
     )
   }
@@ -422,7 +418,7 @@ export default function CRMChat({token}) {
             return(
               <div key={chat.id} className={`ci${isSel?" sel":""}`} onClick={()=>setSel(chat)}>
                 <div style={{position:"relative"}}>
-                  <Avatar name={chat.name} chatId={chat.id} username={chat.username} size={44}/>
+                  <Avatar name={chat.name} chatId={chat.id} username={chat.username} token={token} size={44}/>
                   {chat.unread>0&&<div style={{position:"absolute",bottom:-1,right:-1,background:TG.green,color:"#fff",fontSize:10,fontWeight:700,padding:"1px 5px",borderRadius:10,minWidth:17,textAlign:"center"}}>{chat.unread>99?"99+":chat.unread}</div>}
                 </div>
                 <div style={{flex:1,minWidth:0}}>
@@ -455,7 +451,7 @@ export default function CRMChat({token}) {
         ):<>
           {/* Chat header */}
           <div className="chdr">
-            <Avatar name={sel.name} chatId={sel.id} username={sel.username} size={38}/>
+            <Avatar name={sel.name} chatId={sel.id} username={sel.username} token={token} size={38}/>
             <div style={{flex:1}}>
               <div style={{fontWeight:700,fontSize:15,color:TG.text,lineHeight:1.2}}>{sel.name}</div>
               <div style={{fontSize:11,color:TG.green}}>online</div>
@@ -493,7 +489,7 @@ export default function CRMChat({token}) {
                 <div key={i}>
                   {showSep&&<div className="dsep"><span>{fmtDateSep(msg.date)}</span></div>}
                   <div style={{display:"flex",flexDirection:msg.fromMe?"row-reverse":"row",alignItems:"flex-end",gap:8,marginBottom:2}}>
-                    {!msg.fromMe&&<Avatar name={sel.name} chatId={sel.id} username={sel.username} size={26}/>}
+                    {!msg.fromMe&&<Avatar name={sel.name} chatId={sel.id} username={sel.username} token={token} size={26}/>}
                     <div onContextMenu={e=>handleCtx(e,msg,i)}>
                       {msg.replyTo&&(
                         <div style={{background:"rgba(124,58,237,.15)",borderLeft:`3px solid ${TG.blue}`,padding:"4px 8px",borderRadius:"0 6px 6px 0",marginBottom:4,fontSize:11,color:TG.textSec,maxWidth:"100%",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
@@ -592,7 +588,7 @@ export default function CRMChat({token}) {
           ):(
             <>
               <div style={{padding:"22px 16px 16px",textAlign:"center",borderBottom:`1px solid ${TG.border}`}}>
-                <Avatar name={sel.name} chatId={sel.id} username={sel.username} size={70}/>
+                <Avatar name={sel.name} chatId={sel.id} username={sel.username} token={token} size={70}/>
                 <div style={{fontWeight:700,fontSize:18,color:TG.text,marginTop:12}}>{sel.name}</div>
                 <div style={{fontSize:12,color:TG.textSec,marginTop:3}}>Telegram · {sel.isUser?"Contact":"Group"}</div>
                 <div style={{marginTop:10}}><StageBadge stage={cStage}/></div>
