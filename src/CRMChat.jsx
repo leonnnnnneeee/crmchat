@@ -1,4 +1,4 @@
-// build:20260617034351
+// build:034539 //20260617034351
 import { useState, useEffect, useRef, useCallback } from "react"
 
 const TG = {
@@ -357,36 +357,30 @@ export default function CRMChat({token}) {
     setSending(false)
   }
 
-  // AI Suggest — reads full conversation context
+  // AI Suggest — always reads latest msgs from ref
   async function getAI(){
-    if(!sel){alert("Select a chat first");return}
-    setAiText("");setAiLoading(true)
+    if(!sel) return
+    setAiText(""); setAiLoading(true)
 
-    // Get ALL messages including most recent
-    const allMsgs = msgs.filter(m => m.text && !m.deleted)
+    // Use msgsRef to get absolute latest messages (not stale closure)
+    const allMsgs = msgsRef.current.filter(m => m.text && !m.deleted)
     const lastClientMsg = [...allMsgs].reverse().find(m => !m.fromMe)?.text || ""
-    const lastMsg = allMsgs[allMsgs.length - 1]
 
-    console.log("AI context — last client msg:", lastClientMsg)
-    console.log("AI context — total msgs:", allMsgs.length)
-
-    try{
-      const r=await fetch("/api/ai/suggest",{
-        method:"POST",
-        headers:{"Content-Type":"application/json","x-auth-token":token},
-        body:JSON.stringify({
+    try {
+      const r = await fetch("/api/ai/suggest", {
+        method: "POST",
+        headers: {"Content-Type":"application/json","x-auth-token":token},
+        body: JSON.stringify({
           contactName: sel.name,
           lastMessage: lastClientMsg,
-          lastMessageFromMe: lastMsg?.fromMe || false,
-          messages: allMsgs.slice(-20).map(m=>({text:m.text, fromMe:m.fromMe})),
-          stage: stages[sel.id]||"Contacted",
+          messages: allMsgs.slice(-20).map(m => ({text: m.text, fromMe: m.fromMe})),
+          stage: stages[sel.id] || "Contacted",
           notes: (notes[sel.id]||[]).map(n=>n.content).join(" | ")
         })
       })
-      const d=await r.json()
-      if(d.suggestion) setAiText(d.suggestion)
-      else if(d.error) console.error("AI error:",d.error)
-    }catch(e){console.error("AI fetch error:",e)}
+      const d = await r.json()
+      if (d.suggestion) setAiText(d.suggestion)
+    } catch(e) { console.error("AI:", e) }
     setAiLoading(false)
   }
 
