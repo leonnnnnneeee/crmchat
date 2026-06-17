@@ -296,6 +296,23 @@ app.get('/api/chat/poll/:id', requireAuth, async (req, res) => {
   }
 })
 
+
+// ── POLL new messages since a given ID ──
+app.get('/api/chat/poll/:id', requireAuth, async (req, res) => {
+  if (!_session) return res.json([])
+  const since = parseInt(req.query.since) || 0
+  try {
+    const client = await getClient()
+    const entity = await resolveEntity(client, req.params.id, req.query.username)
+    const msgs = await client.getMessages(entity, { limit: 5, minId: since })
+    const results = msgs
+      .map(m => ({ id: m.id, text: m.message, fromMe: m.out, date: m.date }))
+      .filter(m => m.text && m.id > since)
+      .reverse()
+    res.json(results)
+  } catch(e) { res.json([]) }
+})
+
 app.get('/api/health', (req,res) => res.json({ ok: true, tgConnected: _session.length > 10 }))
 app.get('/api/logs', requireAuth, (req,res) => res.json(logs))
 
