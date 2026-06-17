@@ -312,76 +312,54 @@ export default function CRMChat({token}) {
       .catch(e=>console.error("msgs:",e)).finally(()=>setLoadMsgs(false))
   },[sel?.id,token])
 
-  // ── WebSocket for true realtime messages ──
-  const wsRef = useRef(null)
-  const [wsStatus, setWsStatus] = useState('disconnected') // connected | disconnected
+  // ── SSE for realtime messages (works on Railway) ──
+  const sseRef = useRef(null)
+  const [wsStatus, setWsStatus] = useState('disconnected')
 
   useEffect(()=>{
     if (!token) return
-    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const wsUrl = `${proto}//${window.location.host}`
-    let ws
-    let reconnectTimer
+    let es
+    let retryTimer
 
     function connect() {
-      ws = new WebSocket(wsUrl)
-      wsRef.current = ws
+      const url = `/api/events?token=${encodeURIComponent(token)}${sel?.id ? '&chatId='+sel.id : ''}`
+      es = new EventSource(url)
+      sseRef.current = es
 
-      ws.onopen = () => {
-        setWsStatus('connected')
-        ws.send(JSON.stringify({ type: 'auth', token }))
-      }
+      es.onopen = () => setWsStatus('connected')
 
-      ws.onmessage = (e) => {
+      es.onmessage = (e) => {
         try {
           const data = JSON.parse(e.data)
-          if (data.type === 'auth_ok') {
-            // Subscribe to current chat if any
-            if (wsRef._chatId) ws.send(JSON.stringify({ type: 'subscribe', chatId: wsRef._chatId }))
-          }
           if (data.type === 'new_message') {
             setMsgs(prev => {
               const existingIds = new Set(prev.filter(m=>m.id).map(m=>m.id))
               if (existingIds.has(data.message.id)) return prev
-              // Only add if it's for the current chat
               return [...prev, data.message]
             })
-            // Update chat list last message
             setChats(prev => prev.map(c =>
               c.id === data.chatId
                 ? { ...c, lastMsg: data.message.text, date: data.message.date,
-                    unread: data.message.fromMe ? c.unread : (c.unread||0)+1 }
+                    unread: data.message.fromMe ? (c.unread||0) : (c.unread||0)+1 }
                 : c
             ))
           }
         } catch {}
       }
 
-      ws.onclose = () => {
+      es.onerror = () => {
         setWsStatus('disconnected')
-        reconnectTimer = setTimeout(connect, 3000)
+        es.close()
+        retryTimer = setTimeout(connect, 4000)
       }
-
-      ws.onerror = () => ws.close()
     }
 
     connect()
     return () => {
-      clearTimeout(reconnectTimer)
-      ws?.close()
+      clearTimeout(retryTimer)
+      es?.close()
     }
-  }, [token])
-
-  // Subscribe/unsubscribe when selected chat changes
-  useEffect(()=>{
-    const ws = wsRef.current
-    if (!ws || ws.readyState !== 1) return
-    if (wsRef._chatId) ws.send(JSON.stringify({ type: 'unsubscribe', chatId: wsRef._chatId }))
-    if (sel?.id) {
-      ws.send(JSON.stringify({ type: 'subscribe', chatId: sel.id }))
-      wsRef._chatId = sel.id
-    }
-  }, [sel?.id])
+  }, [token, sel?.id])
 
   useEffect(()=>{endRef.current?.scrollIntoView({behavior:"smooth"})},[msgs])
 
@@ -536,7 +514,7 @@ export default function CRMChat({token}) {
             <Avatar name={sel.name} chatId={sel.id} username={sel.username} token={token} size={38}/>
             <div style={{flex:1}}>
               <div style={{fontWeight:700,fontSize:15,color:TG.text,lineHeight:1.2}}>{sel.name}</div>
-              <div style={{fontSize:11,color:wsStatus==="connected"?TG.green:TG.textMuted}}>{wsStatus==="connected"?"● live":"○ connecting..."}</div>
+              <div style={{fontSize:11,color:wsStatus==="connected"?TG.green:TG.textMuted}}>{wsStatus==="connected"?"● live":"● connecting..."}</div>
             </div>
             <StageBadge stage={cStage}/>
             <div style={{display:"flex",gap:6,marginLeft:8}}>
