@@ -561,10 +561,11 @@ export default function CRMChat({token}) {
 
           {/* AI Suggest panel */}
           <AISuggestPanel
-            text={aiText} loading={aiLoading}
-            onUse={()=>{setInput(aiText);setAiText("")}}
-            onRegenerate={getAI}
-            onClose={()=>{setAiText("");setAiLoading(false)}}
+            text={aiText} analysis={aiAnalysis} alternative={aiAlt} loading={aiLoading}
+            onUse={()=>{setInput(aiText);setAiText("");setAiAnalysis("");setAiAlt("")}}
+            onUseAlt={()=>{setInput(aiAlt);setAiText("");setAiAnalysis("");setAiAlt("")}}
+            onRegenerate={()=>getAI(false)}
+            onClose={()=>{setAiText("");setAiAnalysis("");setAiAlt("");setAiLoading(false)}}
           />
 
           {/* Reply bar */}
