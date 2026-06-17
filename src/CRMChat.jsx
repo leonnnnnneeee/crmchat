@@ -1,4 +1,4 @@
-// v085208
+// v085419
 // v035029
 import { useState, useEffect, useRef, useCallback } from "react"
 
@@ -36,6 +36,7 @@ const TEMPLATES = [
 
 // ── Avatar — loads real TG photo, falls back to colored initials ──
 const photoCache = {}
+let _authToken = ''
 
 function Avatar({name, chatId, username, token: avatarToken, size=40}) {
   const colors=["#c03d33","#4fad2d","#d09306","#168acd","#8544d6","#cd4073","#2996ad","#ce671b"]
@@ -266,7 +267,7 @@ const STYLES = `
 `
 
 export default function CRMChat({token}) {
-  _authToken = token  // set module-level token for Avatar
+  _authToken = token
   const [chats,setChats]=useState([])
   const [sel,setSel]=useState(null)
   const [msgs,setMsgs]=useState([])
