@@ -74,12 +74,39 @@ async function saveSessionToDB(s) {
 
 loadSessionFromDB()
 
+// Persistent client to avoid reconnecting every request
+let _client = null
+let _clientBusy = false
+
 async function getClient() {
   const { TelegramClient } = require('telegram')
   const { StringSession } = require('telegram/sessions')
-  const client = new TelegramClient(new StringSession(_session), TG_API_ID, TG_API_HASH, { connectionRetries: 3 })
-  await client.connect()
-  return client
+  if (_client && _client.connected) return _client
+  _client = new TelegramClient(new StringSession(_session), TG_API_ID, TG_API_HASH, { connectionRetries: 3 })
+  await _client.connect()
+  return _client
+}
+
+// Resolve entity from string ID (handles negative supergroup IDs)
+async function resolveEntity(client, idStr, username) {
+  if (username) {
+    try { return await client.getEntity(username) } catch {}
+  }
+  const num = Number(idStr)
+  // Negative ID = supergroup/channel — wrap with peer
+  if (num < 0) {
+    try {
+      const { Api } = require('telegram/tl')
+      const channelId = Math.abs(num) - 1000000000000
+      if (channelId > 0) {
+        return await client.getEntity(new Api.PeerChannel({ channelId: BigInt(channelId) }))
+      }
+      return await client.getEntity(new Api.PeerChat({ chatId: BigInt(Math.abs(num)) }))
+    } catch {}
+  }
+  try { return await client.getEntity(BigInt(idStr)) } catch {}
+  try { return await client.getEntity(num) } catch {}
+  return idStr // last resort: pass raw string
 }
 
 // ── AUTH: check status ──
@@ -147,7 +174,6 @@ app.get('/api/chat/list', requireAuth, async (req,res) => {
       username: d.entity?.username || null,
       accessHash: d.entity?.accessHash?.toString() || null,
     }))
-    await client.disconnect()
     res.json(chats)
   } catch(e) { log('chatList: '+e.message); res.json([]) }
 })
@@ -157,28 +183,11 @@ app.get('/api/chat/messages/:id', requireAuth, async (req,res) => {
   if (!_session) return res.json([])
   try {
     const client = await getClient()
-    let entity
-    const rawId = req.params.id
-    // Try resolving by username first (from query), then by numeric ID
-    const username = req.query.username
-    try {
-      if (username) {
-        entity = await client.getEntity(username)
-      } else {
-        entity = await client.getEntity(BigInt(rawId))
-      }
-    } catch(e1) {
-      try { entity = await client.getEntity(parseInt(rawId)) } catch(e2) {
-        log('entity resolve failed: ' + e2.message)
-        await client.disconnect()
-        return res.json([])
-      }
-    }
+    const entity = await resolveEntity(client, req.params.id, req.query.username)
     const msgs = await client.getMessages(entity, { limit: 80 })
     const results = msgs.reverse()
       .map(m => ({ id: m.id, text: m.message, fromMe: m.out, date: m.date }))
       .filter(m => m.text)
-    await client.disconnect()
     res.json(results)
   } catch(e) { log('messages: '+e.message); res.json([]) }
 })
@@ -189,11 +198,8 @@ app.post('/api/chat/send', requireAuth, async (req,res) => {
   if (!_session) return res.status(401).json({ error: 'Not connected' })
   try {
     const client = await getClient()
-    let entity
-    try { entity = await client.getEntity(BigInt(chatId)) }
-    catch { try { entity = await client.getEntity(parseInt(chatId)) } catch { entity = chatId } }
+    const entity = await resolveEntity(client, chatId, req.body.username)
     await client.sendMessage(entity, { message: text })
-    await client.disconnect()
     log('Sent to '+chatId+': '+text.slice(0,40))
     res.json({ ok: true })
   } catch(e) { log('send: '+e.message); res.status(500).json({ error: e.message }) }
@@ -208,32 +214,41 @@ app.post('/api/ai/suggest', requireAuth, async (req,res) => {
     `${m.fromMe ? 'Leon' : (contactName||'Client')}: ${m.text}`
   ).join('\n')
 
-  // Smart rule-based fallback (English only)
+  // Smart rule-based fallback — reads actual last message content
   function ruleBased() {
     const msg = (lastMessage||'').toLowerCase()
-    if (msg.includes('price') || msg.includes('cost') || msg.includes('how much') || msg.includes('rate'))
-      return `CMC News starts at $800 and Coincu PR from $300 — I can bundle both at a better rate for your campaign. Want me to send a full proposal?`
-    if (msg.includes('budget') || msg.includes('expensive') || msg.includes('afford'))
-      return `Totally understand — budget timing is always a factor. Are you in a position to move on this quarter, or should we plan for next? Happy to keep it lightweight to start.`
-    if (msg.includes('feedback') || msg.includes('users') || msg.includes('community'))
-      return `That makes sense — building the user base first is solid. Are you also thinking about visibility for the next public milestone, or is that further down the road?`
-    if (msg.includes('raising') || msg.includes('round') || msg.includes('investor') || msg.includes('vc'))
-      return `Good timing actually — investors do check media presence before committing. Would it make sense to have Coincu or CMC coverage lined up before the round closes?`
-    if (msg.includes('busy') || msg.includes('later') || msg.includes('not now') || msg.includes('next month'))
-      return `No problem at all. When's a better time to pick this up? I'll follow up then and keep it short.`
-    if (msg.includes('what') || msg.includes('sell') || msg.includes('offer') || msg.includes('do you do'))
-      return `Good question — we mainly help Web3 projects get visibility and credibility through Coincu PR and CMC News placement. Is your current focus more awareness, user growth, or building credibility before a milestone?`
-    if (msg.includes('convert') || msg.includes('traffic') || msg.includes('roi'))
-      return `Fair point — PR isn't about direct conversion. It's the credibility layer that makes your ads, community growth, and investor conversations land better. Is that more relevant to where you are right now?`
-    if (msg.includes('tge') || msg.includes('launch') || msg.includes('listing') || msg.includes('mainnet'))
-      return `Perfect timing for a visibility push — CMC News right before a TGE or listing can really strengthen the narrative. Want me to walk you through what that would look like?`
-    if (msg.includes('agency') || msg.includes('partner') || msg.includes('resell'))
-      return `We work well with agencies — either on a referral basis or as a white-label partner. Would that kind of arrangement work for your clients?`
+    const lastFew = (messages||[]).slice(-5).map(m=>m.text||'').join(' ').toLowerCase()
+    const ctx = msg + ' ' + lastFew
+
+    // Pricing questions
+    if (ctx.match(/price|cost|how much|rate|bao nhiêu|giá|phí|chi phí/))
+      return `CMC News starts at $800 and Coincu PR from $300 — I can bundle both at a better rate. Want me to send a full proposal?`
+    // Budget objection
+    if (ctx.match(/budget|expensive|afford|no fund|tight|ngân sách|đắt|không có tiền/))
+      return `Totally understand — budget timing is always a factor. Are you raising soon, or is this more of a timing issue for next quarter?`
+    // Focused on product/feedback
+    if (ctx.match(/feedback|user|community|product|phản hồi|người dùng|cộng đồng|sản phẩm/))
+      return `Makes sense — are you also thinking about visibility for the next public milestone, or is that further down the road?`
+    // Raising funds
+    if (ctx.match(/raising|round|investor|vc|funding|gọi vốn|nhà đầu tư/))
+      return `Good timing — investors do check media presence. Would it make sense to have Coincu coverage ready before the round closes?`
+    // Busy / not now
+    if (ctx.match(/busy|later|not now|next month|bận|sau|chưa|tháng sau/))
+      return `No problem. When's a better time? I'll follow up then and keep it short.`
+    // What do you sell
+    if (ctx.match(/what.*sell|what.*offer|bán gì|làm gì|dịch vụ gì/))
+      return `We mainly help Web3 projects get visibility through Coincu PR and CMC News placement. Is your current focus more awareness, users, or credibility before a milestone?`
+    // TGE / launch
+    if (ctx.match(/tge|launch|listing|mainnet|token|ra mắt/))
+      return `Perfect timing — CMC News right before a TGE or listing really strengthens the narrative. Want me to walk you through what that looks like?`
+    // Negotiating stage
     if (stage === 'Negotiating')
-      return `Based on what we've discussed, I think a bundled Coincu PR + CMC News package makes the most sense for your goals. Want me to put together a quick proposal you can share internally?`
-    if (stage === 'Closed Won')
-      return `Great working with you! Once this campaign wraps, let's sync on what worked well and plan the next one.`
-    return `Thanks for the context — what's the main priority for the project right now? I want to make sure whatever I recommend actually moves the needle for you.`
+      return `Based on what we've discussed, a bundled Coincu PR + CMC News package seems like the best fit. Want me to put together a quick proposal?`
+    // Default — based on last message content
+    const preview = (lastMessage||'').slice(0,60)
+    if (preview.length > 10)
+      return `Got it — just to make sure I'm recommending the right thing, is the main goal right now awareness, credibility, or user growth?`
+    return `What's the main priority for your project right now — awareness, credibility, or user growth?`
   }
 
   if (!GROQ_KEY) {
@@ -290,35 +305,30 @@ Write ONE short reply as Leon. Rules:
 })
 
 
-// ── PROFILE PHOTO ──
+// ── PROFILE PHOTO (cached in memory) ──
+const photoCache = {}
 app.get('/api/chat/photo/:id', requireAuth, async (req,res) => {
-  if (!_session) return res.status(401).json({ error: 'Not connected' })
+  if (!_session) return res.status(404).send()
+  const cacheKey = req.params.id
+  if (photoCache[cacheKey]) {
+    res.setHeader('Content-Type', 'image/jpeg')
+    res.setHeader('Cache-Control', 'public, max-age=86400')
+    return res.send(photoCache[cacheKey])
+  }
   try {
-    const { TelegramClient } = require('telegram')
-    const { StringSession } = require('telegram/sessions')
-    const client = new TelegramClient(new StringSession(_session), TG_API_ID, TG_API_HASH, { connectionRetries: 3 })
-    await client.connect()
-    let entity
-    const username = req.query.username
-    try {
-      entity = username ? await client.getEntity(username) : await client.getEntity(BigInt(req.params.id))
-    } catch { entity = await client.getEntity(parseInt(req.params.id)) }
-    
-    const photos = await client.getProfilePhotos(entity, { limit: 1 })
-    if (!photos || photos.length === 0) {
-      await client.disconnect()
-      return res.status(404).json({ error: 'No photo' })
-    }
+    const client = await getClient()
+    const entity = await resolveEntity(client, req.params.id, req.query.username)
     const buffer = await client.downloadProfilePhoto(entity, { isBig: false })
-    await client.disconnect()
     if (buffer && buffer.length > 0) {
+      const buf = Buffer.from(buffer)
+      photoCache[cacheKey] = buf
       res.setHeader('Content-Type', 'image/jpeg')
-      res.setHeader('Cache-Control', 'public, max-age=3600')
-      res.send(Buffer.from(buffer))
+      res.setHeader('Cache-Control', 'public, max-age=86400')
+      res.send(buf)
     } else {
-      res.status(404).json({ error: 'No photo data' })
+      res.status(404).send()
     }
-  } catch(e) { log('photo: '+e.message); res.status(404).json({ error: e.message }) }
+  } catch(e) { log('photo: '+e.message); res.status(404).send() }
 })
 
 app.get('/api/health', (req,res) => res.json({ ok: true, tgConnected: _session.length > 10 }))
