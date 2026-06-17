@@ -1,4 +1,4 @@
-// v084811
+// v085208
 // v035029
 import { useState, useEffect, useRef, useCallback } from "react"
 
@@ -266,6 +266,7 @@ const STYLES = `
 `
 
 export default function CRMChat({token}) {
+  _authToken = token  // set module-level token for Avatar
   const [chats,setChats]=useState([])
   const [sel,setSel]=useState(null)
   const [msgs,setMsgs]=useState([])
@@ -495,7 +496,7 @@ export default function CRMChat({token}) {
             return(
               <div key={chat.id} className={`ci${isSel?" sel":""}`} onClick={()=>setSel(chat)}>
                 <div style={{position:"relative"}}>
-                  <Avatar name={chat.name} chatId={chat.id} username={chat.username} token={token} size={44}/>
+                  <Avatar name={chat.name} chatId={chat.id} username={chat.username} size={44}/>
                   {chat.unread>0&&<div style={{position:"absolute",bottom:-1,right:-1,background:TG.green,color:"#fff",fontSize:10,fontWeight:700,padding:"1px 5px",borderRadius:10,minWidth:17,textAlign:"center"}}>{chat.unread>99?"99+":chat.unread}</div>}
                 </div>
                 <div style={{flex:1,minWidth:0}}>
@@ -528,7 +529,7 @@ export default function CRMChat({token}) {
         ):<>
           {/* Chat header */}
           <div className="chdr">
-            <Avatar name={sel.name} chatId={sel.id} username={sel.username} token={token} size={38}/>
+            <Avatar name={sel.name} chatId={sel.id} username={sel.username} size={38}/>
             <div style={{flex:1}}>
               <div style={{fontWeight:700,fontSize:15,color:TG.text,lineHeight:1.2}}>{sel.name}</div>
               <div style={{fontSize:11,color:sel?.isUser?TG.green:TG.textSec}}>{sel?.isUser?"● online":sel?.memberCount?(sel.memberCount+" members"):(sel?.isGroup?"Group":sel?.isChannel?"Channel":"")}</div>
@@ -574,7 +575,7 @@ export default function CRMChat({token}) {
                   {selectMode&&<div style={{width:20,height:20,borderRadius:"50%",border:"2px solid #7c3aed",background:selectedMsgs.has(i)?"#7c3aed":"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,alignSelf:"center",fontSize:12,color:"#fff",cursor:"pointer"}}>
                     {selectedMsgs.has(i)?"✓":""}
                   </div>}
-                    {!msg.fromMe&&<Avatar name={sel.name} chatId={sel.id} username={sel.username} token={token} size={26}/>}
+                    {!msg.fromMe&&<Avatar name={sel.name} chatId={sel.id} username={sel.username} size={26}/>}
                     <div onContextMenu={e=>handleCtx(e,msg,i)}>
                       {msg.replyTo&&(
                         <div style={{background:"rgba(124,58,237,.15)",borderLeft:`3px solid ${TG.blue}`,padding:"4px 8px",borderRadius:"0 6px 6px 0",marginBottom:4,fontSize:11,color:TG.textSec,maxWidth:"100%",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
@@ -692,7 +693,7 @@ export default function CRMChat({token}) {
           ):(
             <>
               <div style={{padding:"22px 16px 16px",textAlign:"center",borderBottom:`1px solid ${TG.border}`}}>
-                <Avatar name={sel.name} chatId={sel.id} username={sel.username} token={token} size={70}/>
+                <Avatar name={sel.name} chatId={sel.id} username={sel.username} size={70}/>
                 <div style={{fontWeight:700,fontSize:18,color:TG.text,marginTop:12}}>{sel.name}</div>
                 <div style={{fontSize:12,color:TG.textSec,marginTop:3}}>Telegram · {sel.isUser?"Contact":"Group"}</div>
                 <div style={{marginTop:10}}><StageBadge stage={cStage}/></div>
