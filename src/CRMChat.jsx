@@ -1,4 +1,4 @@
-// v093209
+// v094750
 // v035029
 import { useState, useEffect, useRef, useCallback } from "react"
 
@@ -114,6 +114,51 @@ function fmtDateSep(ts) {
   } catch{return ""}
 }
 
+
+// ── Chat List Context Menu (right-click on chat) ──
+function ChatContextMenu({x,y,chat,onClose,onPin,onMute,onMarkRead,onArchive,isPinned,isMuted}) {
+  const ref = useRef(null)
+  useEffect(()=>{
+    function h(e){if(ref.current&&!ref.current.contains(e.target))onClose()}
+    document.addEventListener("mousedown",h)
+    return()=>document.removeEventListener("mousedown",h)
+  },[onClose])
+
+  const menuW=220, menuH=280
+  const adjX=x+menuW>window.innerWidth?x-menuW:x
+  const adjY=y+menuH>window.innerHeight?y-menuH:y
+
+  const Item=({icon,label,action,danger,sep})=>sep?(
+    <div style={{height:1,background:"#2d1155",margin:"3px 0"}}/>
+  ):(
+    <div onClick={()=>{action();onClose()}}
+      style={{padding:"10px 16px",cursor:"pointer",display:"flex",alignItems:"center",gap:12,fontSize:13,color:danger?"#e53935":TG.text}}
+      onMouseEnter={e=>e.currentTarget.style.background="#2d1155"}
+      onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+      <span style={{fontSize:16,width:20,textAlign:"center"}}>{icon}</span>
+      {label}
+    </div>
+  )
+
+  return (
+    <div ref={ref} style={{
+      position:"fixed",left:adjX,top:adjY,zIndex:9999,
+      background:"#1a0533",border:"1px solid #3d1f6a",borderRadius:12,
+      padding:"4px 0",minWidth:220,
+      boxShadow:"0 8px 32px rgba(0,0,0,.7)"
+    }}>
+      <Item icon="🪟" label="Open in new window" action={()=>window.open(window.location.href,'_blank')}/>
+      <Item sep/>
+      <Item icon={isPinned?"📌":"📌"} label={isPinned?"Unpin":"Pin"} action={onPin}/>
+      <Item icon={isMuted?"🔔":"🔕"} label={isMuted?"Unmute":"Mute"} action={onMute}/>
+      <Item icon="✅" label="Mark as read" action={onMarkRead}/>
+      <Item icon="📁" label="Archive" action={onArchive}/>
+      <Item sep/>
+      <Item icon="🚪" label={chat?.isUser?"Leave chat":"Leave group"} action={()=>alert('Leave feature coming soon')} danger/>
+    </div>
+  )
+}
+
 // ── Context Menu (right-click) ──
 function ContextMenu({x,y,msg,onDelete,onCopy,onReply,onClose,onDeleteAll,onSelect}) {
   const ref=useRef(null)
@@ -215,7 +260,7 @@ const STYLES = `
 .msgs{flex:1;overflow-y:auto;padding:12px 16px;display:flex;flex-direction:column;gap:3px}
 .msgs::-webkit-scrollbar{width:4px}
 .msgs::-webkit-scrollbar-thumb{background:${TG.elevated};border-radius:2px}
-.bbl{display:inline-block;max-width:70%;padding:8px 12px 4px;line-height:1.55;font-size:14px;cursor:pointer;border-radius:14px;word-break:normal;overflow-wrap:break-word;white-space:normal}
+.bbl{display:inline-block;max-width:70%;padding:8px 12px 4px 12px;line-height:1.55;font-size:14px;cursor:pointer;border-radius:14px;word-break:break-word;overflow-wrap:anywhere;white-space:pre-wrap}
 .bbl:hover{opacity:.92}
 .bbl.in{background:#182533;color:${TG.text};border-radius:14px 14px 14px 3px}
 .bbl.out{background:${TG.msgOut};color:#fff;border-radius:14px 14px 3px 14px}
@@ -296,6 +341,10 @@ export default function CRMChat({token}) {
   const [noteInp,setNoteInp]=useState("")
   const [addNote,setAddNote]=useState(false)
   const [ctxMenu,setCtxMenu]=useState(null)
+  const [chatCtxMenu,setChatCtxMenu]=useState(null)
+  const [pinnedChats,setPinnedChats]=useState(new Set())
+  const [mutedChats,setMutedChats]=useState(new Set())
+  const [archivedChats,setArchivedChats]=useState(new Set())
   const [selectedMsgs,setSelectedMsgs]=useState(new Set())
   const [selectMode,setSelectMode]=useState(false) // {x,y,msg,idx}
   const [replyTo,setReplyTo]=useState(null)
@@ -634,7 +683,7 @@ export default function CRMChat({token}) {
                         </div>
                       )}
                       <div className={`bbl ${msg.fromMe?"out":"in"}${msg.deleted?" del":""}${msg.replyTo?" rpl":""}`}>
-                        <span style={{display:"block",whiteSpace:"normal"}}>{msg.text}</span>
+                        {msg.text}
                         <div className="bfoot">
                           <span className={`bt${msg.fromMe?"":" in"}`}>{fmtMsgTime(msg.date)}</span>
                           {msg.fromMe&&<span style={{fontSize:10,color:msg.pending?"rgba(255,255,255,.3)":"rgba(255,255,255,.6)"}}>{msg.pending?"⏳":"✓✓"}</span>}
@@ -821,6 +870,18 @@ export default function CRMChat({token}) {
       )}
 
       {/* Context menu */}
+      {chatCtxMenu&&(
+        <ChatContextMenu
+          x={chatCtxMenu.x} y={chatCtxMenu.y} chat={chatCtxMenu.chat}
+          isPinned={pinnedChats.has(chatCtxMenu.chat?.id)}
+          isMuted={mutedChats.has(chatCtxMenu.chat?.id)}
+          onPin={()=>setPinnedChats(p=>{const s=new Set(p);s.has(chatCtxMenu.chat.id)?s.delete(chatCtxMenu.chat.id):s.add(chatCtxMenu.chat.id);return s})}
+          onMute={()=>setMutedChats(p=>{const s=new Set(p);s.has(chatCtxMenu.chat.id)?s.delete(chatCtxMenu.chat.id):s.add(chatCtxMenu.chat.id);return s})}
+          onMarkRead={()=>setChats(p=>p.map(c=>c.id===chatCtxMenu.chat.id?{...c,unread:0}:c))}
+          onArchive={()=>setArchivedChats(p=>{const s=new Set(p);s.add(chatCtxMenu.chat.id);return s})}
+          onClose={()=>setChatCtxMenu(null)}
+        />
+      )}
       {ctxMenu&&(
         <ContextMenu
           x={ctxMenu.x} y={ctxMenu.y} msg={ctxMenu.msg}
