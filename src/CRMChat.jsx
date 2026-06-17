@@ -312,29 +312,76 @@ export default function CRMChat({token}) {
       .catch(e=>console.error("msgs:",e)).finally(()=>setLoadMsgs(false))
   },[sel?.id,token])
 
-  // ── Auto-poll for new messages every 4 seconds ──
+  // ── WebSocket for true realtime messages ──
+  const wsRef = useRef(null)
+  const [wsStatus, setWsStatus] = useState('disconnected') // connected | disconnected
+
   useEffect(()=>{
-    if(!sel) return
-    const poll = async () => {
-      try {
-        const lastId = msgs.length > 0 ? Math.max(...msgs.filter(m=>m.id).map(m=>m.id)) : 0
-        if (!lastId) return
-        const qs = new URLSearchParams({since: lastId})
-        if (sel.username) qs.set("username", sel.username)
-        const r = await fetch(`/api/chat/poll/${sel.id}?${qs}`, {headers:{"x-auth-token":token}})
-        const newMsgs = await r.json()
-        if (Array.isArray(newMsgs) && newMsgs.length > 0) {
-          setMsgs(prev => {
-            const existingIds = new Set(prev.filter(m=>m.id).map(m=>m.id))
-            const fresh = newMsgs.filter(m => !existingIds.has(m.id))
-            return fresh.length > 0 ? [...prev, ...fresh] : prev
-          })
-        }
-      } catch(e) { /* silent */ }
+    if (!token) return
+    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const wsUrl = `${proto}//${window.location.host}`
+    let ws
+    let reconnectTimer
+
+    function connect() {
+      ws = new WebSocket(wsUrl)
+      wsRef.current = ws
+
+      ws.onopen = () => {
+        setWsStatus('connected')
+        ws.send(JSON.stringify({ type: 'auth', token }))
+      }
+
+      ws.onmessage = (e) => {
+        try {
+          const data = JSON.parse(e.data)
+          if (data.type === 'auth_ok') {
+            // Subscribe to current chat if any
+            if (wsRef._chatId) ws.send(JSON.stringify({ type: 'subscribe', chatId: wsRef._chatId }))
+          }
+          if (data.type === 'new_message') {
+            setMsgs(prev => {
+              const existingIds = new Set(prev.filter(m=>m.id).map(m=>m.id))
+              if (existingIds.has(data.message.id)) return prev
+              // Only add if it's for the current chat
+              return [...prev, data.message]
+            })
+            // Update chat list last message
+            setChats(prev => prev.map(c =>
+              c.id === data.chatId
+                ? { ...c, lastMsg: data.message.text, date: data.message.date,
+                    unread: data.message.fromMe ? c.unread : (c.unread||0)+1 }
+                : c
+            ))
+          }
+        } catch {}
+      }
+
+      ws.onclose = () => {
+        setWsStatus('disconnected')
+        reconnectTimer = setTimeout(connect, 3000)
+      }
+
+      ws.onerror = () => ws.close()
     }
-    const interval = setInterval(poll, 4000)
-    return () => clearInterval(interval)
-  },[sel?.id, token, msgs])
+
+    connect()
+    return () => {
+      clearTimeout(reconnectTimer)
+      ws?.close()
+    }
+  }, [token])
+
+  // Subscribe/unsubscribe when selected chat changes
+  useEffect(()=>{
+    const ws = wsRef.current
+    if (!ws || ws.readyState !== 1) return
+    if (wsRef._chatId) ws.send(JSON.stringify({ type: 'unsubscribe', chatId: wsRef._chatId }))
+    if (sel?.id) {
+      ws.send(JSON.stringify({ type: 'subscribe', chatId: sel.id }))
+      wsRef._chatId = sel.id
+    }
+  }, [sel?.id])
 
   useEffect(()=>{endRef.current?.scrollIntoView({behavior:"smooth"})},[msgs])
 
@@ -478,7 +525,7 @@ export default function CRMChat({token}) {
             <Avatar name={sel.name} chatId={sel.id} username={sel.username} token={token} size={38}/>
             <div style={{flex:1}}>
               <div style={{fontWeight:700,fontSize:15,color:TG.text,lineHeight:1.2}}>{sel.name}</div>
-              <div style={{fontSize:11,color:TG.green}}>online</div>
+              <div style={{fontSize:11,color:wsStatus==="connected"?TG.green:TG.textMuted}}>{wsStatus==="connected"?"● live":"○ connecting..."}</div>
             </div>
             <StageBadge stage={cStage}/>
             <div style={{display:"flex",gap:6,marginLeft:8}}>
