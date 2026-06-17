@@ -278,6 +278,8 @@ export default function CRMChat({token}) {
   const [showTmpl,setShowTmpl]=useState(false)
   const [tmplCat,setTmplCat]=useState("all")
   const [aiText,setAiText]=useState("")
+  const [aiAnalysis,setAiAnalysis]=useState("")
+  const [aiAlt,setAiAlt]=useState("")
   const [aiLoading,setAiLoading]=useState(false)
   const [showProfile,setShowProfile]=useState(true)
   const [stages,setStages]=useState({})
