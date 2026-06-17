@@ -345,13 +345,16 @@ If client is an agency, VC, launchpad, or has multiple projects: mention bulk pr
       'Client last message: "' + lastClientMsg + '"',
       'What Leon already said in this chat (DO NOT use any of these phrases): ' + (leonSaid || 'nothing'),
       '',
-      'Write ONE reply as Leon. Hard rules:',
-      '1. Max 1 sentence only',
-      '2. ONLY use prices from this list: Press release $240, Sponsored $390, Organic $520, Listicle $1650 (coincu.com) | CMC News Boost $1500 standalone | Bulk: 15% off (partner), 25% off (10+/mo), 35% off (20+/mo), 50% off (30+/mo)',
-      '3. NEVER say $855 or any price not in the list above',
-      '4. CMC News Boost = $1500, there is no other CMC price',
-      '5. Reply directly to: "' + lastClientMsg + '"',
-      '6. No greeting, no sign-off, no long explanation'
+      'Write ONE reply as Leon. Rules:',
+      '1. Max 2 sentences',
+      '2. Read what client is asking — then decide:',
+      '   - "tell me more" / "what is" / "how does" / "explain" → EXPLAIN first, price later. CMC News = your article appears in the News section of a relevant CoinMarketCap token page, reaching users already researching that token. Strong credibility signal.',
+      '   - "how much" / "price" / "cost" → give price directly',
+      '   - "discount" / "bulk" → give discount tier',
+      '   - "interested" / "yes" / "let\'s go" → move to next step',
+      '3. ONLY use prices: PR $240, Sponsored $390, Organic $520, Listicle $1650, CMC Boost $1500. Bulk: 15% partner, 25% 10+/mo, 35% 20+/mo, 50% 30+/mo',
+      '4. NEVER invent prices. NEVER say $855.',
+      '5. No greeting, no sign-off'
     ].filter(Boolean).join('\n')
 
     const r = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
