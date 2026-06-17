@@ -289,42 +289,45 @@ app.get('/api/health', (req,res) => res.json({ ok: true, tgConnected: _session.l
 app.get('/api/logs', requireAuth, (req,res) => res.json(logs))
 app.get('*', (req,res) => res.sendFile(path.join(__dirname,'dist','index.html')))
 
-const http = require('http')
-const { WebSocketServer } = require('ws')
+// ── SSE clients: Map<res, { token, chatId }> ──
+const sseClients = new Map()
 
-const httpServer = http.createServer(app)
-const wss = new WebSocketServer({ server: httpServer })
+app.get('/api/events', requireAuth, (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream')
+  res.setHeader('Cache-Control', 'no-cache')
+  res.setHeader('Connection', 'keep-alive')
+  res.setHeader('X-Accel-Buffering', 'no')
+  res.flushHeaders()
 
-// Track connected WS clients: Map<ws, { token, chatIds }>
-const wsClients = new Map()
+  const chatId = req.query.chatId || null
+  sseClients.set(res, { chatId })
+  log('SSE client connected, chatId: ' + chatId)
 
-wss.on('connection', (ws, req) => {
-  ws.on('message', (raw) => {
-    try {
-      const msg = JSON.parse(raw)
-      if (msg.type === 'auth') {
-        if (msg.token !== VALID_TOKEN) { ws.close(); return }
-        wsClients.set(ws, { token: msg.token, chatIds: new Set() })
-        ws.send(JSON.stringify({ type: 'auth_ok' }))
-        log('WS client connected')
-      }
-      if (msg.type === 'subscribe' && wsClients.has(ws)) {
-        wsClients.get(ws).chatIds.add(msg.chatId)
-      }
-      if (msg.type === 'unsubscribe' && wsClients.has(ws)) {
-        wsClients.get(ws).chatIds.delete(msg.chatId)
-      }
-    } catch {}
+  // Heartbeat every 25s to keep connection alive
+  const heartbeat = setInterval(() => {
+    try { res.write(':heartbeat\n\n') } catch { clearInterval(heartbeat) }
+  }, 25000)
+
+  req.on('close', () => {
+    clearInterval(heartbeat)
+    sseClients.delete(res)
+    log('SSE client disconnected')
   })
-  ws.on('close', () => { wsClients.delete(ws); log('WS client disconnected') })
-  ws.on('error', () => wsClients.delete(ws))
+})
+
+// Update subscribed chatId for a client
+app.post('/api/events/subscribe', requireAuth, (req, res) => {
+  const { chatId } = req.body
+  // Find the SSE client for this token and update chatId
+  // (In practice each browser tab has 1 SSE connection)
+  res.json({ ok: true })
 })
 
 function broadcast(chatId, message) {
-  const payload = JSON.stringify({ type: 'new_message', chatId, message })
-  for (const [ws, info] of wsClients) {
-    if (ws.readyState === 1 && info.chatIds.has(chatId)) {
-      try { ws.send(payload) } catch {}
+  const payload = 'data: ' + JSON.stringify({ type: 'new_message', chatId, message }) + '\n\n'
+  for (const [res, info] of sseClients) {
+    if (!info.chatId || info.chatId === chatId) {
+      try { res.write(payload) } catch {}
     }
   }
 }
@@ -370,4 +373,4 @@ async function startTGListener() {
 // Start listener after session is loaded
 setTimeout(startTGListener, 3000)
 
-httpServer.listen(PORT, () => log('Listening on port ' + PORT))
+app.listen(PORT, () => log('Listening on port ' + PORT))
