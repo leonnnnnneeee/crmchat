@@ -312,6 +312,30 @@ export default function CRMChat({token}) {
       .catch(e=>console.error("msgs:",e)).finally(()=>setLoadMsgs(false))
   },[sel?.id,token])
 
+  // ── Auto-poll for new messages every 4 seconds ──
+  useEffect(()=>{
+    if(!sel) return
+    const poll = async () => {
+      try {
+        const lastId = msgs.length > 0 ? Math.max(...msgs.filter(m=>m.id).map(m=>m.id)) : 0
+        if (!lastId) return
+        const qs = new URLSearchParams({since: lastId})
+        if (sel.username) qs.set("username", sel.username)
+        const r = await fetch(`/api/chat/poll/${sel.id}?${qs}`, {headers:{"x-auth-token":token}})
+        const newMsgs = await r.json()
+        if (Array.isArray(newMsgs) && newMsgs.length > 0) {
+          setMsgs(prev => {
+            const existingIds = new Set(prev.filter(m=>m.id).map(m=>m.id))
+            const fresh = newMsgs.filter(m => !existingIds.has(m.id))
+            return fresh.length > 0 ? [...prev, ...fresh] : prev
+          })
+        }
+      } catch(e) { /* silent */ }
+    }
+    const interval = setInterval(poll, 4000)
+    return () => clearInterval(interval)
+  },[sel?.id, token, msgs])
+
   useEffect(()=>{endRef.current?.scrollIntoView({behavior:"smooth"})},[msgs])
 
   // Send message
