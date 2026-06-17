@@ -354,7 +354,8 @@ If client is an agency, VC, launchpad, or has multiple projects: mention bulk pr
       '   - "interested" / "yes" / "let\'s go" → move to next step',
       '3. ONLY use prices: PR $240, Sponsored $390, Organic $520, Listicle $1650, CMC Boost $1500. Bulk: 15% partner, 25% 10+/mo, 35% 20+/mo, 50% 30+/mo',
       '4. NEVER invent prices. NEVER say $855.',
-      '5. No greeting, no sign-off'
+      '5. No greeting, no sign-off',
+      '6. FORMATTING: Never break a sentence across multiple lines. Only add a line break after a complete sentence ends. Each paragraph must contain full sentences. Do not leave incomplete phrases. Before replying, verify every sentence is complete.'
     ].filter(Boolean).join('\n')
 
     const r = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
@@ -370,7 +371,20 @@ If client is an agency, VC, launchpad, or has multiple projects: mention bulk pr
     let s = r.data.choices[0].message.content.trim()
       .replace(/^["'`]|["'`]$/g, '')
       .replace(/^(Leon:|Reply:|Sure,|Of course,|Great,|Absolutely,)/i, '')
-      .split('\n')[0].trim()
+      .trim()
+    // Fix formatting: join lines that are broken mid-sentence
+    s = s.split('\n')
+      .map(line => line.trim())
+      .filter(line => line.length > 0)
+      .reduce((acc, line) => {
+        if (!acc) return line
+        const prev = acc[acc.length - 1]
+        // If previous line ends with sentence-ending punctuation, keep as new line
+        if (/[.!?]$/.test(prev)) return acc + '\n' + line
+        // Otherwise join with space (broken mid-sentence)
+        return acc + ' ' + line
+      }, '')
+      .trim()
 
     log('AI reply: "' + s.slice(0,80) + '"')
     res.json({ suggestion: s })
