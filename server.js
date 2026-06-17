@@ -273,50 +273,53 @@ Rules:
 - Never sign off with your name
 - Sound like a real person texting on Telegram`
 
-    // Build conversation as proper multi-turn messages for better context understanding
-    const convMessages = []
-
-    // Add context as first user message if we have notes/stage
-    if (notes && notes !== 'none') {
-      convMessages.push({
-        role: 'user',
-        content: `[Context: contact is ${contactName}, stage: ${stage}, notes: ${notes}]`
-      })
-      convMessages.push({
-        role: 'assistant',
-        content: 'Understood, I have the context.'
-      })
-    }
-
-    // Add actual conversation history as alternating messages
+    // Build readable conversation thread
     const history = (messages||[]).slice(-20)
-    for (const msg of history) {
-      convMessages.push({
-        role: msg.fromMe ? 'assistant' : 'user',
-        content: msg.text || ''
-      })
-    }
+    const thread = history.map(m => {
+      const who = m.fromMe ? 'Leon' : contactName
+      return `${who}: ${m.text}`
+    }).join('\n')
 
-    // Final instruction — what to do next
-    convMessages.push({
-      role: 'user',
-      content: `Based on this conversation, write ONE short reply as Leon to send to ${contactName}. Reply directly to their last message. No greeting, no sign-off.`
-    })
+    const lastClientMsg = [...history].reverse().find(m => !m.fromMe)?.text || lastMessage || ''
+
+    const prompt = `You are Leon, BD at Coincu — a crypto PR and media company in Vietnam.
+Products: Coincu PR ($300+), CMC News placement ($800+), Banner Ads.
+
+CONVERSATION HISTORY:
+${thread || '(no previous messages)'}
+
+CONTEXT:
+- Contact: ${contactName}
+- Stage: ${stage}
+- Notes: ${notes || 'none'}
+
+CLIENT'S LAST MESSAGE: "${lastClientMsg}"
+
+YOUR TASK: Write Leon's next reply.
+- Read the ENTIRE conversation above carefully
+- Reply DIRECTLY and SPECIFICALLY to what the client just said
+- If client says they want to buy → ask which service and confirm next step
+- If client asks price → give exact numbers
+- If client raises objection → address it specifically  
+- If client is positive/interested → move toward closing
+- Max 2 sentences, natural Telegram style
+- English only
+- NO greeting, NO "I understand", NO sign-off
+- Do NOT repeat what you already said in the conversation above
+
+REPLY:`
 
     const r = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
       model: 'llama3-70b-8192',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        ...convMessages
-      ],
-      max_tokens: 120,
-      temperature: 0.7,
-      stop: ['\n\n', 'Leon:', 'Client:']
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 100,
+      temperature: 0.6
     }, { headers: { Authorization: `Bearer ${GROQ_KEY}`, 'Content-Type': 'application/json' }})
 
     let suggestion = r.data.choices[0].message.content.trim()
     suggestion = suggestion.replace(/^["'`]|["'`]$/g, '').trim()
-    suggestion = suggestion.replace(/^(Leon:|Me:|Assistant:)/i, '').trim()
+    suggestion = suggestion.replace(/^(Leon:|Reply:|REPLY:)/i, '').trim()
+    suggestion = suggestion.split('\n')[0].trim() // take first line only
 
     log('AI suggest: ' + suggestion.slice(0,80))
     res.json({ suggestion })
@@ -351,6 +354,23 @@ app.get('/api/chat/photo/:id', requireAuth, async (req,res) => {
       res.status(404).send()
     }
   } catch(e) { log('photo: '+e.message); res.status(404).send() }
+})
+
+
+// ── POLL NEW MESSAGES (for realtime) ──
+app.get('/api/chat/poll/:id', requireAuth, async (req,res) => {
+  if (!_session) return res.json([])
+  const sinceId = parseInt(req.query.since) || 0
+  try {
+    const client = await getClient()
+    const entity = await resolveEntity(client, req.params.id, req.query.username)
+    const msgs = await client.getMessages(entity, { limit: 10, minId: sinceId })
+    const results = msgs
+      .map(m => ({ id: m.id, text: m.message, fromMe: m.out, date: m.date }))
+      .filter(m => m.text && m.id > sinceId)
+      .reverse()
+    res.json(results)
+  } catch(e) { res.json([]) }
 })
 
 app.get('/api/health', (req,res) => res.json({ ok: true, tgConnected: _session.length > 10 }))
