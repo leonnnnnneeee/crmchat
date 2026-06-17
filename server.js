@@ -360,8 +360,8 @@ If client is an agency, VC, launchpad, or has multiple projects: mention bulk pr
         { role: 'system', content: 'You are a sales assistant. Follow the user instructions exactly. Never invent prices. Only use the exact prices given.' },
         { role: 'user',   content: userPrompt }
       ],
-      max_tokens: 60,
-      temperature: 0.1
+      max_tokens: 80,
+      temperature: 0.35
     }, { headers: { Authorization: 'Bearer ' + GROQ_KEY, 'Content-Type': 'application/json' }})
 
     let s = r.data.choices[0].message.content.trim()
