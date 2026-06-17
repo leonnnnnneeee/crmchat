@@ -1,4 +1,4 @@
-// v085652
+// v090609
 // v035029
 import { useState, useEffect, useRef, useCallback } from "react"
 
@@ -61,7 +61,7 @@ function Avatar({name, chatId, username, size=40}) {
 
   if (photoUrl && !failed) {
     return (
-      <div style={{width:size,height:size,borderRadius:"50%",overflow:"hidden",flexShrink:0}}>
+      <div style={{width:size,height:size,borderRadius:"50%",overflow:"hidden",flexShrink:0,background:colors[colorIdx]}}>
         <img src={photoUrl} alt={name} width={size} height={size}
           style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}
           onError={()=>setFailed(true)}/>
@@ -204,7 +204,7 @@ const STYLES = `
 .lc{background:${TG.panel};border-right:1px solid ${TG.border};display:flex;flex-direction:column;overflow:hidden}
 .sinp{width:100%;background:${TG.elevated};border:none;border-radius:20px;padding:8px 14px 8px 34px;color:${TG.text};font-size:13px;outline:none;font-family:inherit}
 .sinp::placeholder{color:${TG.textMuted}}
-.ci{display:flex;gap:10px;padding:10px 14px;cursor:pointer;align-items:center;transition:background .1s;border-bottom:1px solid ${TG.border};position:relative}
+.ci{display:flex;gap:12px;padding:10px 16px;cursor:pointer;align-items:center;transition:background .1s;border-bottom:1px solid ${TG.border};position:relative}
 .ci:hover{background:${TG.elevated}}
 .ci.sel{background:${TG.blue}22;border-left:3px solid ${TG.blue}}
 .mc{display:flex;flex-direction:column;background:${TG.bg};overflow:hidden}
@@ -217,7 +217,7 @@ const STYLES = `
 .msgs::-webkit-scrollbar-thumb{background:${TG.elevated};border-radius:2px}
 .bbl{display:inline-block;width:fit-content;max-width:72%;min-width:80px;padding:8px 12px 4px;line-height:1.55;font-size:14px;cursor:pointer;white-space:normal;word-break:break-word;overflow-wrap:break-word}
 .bbl:hover{opacity:.92}
-.bbl.in{background:${TG.msgIn};color:${TG.text};border-radius:14px 14px 14px 3px;border:1px solid ${TG.elevated}}
+.bbl.in{background:#182533;color:${TG.text};border-radius:14px 14px 14px 3px}
 .bbl.out{background:${TG.msgOut};color:#fff;border-radius:14px 14px 3px 14px}
 .bbl.del{opacity:.4;font-style:italic}
 .bbl.rpl{border-left:3px solid rgba(124,58,237,.6);padding-left:10px}
@@ -496,9 +496,8 @@ export default function CRMChat({token}) {
             const isSel=sel?.id===chat.id
             return(
               <div key={chat.id} className={`ci${isSel?" sel":""}`} onClick={()=>setSel(chat)}>
-                <div style={{position:"relative"}}>
-                  <Avatar name={chat.name} chatId={chat.id} username={chat.username} size={44}/>
-                  {chat.unread>0&&<div style={{position:"absolute",bottom:-1,right:-1,background:TG.green,color:"#fff",fontSize:10,fontWeight:700,padding:"1px 5px",borderRadius:10,minWidth:17,textAlign:"center"}}>{chat.unread>99?"99+":chat.unread}</div>}
+                <div style={{position:"relative",flexShrink:0}}>
+                  <Avatar name={chat.name} chatId={chat.id} username={chat.username} size={46}/>
                 </div>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:2}}>
@@ -533,7 +532,9 @@ export default function CRMChat({token}) {
             <Avatar name={sel.name} chatId={sel.id} username={sel.username} size={38}/>
             <div style={{flex:1}}>
               <div style={{fontWeight:700,fontSize:15,color:TG.text,lineHeight:1.2}}>{sel.name}</div>
-              <div style={{fontSize:11,color:sel?.isUser?TG.green:TG.textSec}}>{sel?.isUser?"● online":sel?.memberCount?(sel.memberCount+" members"):(sel?.isGroup?"Group":sel?.isChannel?"Channel":"")}</div>
+              <div style={{fontSize:12,color:sel?.isUser?TG.green:TG.textSec}}>
+              {sel?.memberCount ? sel.memberCount+' members' : sel?.isUser ? '● online' : sel?.isChannel ? 'Channel' : 'Group'}
+            </div>
             </div>
             <StageBadge stage={cStage}/>
             <div style={{display:"flex",gap:6,marginLeft:8}}>
