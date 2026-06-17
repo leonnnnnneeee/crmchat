@@ -1,4 +1,4 @@
-// v20260617_080210
+// v080942
 // v035029
 import { useState, useEffect, useRef, useCallback } from "react"
 
@@ -322,6 +322,18 @@ export default function CRMChat({token}) {
   useEffect(()=>{endRef.current?.scrollIntoView({behavior:"smooth"})},[msgs])
 
   // Send message — send then reload (no polling = no duplicates)
+  async function loadMessages(chat) {
+    if(!chat) return
+    setLoadMsgs(true)
+    try {
+      const qs = chat.username ? '?username='+encodeURIComponent(chat.username) : ''
+      const r = await fetch('/api/chat/messages/'+chat.id+qs, {headers:{"x-auth-token":token}})
+      const d = await r.json()
+      if(Array.isArray(d)) setMsgs(d)
+    } catch(e) { console.error("loadMsgs:",e) }
+    setLoadMsgs(false)
+  }
+
   async function send(){
     const text=input.trim(); if(!text||!sel) return
     setSending(true); setInput(""); setReplyTo(null)
