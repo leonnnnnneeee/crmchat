@@ -247,7 +247,7 @@ app.post('/api/ai/suggest', requireAuth, async (req,res) => {
 
   if (!GROQ_KEY) return res.json({ suggestion: ruleBased() })
 
-  const SYSTEM_PROMPT = `You are Coincu's AI Sales Assistant.
+  const SYSTEM_PROMPT = `You are Coincu's professional BD Sales Assistant.
 
 Read all information below carefully before answering. Use ONLY this knowledge base — do not invent prices, services, or guarantees.
 
