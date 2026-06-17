@@ -241,22 +241,7 @@ Always reply to what the client JUST said.`
         },
         {
           role: 'user',
-          content: `My conversation with ${contactName} (stage: ${stage}):
----
-${thread}
----
-Their latest message: "${lastClientMsg}"
-
-Write my next reply. Strict rules:
-- 1-2 sentences ONLY
-- Reply DIRECTLY and SPECIFICALLY to the LAST message: "${lastClientMsg}"
-- "tell me more" or "what is it" → explain briefly: Coincu PR = article on coincu.com (500K readers, SEO), CMC News = article on CoinMarketCap (top crypto site, credibility). Then ask: which matters more to them right now?
-- "sounds interesting" / "interested" → confirm which service, offer to send proposal today
-- "both" → bundle offer $950, ask for proposal
-- "how much" / "price" → CMC News $800+, Coincu PR $300+, bundle $950
-- "yes/ok/sure" → move forward, ask which service to start
-- CRITICAL: Do NOT repeat any sentence Leon already said above
-- English only, no greeting, no sign-off`
+          content: 'Conversation with ' + contactName + ' (stage: ' + stage + '):\n' + thread + '\n\nClient just said: "' + lastClientMsg + '"\nThings Leon already said: ' + history.filter(m=>m.fromMe).map(m=>'"'+m.text+'"').join(', ') + '\n\nWrite Leon next reply. Rules: (1) reply directly to "' + lastClientMsg + '", (2) if they say tell me more/what is it: explain Coincu PR = coincu.com article 500K readers SEO, CMC News = CoinMarketCap article top crypto site credibility, ask which goal matters, (3) if they complain about repetition: apologize briefly then say something completely different, (4) NEVER use any sentence Leon already said, (5) English only, max 2 sentences, no greeting, no sign-off'
         }
       ],
       max_tokens: 80,
