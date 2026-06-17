@@ -317,12 +317,13 @@ export default function CRMChat({token}) {
       .catch(e=>console.error("msgs:",e)).finally(()=>setLoadMsgs(false))
   },[sel?.id,token])
 
-  // ── Poll new messages every 2s ──
+  // ── Poll new messages every 3s ──
   const msgsRef = useRef([])
   const selRef  = useRef(null)
   const aiLoadingRef = useRef(false)
   useEffect(()=>{ msgsRef.current = msgs }, [msgs])
   useEffect(()=>{ selRef.current  = sel  }, [sel])
+  useEffect(()=>{ aiLoadingRef.current = aiLoading }, [aiLoading])
 
   useEffect(()=>{
     if(!sel) return
@@ -330,63 +331,52 @@ export default function CRMChat({token}) {
       const s = selRef.current
       if(!s) return
       const all = msgsRef.current
-      const realMsgs = all.filter(m => m.id && m.id > 0 && !m.pending)
-      if(!realMsgs.length) return
-      const lastId = Math.max(...realMsgs.map(m=>m.id))
+      // Get highest real server ID (positive only)
+      const serverMsgs = all.filter(m => m.id && m.id > 0)
+      if(!serverMsgs.length) return
+      const lastId = Math.max(...serverMsgs.map(m=>m.id))
       try {
         const qs = 'since='+lastId+(s.username?'&username='+encodeURIComponent(s.username):'')
         const r  = await fetch('/api/chat/poll/'+s.id+'?'+qs, {headers:{"x-auth-token":token}})
         if(!r.ok) return
         const fresh = await r.json()
         if(!Array.isArray(fresh) || !fresh.length) return
-
         setMsgs(prev => {
-          // Deduplicate by message ID
-          const existIds = new Set(prev.filter(m=>m.id&&m.id>0).map(m=>m.id))
-          const truly_new = fresh.filter(m => m.id > 0 && !existIds.has(m.id))
-          if(!truly_new.length) return prev
-
-          // Remove optimistic messages that are now confirmed by server
-          const confirmedTexts = new Set(truly_new.filter(m=>m.fromMe).map(m=>m.text))
-          const withoutPending = prev.filter(m => {
-            if(m.id && m.id < 0 && m.fromMe && confirmedTexts.has(m.text)) return false
-            return true
-          })
-
-          // Auto-trigger AI on new incoming message
-          const hasIncoming = truly_new.some(m=>!m.fromMe)
-          if(hasIncoming && !aiLoadingRef.current) {
-            setTimeout(()=>getAI(true), 1000)
+          const knownIds = new Set(prev.filter(m=>m.id&&m.id>0).map(m=>m.id))
+          const newMsgs  = fresh.filter(m => m.id > 0 && !knownIds.has(m.id))
+          if(!newMsgs.length) return prev
+          // Auto-trigger AI on incoming message
+          if(newMsgs.some(m=>!m.fromMe) && !aiLoadingRef.current) {
+            setTimeout(()=>getAI(true), 800)
           }
-
-          return [...withoutPending, ...truly_new]
+          return [...prev, ...newMsgs]
         })
       } catch {}
-    }, 2000)
+    }, 3000)
     return ()=>clearInterval(iv)
   },[sel?.id, token])
 
 
   useEffect(()=>{endRef.current?.scrollIntoView({behavior:"smooth"})},[msgs])
 
-  // Send message
+  // Send message — no optimistic, reload after send to avoid duplicates
   async function send(){
     const text=input.trim(); if(!text||!sel) return
-    setSending(true)
-    const tempId = -Date.now() // negative = optimistic, never conflicts with real server IDs
-    const opt = {id:tempId, text, fromMe:true, date:Math.floor(Date.now()/1000), pending:true}
-    setMsgs(p=>[...p, opt]); setInput(""); setReplyTo(null)
+    setSending(true); setInput(""); setReplyTo(null)
     try {
       const r = await fetch("/api/chat/send",{
         method:"POST", headers:{"Content-Type":"application/json","x-auth-token":token},
         body:JSON.stringify({chatId:sel.id, text})
       })
       if(!r.ok) throw new Error("Send failed")
-      // Mark as sent — poll will replace with real server message
-      setMsgs(p=>p.map(m=>m.id===tempId ? {...m, pending:false} : m))
+      // Reload messages after send — simplest way to avoid all duplicate issues
+      const qs = sel.username ? '?username='+encodeURIComponent(sel.username) : ''
+      const r2 = await fetch('/api/chat/messages/'+sel.id+qs, {headers:{"x-auth-token":token}})
+      const msgs2 = await r2.json()
+      if(Array.isArray(msgs2)) setMsgs(msgs2)
     } catch(e) {
-      setMsgs(p=>p.filter(m=>m.id!==tempId))
       setInput(text)
+      console.error("Send failed:", e)
     }
     setSending(false)
   }
@@ -424,8 +414,20 @@ export default function CRMChat({token}) {
     setCtxMenu({x:e.clientX,y:e.clientY,msg,idx})
   }
 
-  function deleteMsg(idx){
+  async function deleteMsg(idx){
+    const msg = msgs[idx]
+    if(!msg) return
+    // Optimistically mark as deleted in UI
     setMsgs(p=>p.map((m,i)=>i===idx?{...m,deleted:true,text:"This message was deleted"}:m))
+    // Call API to delete on Telegram (only works for our own messages)
+    if(msg.id && msg.id > 0 && msg.fromMe) {
+      try {
+        await fetch("/api/chat/delete",{
+          method:"POST", headers:{"Content-Type":"application/json","x-auth-token":token},
+          body:JSON.stringify({chatId:sel.id, messageId:msg.id})
+        })
+      } catch(e) { console.error("Delete failed:", e) }
+    }
   }
 
   function copyMsg(text){
