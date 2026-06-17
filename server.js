@@ -357,24 +357,89 @@ app.get('/api/chat/photo/:id', requireAuth, async (req,res) => {
 })
 
 
-// ── POLL NEW MESSAGES (for realtime) ──
-app.get('/api/chat/poll/:id', requireAuth, async (req,res) => {
-  if (!_session) return res.json([])
-  const sinceId = parseInt(req.query.since) || 0
-  try {
-    const client = await getClient()
-    const entity = await resolveEntity(client, req.params.id, req.query.username)
-    const msgs = await client.getMessages(entity, { limit: 10, minId: sinceId })
-    const results = msgs
-      .map(m => ({ id: m.id, text: m.message, fromMe: m.out, date: m.date }))
-      .filter(m => m.text && m.id > sinceId)
-      .reverse()
-    res.json(results)
-  } catch(e) { res.json([]) }
-})
-
 app.get('/api/health', (req,res) => res.json({ ok: true, tgConnected: _session.length > 10 }))
 app.get('/api/logs', requireAuth, (req,res) => res.json(logs))
 app.get('*', (req,res) => res.sendFile(path.join(__dirname,'dist','index.html')))
 
-app.listen(PORT, () => log('Listening on port '+PORT))
+const http = require('http')
+const { WebSocketServer } = require('ws')
+
+const httpServer = http.createServer(app)
+const wss = new WebSocketServer({ server: httpServer })
+
+// Track connected WS clients: Map<ws, { token, chatIds }>
+const wsClients = new Map()
+
+wss.on('connection', (ws, req) => {
+  ws.on('message', (raw) => {
+    try {
+      const msg = JSON.parse(raw)
+      if (msg.type === 'auth') {
+        if (msg.token !== VALID_TOKEN) { ws.close(); return }
+        wsClients.set(ws, { token: msg.token, chatIds: new Set() })
+        ws.send(JSON.stringify({ type: 'auth_ok' }))
+        log('WS client connected')
+      }
+      if (msg.type === 'subscribe' && wsClients.has(ws)) {
+        wsClients.get(ws).chatIds.add(msg.chatId)
+      }
+      if (msg.type === 'unsubscribe' && wsClients.has(ws)) {
+        wsClients.get(ws).chatIds.delete(msg.chatId)
+      }
+    } catch {}
+  })
+  ws.on('close', () => { wsClients.delete(ws); log('WS client disconnected') })
+  ws.on('error', () => wsClients.delete(ws))
+})
+
+function broadcast(chatId, message) {
+  const payload = JSON.stringify({ type: 'new_message', chatId, message })
+  for (const [ws, info] of wsClients) {
+    if (ws.readyState === 1 && info.chatIds.has(chatId)) {
+      try { ws.send(payload) } catch {}
+    }
+  }
+}
+
+// Start Telegram event listener for incoming messages
+async function startTGListener() {
+  if (!_session || _session.length < 10) {
+    setTimeout(startTGListener, 5000)
+    return
+  }
+  try {
+    const { TelegramClient, events } = require('telegram')
+    const { StringSession } = require('telegram/sessions')
+    const listenerClient = new TelegramClient(
+      new StringSession(_session), TG_API_ID, TG_API_HASH,
+      { connectionRetries: 5 }
+    )
+    await listenerClient.connect()
+    log('✅ TG event listener started')
+
+    listenerClient.addEventHandler(async (event) => {
+      try {
+        const msg = event.message
+        if (!msg || !msg.text) return
+        const chatId = msg.chatId?.toString()
+        if (!chatId) return
+        const message = {
+          id: msg.id,
+          text: msg.text,
+          fromMe: msg.out,
+          date: msg.date
+        }
+        broadcast(chatId, message)
+      } catch(e) { log('TG event error: ' + e.message) }
+    }, new events.NewMessage({}))
+
+  } catch(e) {
+    log('TG listener error: ' + e.message + ' — retrying in 10s')
+    setTimeout(startTGListener, 10000)
+  }
+}
+
+// Start listener after session is loaded
+setTimeout(startTGListener, 3000)
+
+httpServer.listen(PORT, () => log('Listening on port ' + PORT))
