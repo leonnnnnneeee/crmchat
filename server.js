@@ -199,62 +199,71 @@ app.post('/api/chat/send', requireAuth, async (req,res) => {
 
 // ── AI SUGGEST (Groq) ──
 app.post('/api/ai/suggest', requireAuth, async (req,res) => {
-  const { contactName, lastMessage, lastMessageFromMe, messages, stage, notes } = req.body
-
-  // Build conversation thread
+  const { contactName, lastMessage, messages, stage, notes } = req.body
   const history = (messages||[]).slice(-20)
-  const lastClientMsg = (lastMessage || [...history].reverse().find(m => !m.fromMe)?.text || '').trim()
-  const thread = history.map(m => `${m.fromMe ? 'Leon' : (contactName||'Client')}: ${m.text}`).join('\n')
+  const lastClientMsg = (lastMessage||'').trim()
 
-  log('AI suggest — last client: "' + lastClientMsg + '"')
+  // What Leon already said — pass to model to prevent repetition
+  const leonLines = history.filter(m=>m.fromMe).map(m=>m.text).filter(Boolean)
+  const leonSaid  = leonLines.join(' | ')
+  const thread    = history.map(m=>(m.fromMe?'Leon':'Client')+': '+m.text).join('\n')
 
-  // Smart English rule-based fallback
+  // Rule-based fallback
   function ruleBased() {
-    const msg = lastClientMsg.toLowerCase()
-    const ctx = msg + ' ' + history.slice(-5).map(m=>m.text||'').join(' ').toLowerCase()
-    if (ctx.match(/\bboth\b/)) return "We can do both — Coincu PR + CMC News bundle starts around $950. Want me to put together a quick proposal?"
-    if (ctx.match(/credib/)) return "CMC News is the strongest credibility play — content goes live directly on CoinMarketCap. Want me to send the rate card?"
-    if (ctx.match(/aware/)) return "Coincu PR reaches 500K+ monthly readers — great for announcement visibility and SEO. Want the rate card?"
-    if (ctx.match(/user|growth|community/)) return "Makes sense. Are you also thinking about visibility for the next public milestone, or is that further down the road?"
-    if (ctx.match(/price|cost|how much|rate|bao nhiêu|giá/)) return "CMC News starts at $800 and Coincu PR from $300 — I can bundle both at $950. Want a full proposal?"
-    if (ctx.match(/budget|expensive|afford|ngân sách/)) return "Totally understand — are you raising soon, or is this more of a timing issue for next quarter?"
-    if (ctx.match(/raising|round|investor|gọi vốn/)) return "Good timing — investors do check media presence. Would it make sense to have Coincu coverage ready before the round closes?"
-    if (ctx.match(/tge|launch|listing|mainnet/)) return "Perfect timing — CMC News right before a TGE really strengthens the narrative. Want me to walk you through what that looks like?"
-    if (ctx.match(/yes|ok|sure|sounds good|interested|👍|okay|perfect/)) return "Perfect — I'll put together a quick proposal. Should I include both Coincu PR and CMC News, or just one to start?"
-    if (ctx.match(/buy|purchase|want.*service|order/)) return "Great — which would you like to start with: Coincu PR, CMC News, or a bundle of both? I can have a proposal ready today."
-    if (stage === 'Negotiating') return "Based on what we've discussed, a Coincu PR + CMC News bundle makes the most sense. Want me to put together a proposal?"
-    return "Got it — to make sure I recommend the right fit, is the main goal awareness, credibility, or user growth?"
+    const m = lastClientMsg.toLowerCase()
+    if (/same thing|repeat|again|always say/.test(m))
+      return "Sorry about that — let me be specific. Coincu PR is an article on coincu.com (500K readers/month, great for SEO). CMC News is content on CoinMarketCap — one of the top crypto sites, stronger credibility signal. Which of these fits your goal right now?"
+    if (/tell me more|what is it|what are|explain|more detail|how does/.test(m))
+      return "Coincu PR = article on coincu.com, 500K crypto readers monthly, good for SEO and announcements. CMC News = content directly on CoinMarketCap, top crypto site, much stronger credibility signal. Which matters more for you right now?"
+    if (/sounds interesting|interested|sounds good|nice/.test(m))
+      return "Great — want me to put together a quick proposal? I can have it ready today. Should I include Coincu PR, CMC News, or both?"
+    if (/yes|ok|sure|okay|perfect|go ahead/.test(m))
+      return "Perfect — I'll prepare the proposal now. Can you share your project name and website so I can tailor it?"
+    if (/both/.test(m))
+      return "Coincu PR + CMC News bundle starts around $950. Want me to send a full proposal with the breakdown?"
+    if (/price|cost|how much|rate|budget/.test(m))
+      return "CMC News starts at $800, Coincu PR from $300. Bundle of both around $950. Want me to send the full rate card?"
+    if (/raising|investor|round|funding/.test(m))
+      return "Good timing — investors do check media presence. CMC News on CoinMarketCap would be the strongest signal before a raise. Want details?"
+    if (/tge|launch|listing|mainnet/.test(m))
+      return "Perfect timing for a visibility push. CMC News right before a TGE is one of the strongest credibility moves. Want me to walk you through it?"
+    return "What's the main goal right now — awareness, credibility, or user growth? That'll help me recommend the right fit."
   }
 
   if (!GROQ_KEY) return res.json({ suggestion: ruleBased() })
 
   try {
+    const userPrompt = [
+      'Conversation:',
+      thread,
+      '',
+      'Client last message: "' + lastClientMsg + '"',
+      'What Leon already said (DO NOT repeat any of these): ' + (leonSaid || 'nothing yet'),
+      '',
+      'Write Leon\'s next reply:',
+      '- Max 2 sentences, English only',
+      '- Reply SPECIFICALLY to: "' + lastClientMsg + '"',
+      '- If client says tell me more/what is it: explain Coincu PR (coincu.com, 500K readers, SEO) and CMC News (CoinMarketCap, credibility), ask which goal matters',
+      '- If client complains about repetition: apologize briefly, say something COMPLETELY different',
+      '- If client says yes/interested: move to proposal, ask for project name',
+      '- NEVER use any phrase from "What Leon already said" above',
+      '- No greeting (Hi/Hey), no sign-off, no "Makes sense", no "Got it"'
+    ].join('\n')
+
     const r = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
       model: 'llama3-70b-8192',
       messages: [
-        {
-          role: 'system',
-          content: `You are Leon, BD at Coincu — crypto PR company in Vietnam.
-Products: Coincu PR ($300+), CMC News on CoinMarketCap ($800+), Banner Ads.
-Write short, natural Telegram replies. Never repeat your previous messages. Never generic.
-Always reply to what the client JUST said.`
-        },
-        {
-          role: 'user',
-          content: 'Conversation with ' + contactName + ' (stage: ' + stage + '):\n' + thread + '\n\nClient just said: "' + lastClientMsg + '"\nThings Leon already said: ' + history.filter(m=>m.fromMe).map(m=>'"'+m.text+'"').join(', ') + '\n\nWrite Leon next reply. Rules: (1) reply directly to "' + lastClientMsg + '", (2) if they say tell me more/what is it: explain Coincu PR = coincu.com article 500K readers SEO, CMC News = CoinMarketCap article top crypto site credibility, ask which goal matters, (3) if they complain about repetition: apologize briefly then say something completely different, (4) NEVER use any sentence Leon already said, (5) English only, max 2 sentences, no greeting, no sign-off'
-        }
+        { role: 'system', content: 'You are Leon, BD at Coincu — crypto PR company in Vietnam. Be concise and natural.' },
+        { role: 'user', content: userPrompt }
       ],
-      max_tokens: 80,
-      temperature: 0.4
-    }, { headers: { Authorization: `Bearer ${GROQ_KEY}`, 'Content-Type': 'application/json' }})
+      max_tokens: 100,
+      temperature: 0.5
+    }, { headers: { Authorization: 'Bearer ' + GROQ_KEY, 'Content-Type': 'application/json' }})
 
-    let suggestion = r.data.choices[0].message.content.trim()
-      .replace(/^["'`]|["'`]$/g, '')
-      .replace(/^(Leon:|Reply:|Sure,|Of course,|Great,|Makes sense,)/i, '')
-      .split('\n')[0].trim()
-
-    log('AI reply: "' + suggestion.slice(0,80) + '"')
-    res.json({ suggestion })
+    let s = r.data.choices[0].message.content.trim()
+    s = s.replace(/^["'`]|["'`]$/g,'').replace(/^(Leon:|Reply:)/i,'').split('\n')[0].trim()
+    log('AI: ' + s.slice(0,80))
+    res.json({ suggestion: s })
   } catch(e) {
     log('AI error: ' + e.message)
     res.json({ suggestion: ruleBased() })
@@ -262,8 +271,6 @@ Always reply to what the client JUST said.`
 })
 
 
-
-// ── POLL new messages since a given message ID ──
 app.get('/api/chat/poll/:id', requireAuth, async (req, res) => {
   if (!_session) return res.json([])
   const since = parseInt(req.query.since) || 0
