@@ -57,7 +57,10 @@ function Login({ onLogin }) {
     <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:TG.bg}}>
       <div style={{width:360,padding:"40px 32px",background:TG.panel,borderRadius:16,border:`1px solid ${TG.elevated}`}}>
         <div style={{textAlign:"center",marginBottom:32}}>
-          <div style={{width:72,height:72,background:TG.blueLight,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:32,margin:"0 auto 16px"}}>⚡</div>
+          <img src="https://pbs.twimg.com/profile_images/1902957820418592768/xnPqDY4i_400x400.jpg"
+            alt="Coincu" width={72} height={72}
+            style={{borderRadius:"50%",objectFit:"cover",display:"block",margin:"0 auto 16px"}}
+            onError={e=>{e.target.style.display="none"}}/>
           <div style={{fontWeight:700,fontSize:22,color:TG.text}}>Coincu CRM</div>
           <div style={{fontSize:14,color:TG.textSec,marginTop:6}}>Sign in to your account</div>
         </div>
@@ -248,7 +251,10 @@ export default function App() {
       {/* Top bar */}
       <div style={{height:56,background:TG.panel,borderBottom:`1px solid ${TG.border}`,display:"flex",alignItems:"center",padding:"0 20px",justifyContent:"space-between",flexShrink:0,zIndex:10}}>
         <div style={{display:"flex",alignItems:"center",gap:12}}>
-          <div style={{width:34,height:34,background:TG.blueLight,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,fontWeight:700}}>⚡</div>
+          <img src="https://pbs.twimg.com/profile_images/1902957820418592768/xnPqDY4i_400x400.jpg"
+            alt="Coincu" width={36} height={36}
+            style={{borderRadius:"50%",objectFit:"cover",flexShrink:0}}
+            onError={e=>{e.target.style.display="none"}}/>
           <div>
             <div style={{fontWeight:700,fontSize:15,color:TG.text,lineHeight:1.2}}>Coincu CRM</div>
             <div style={{fontSize:11,color:TG.green}}>● Telegram connected</div>
