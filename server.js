@@ -249,14 +249,14 @@ Their latest message: "${lastClientMsg}"
 
 Write my next reply. Strict rules:
 - 1-2 sentences ONLY
-- Reply DIRECTLY to "${lastClientMsg}"
-- "both" → offer bundle ($950 for PR+CMC News), ask if they want proposal
-- "credibility" → CMC News is best for credibility (on CoinMarketCap)
-- "awareness" → Coincu PR (500K readers)  
-- "yes/ok/sure" → move to proposal, ask which service
-- price question → give exact numbers
-- Do NOT repeat what Leon already said in the conversation above
-- English only, no greeting, no "Makes sense", no sign-off`
+- Reply DIRECTLY and SPECIFICALLY to the LAST message: "${lastClientMsg}"
+- "tell me more" or "what is it" → explain briefly: Coincu PR = article on coincu.com (500K readers, SEO), CMC News = article on CoinMarketCap (top crypto site, credibility). Then ask: which matters more to them right now?
+- "sounds interesting" / "interested" → confirm which service, offer to send proposal today
+- "both" → bundle offer $950, ask for proposal
+- "how much" / "price" → CMC News $800+, Coincu PR $300+, bundle $950
+- "yes/ok/sure" → move forward, ask which service to start
+- CRITICAL: Do NOT repeat any sentence Leon already said above
+- English only, no greeting, no sign-off`
         }
       ],
       max_tokens: 80,
