@@ -273,55 +273,54 @@ Rules:
 - Never sign off with your name
 - Sound like a real person texting on Telegram`
 
-    // Build readable conversation thread
+    // Build full conversation thread
     const history = (messages||[]).slice(-20)
-    const thread = history.map(m => {
-      const who = m.fromMe ? 'Leon' : contactName
-      return `${who}: ${m.text}`
-    }).join('\n')
-
     const lastClientMsg = [...history].reverse().find(m => !m.fromMe)?.text || lastMessage || ''
+    const thread = history.map(m => `${m.fromMe ? 'Leon' : contactName}: ${m.text}`).join('\n')
 
-    const prompt = `You are Leon, BD at Coincu — a crypto PR and media company in Vietnam.
-Products: Coincu PR ($300+), CMC News placement ($800+), Banner Ads.
+    // Use multi-turn messages — model sees exact conversation flow
+    const groqMessages = [
+      {
+        role: 'system',
+        content: `You are Leon, BD at Coincu — crypto PR company in Vietnam.
+Services: Coincu PR ($300+), CMC News ($800+), Banner Ads.
+Style: short, direct, natural Telegram. Never salesy. Never repeat yourself.
+You MUST reply specifically to the client's latest message.`
+      },
+      {
+        role: 'user',
+        content: `Here is my conversation with ${contactName} (stage: ${stage}):
 
-CONVERSATION HISTORY:
-${thread || '(no previous messages)'}
+${thread}
 
-CONTEXT:
-- Contact: ${contactName}
-- Stage: ${stage}
-- Notes: ${notes || 'none'}
+Their latest message is: "${lastClientMsg}"
 
-CLIENT'S LAST MESSAGE: "${lastClientMsg}"
-
-YOUR TASK: Write Leon's next reply.
-- Read the ENTIRE conversation above carefully
-- Reply DIRECTLY and SPECIFICALLY to what the client just said
-- If client says they want to buy → ask which service and confirm next step
-- If client asks price → give exact numbers
-- If client raises objection → address it specifically  
-- If client is positive/interested → move toward closing
-- Max 2 sentences, natural Telegram style
-- English only
-- NO greeting, NO "I understand", NO sign-off
-- Do NOT repeat what you already said in the conversation above
-
-REPLY:`
+Write my next reply. Rules:
+- 1-2 sentences max
+- Reply DIRECTLY to "${lastClientMsg}" — not generic
+- If they said "credibility" → pitch CMC News as credibility tool
+- If they said "awareness" → pitch Coincu PR  
+- If they said "users/growth" → ask about their current channels
+- If they want to buy → ask which service + send proposal
+- If they asked price → give real numbers
+- English only, no greeting, no sign-off
+- Sound like texting, not email`
+      }
+    ]
 
     const r = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
       model: 'llama3-70b-8192',
-      messages: [{ role: 'user', content: prompt }],
-      max_tokens: 100,
-      temperature: 0.6
+      messages: groqMessages,
+      max_tokens: 80,
+      temperature: 0.5
     }, { headers: { Authorization: `Bearer ${GROQ_KEY}`, 'Content-Type': 'application/json' }})
 
     let suggestion = r.data.choices[0].message.content.trim()
     suggestion = suggestion.replace(/^["'`]|["'`]$/g, '').trim()
-    suggestion = suggestion.replace(/^(Leon:|Reply:|REPLY:)/i, '').trim()
-    suggestion = suggestion.split('\n')[0].trim() // take first line only
+    suggestion = suggestion.replace(/^(Leon:|Reply:|REPLY:|Sure,|Of course,)/i, '').trim()
+    suggestion = suggestion.split('\n')[0].trim()
 
-    log('AI suggest: ' + suggestion.slice(0,80))
+    log('AI suggest for "' + lastClientMsg.slice(0,30) + '": ' + suggestion.slice(0,60))
     res.json({ suggestion })
   } catch(e) {
     log('AI suggest error: ' + e.message)
