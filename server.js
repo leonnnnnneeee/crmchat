@@ -278,7 +278,7 @@ app.post('/api/ai/suggest', requireAuth, async (req,res) => {
     ].join('\n')
 
     const r = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
-      model: 'llama3-70b-8192',
+      model: 'llama-3.3-70b-versatile',
       messages: [
         { role: 'system', content: 'You are Leon, BD at Coincu — crypto PR company in Vietnam. Be concise and natural.' },
         { role: 'user', content: userPrompt }
