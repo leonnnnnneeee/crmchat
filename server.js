@@ -289,6 +289,38 @@ Write ONE short reply as Leon. Rules:
   }
 })
 
+
+// ── PROFILE PHOTO ──
+app.get('/api/chat/photo/:id', requireAuth, async (req,res) => {
+  if (!_session) return res.status(401).json({ error: 'Not connected' })
+  try {
+    const { TelegramClient } = require('telegram')
+    const { StringSession } = require('telegram/sessions')
+    const client = new TelegramClient(new StringSession(_session), TG_API_ID, TG_API_HASH, { connectionRetries: 3 })
+    await client.connect()
+    let entity
+    const username = req.query.username
+    try {
+      entity = username ? await client.getEntity(username) : await client.getEntity(BigInt(req.params.id))
+    } catch { entity = await client.getEntity(parseInt(req.params.id)) }
+    
+    const photos = await client.getProfilePhotos(entity, { limit: 1 })
+    if (!photos || photos.length === 0) {
+      await client.disconnect()
+      return res.status(404).json({ error: 'No photo' })
+    }
+    const buffer = await client.downloadProfilePhoto(entity, { isBig: false })
+    await client.disconnect()
+    if (buffer && buffer.length > 0) {
+      res.setHeader('Content-Type', 'image/jpeg')
+      res.setHeader('Cache-Control', 'public, max-age=3600')
+      res.send(Buffer.from(buffer))
+    } else {
+      res.status(404).json({ error: 'No photo data' })
+    }
+  } catch(e) { log('photo: '+e.message); res.status(404).json({ error: e.message }) }
+})
+
 app.get('/api/health', (req,res) => res.json({ ok: true, tgConnected: _session.length > 10 }))
 app.get('/api/logs', requireAuth, (req,res) => res.json(logs))
 app.get('*', (req,res) => res.sendFile(path.join(__dirname,'dist','index.html')))
