@@ -163,8 +163,11 @@ app.get('/api/chat/list', requireAuth, async (req,res) => {
       unread: d.unreadCount || 0,
       date: d.message?.date,
       isUser: d.isUser,
+      isGroup: d.isGroup || false,
+      isChannel: d.isChannel || false,
       username: d.entity?.username || null,
       accessHash: d.entity?.accessHash?.toString() || null,
+      memberCount: d.entity?.participantsCount || d.entity?.membersCount || null,
     }))
     res.json(chats)
   } catch(e) { log('chatList: '+e.message); res.json([]) }
@@ -464,6 +467,98 @@ app.post('/api/chat/delete', requireAuth, async (req, res) => {
     log('delete msg: ' + e.message)
     res.status(500).json({ error: e.message })
   }
+})
+
+
+// ── PROFILE PHOTO (cached) ──
+const photoCache = {}
+app.get('/api/chat/photo/:id', requireAuth, async (req, res) => {
+  if (!_session) return res.status(404).send()
+  const cacheKey = req.params.id
+  if (photoCache[cacheKey]) {
+    res.setHeader('Content-Type', 'image/jpeg')
+    res.setHeader('Cache-Control', 'public, max-age=86400')
+    return res.send(photoCache[cacheKey])
+  }
+  const { TelegramClient } = require('telegram')
+  const { StringSession } = require('telegram/sessions')
+  const pc = new TelegramClient(new StringSession(_session), TG_API_ID, TG_API_HASH, { connectionRetries: 2 })
+  try {
+    await pc.connect()
+    const entity = await resolveEntity(pc, req.params.id, req.query.username)
+    const buffer = await pc.downloadProfilePhoto(entity, { isBig: false })
+    await pc.disconnect()
+    if (buffer && buffer.length > 0) {
+      const buf = Buffer.from(buffer)
+      photoCache[cacheKey] = buf
+      res.setHeader('Content-Type', 'image/jpeg')
+      res.setHeader('Cache-Control', 'public, max-age=86400')
+      res.send(buf)
+    } else res.status(404).send()
+  } catch(e) {
+    try { await pc.disconnect() } catch {}
+    res.status(404).send()
+  }
+})
+
+// ── MULTI-ACCOUNT: list sessions ──
+const sessions = {}  // { name: sessionString }
+app.get('/api/accounts', requireAuth, (req, res) => {
+  const list = Object.keys(sessions).map(name => ({ name, active: sessions[name] === _session }))
+  list.unshift({ name: 'Main', active: _session === (process.env.TG_SESSION || _session) })
+  res.json(list)
+})
+
+// ── MULTI-ACCOUNT: switch account ──
+app.post('/api/accounts/switch', requireAuth, (req, res) => {
+  const { name } = req.body
+  if (sessions[name]) {
+    _session = sessions[name]
+    _client = null  // force reconnect
+    log('Switched to account: ' + name)
+    res.json({ ok: true })
+  } else res.status(404).json({ error: 'Account not found' })
+})
+
+// ── MULTI-ACCOUNT: add new account (starts OTP flow for new session) ──
+app.post('/api/accounts/add', requireAuth, async (req, res) => {
+  const { phone, name } = req.body
+  if (!phone || !name) return res.status(400).json({ error: 'phone and name required' })
+  try {
+    const { TelegramClient } = require('telegram')
+    const { StringSession } = require('telegram/sessions')
+    const client = new TelegramClient(new StringSession(''), TG_API_ID, TG_API_HASH, { connectionRetries: 3 })
+    await client.connect()
+    const result = await client.sendCode({ apiId: TG_API_ID, apiHash: TG_API_HASH }, phone)
+    _pendingClient = { client, phoneCodeHash: result.phoneCodeHash, phone, accountName: name }
+    res.json({ ok: true, phoneCodeHash: result.phoneCodeHash })
+  } catch(e) { res.status(500).json({ error: e.message }) }
+})
+
+// ── MULTI-ACCOUNT: verify OTP and save new account ──
+app.post('/api/accounts/verify', requireAuth, async (req, res) => {
+  const { phone, code, phoneCodeHash, password } = req.body
+  if (!_pendingClient) return res.status(400).json({ error: 'No pending session' })
+  try {
+    const { client, accountName } = _pendingClient
+    try {
+      await client.invoke(new (require('telegram/tl').Api.auth.SignIn)({
+        phoneNumber: phone, phoneCodeHash, phoneCode: code
+      }))
+    } catch(e) {
+      if (e.message.includes('SESSION_PASSWORD_NEEDED') && password) {
+        const { computeCheck } = require('telegram/Password')
+        const pwd = await client.invoke(new (require('telegram/tl').Api.account.GetPassword)())
+        const check = await computeCheck(pwd, password)
+        await client.invoke(new (require('telegram/tl').Api.auth.CheckPassword)({ password: check }))
+      } else throw e
+    }
+    const sessionStr = client.session.save()
+    sessions[accountName] = sessionStr
+    _pendingClient = null
+    log('New account added: ' + accountName)
+    res.json({ ok: true, name: accountName })
+  } catch(e) { res.status(500).json({ error: e.message }) }
 })
 
 app.get('/api/health', (req,res) => res.json({ ok: true, tgConnected: _session.length > 10 }))
