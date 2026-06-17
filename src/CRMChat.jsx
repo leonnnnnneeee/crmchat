@@ -213,7 +213,7 @@ const STYLES = `
 .msgs{flex:1;overflow-y:auto;padding:12px 16px;display:flex;flex-direction:column;gap:3px}
 .msgs::-webkit-scrollbar{width:4px}
 .msgs::-webkit-scrollbar-thumb{background:${TG.elevated};border-radius:2px}
-.bbl{max-width:72%;padding:8px 12px 5px;line-height:1.55;word-break:break-word;font-size:14px;cursor:pointer;transition:opacity .1s}
+.bbl{max-width:72%;padding:8px 12px 5px;line-height:1.55;overflow-wrap:break-word;word-break:normal;font-size:14px;cursor:pointer;transition:opacity .1s;min-width:60px}
 .bbl:hover{opacity:.92}
 .bbl.in{background:${TG.msgIn};color:${TG.text};border-radius:14px 14px 14px 3px;border:1px solid ${TG.elevated}}
 .bbl.out{background:${TG.msgOut};color:#fff;border-radius:14px 14px 3px 14px}
