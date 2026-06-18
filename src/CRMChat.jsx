@@ -1,4 +1,4 @@
-// v-ui-103048
+// v-fix-103517
 // v035029
 import { useState, useEffect, useRef, useCallback } from "react"
 
@@ -837,8 +837,8 @@ export default function CRMChat({token}) {
                             )
                           : msg.text}
                         {/* Link preview */}
-                        {msg.text && /https?:\/\/[^\s]+/.test(msg.text) && (
-                          <LinkPreview url={msg.text.match(/https?:\/\/[^\s]+/)[0]}/>
+                        {msg.text && (msg.text.includes('http://') || msg.text.includes('https://')) && (
+                          <LinkPreview url={(msg.text.match(/https?:\/\/\S+/)||[''])[0]}/>
                         )}
                         {reactions[msg.id]&&Object.keys(reactions[msg.id]).length>0&&(
                           <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:3}}>
