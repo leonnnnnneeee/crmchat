@@ -426,72 +426,90 @@ AGENCIES / PARTNERS
 If client is an agency, VC, launchpad, or has multiple projects: mention bulk pricing and referral/partner model.`
 
   try {
+    // === SMARTER CONTEXT-AWARE PROMPT ===
+    // Build full conversation with role labels
+    const fullThread = history.map(m => {
+      const who = m.fromMe ? 'Leon' : contactName
+      return who + ': ' + m.text
+    }).join('\n')
+
+    // Detect intent from last message
+    const m = lastClientMsg.toLowerCase()
+    const intent = /price|cost|how much|rate/.test(m) ? 'pricing' :
+                   /tell me more|what is|explain|how does/.test(m) ? 'educate' :
+                   /discount|cheaper|budget/.test(m) ? 'objection-price' :
+                   /busy|later|not now|not interested/.test(m) ? 'objection-timing' :
+                   /yes|ok|sure|interested|sounds good|let.s go/.test(m) ? 'positive' :
+                   /both|bundle|all/.test(m) ? 'bundle' :
+                   /agency|manage|multiple|clients/.test(m) ? 'agency' :
+                   /tge|launch|listing|raising|investor/.test(m) ? 'milestone' : 'general'
+
+    const stageContext = {
+      'Contacted': 'Early stage — focus on understanding their needs, do not push hard',
+      'Qualified': 'They showed interest — recommend the right service and move toward proposal',
+      'Negotiating': 'Price/terms discussion — stay firm but flexible, push toward closing',
+      'Closed Won': 'Won deal — focus on onboarding and upsell',
+      'Closed Lost': 'Lost deal — try to understand why and leave door open'
+    }[stage] || 'Unknown stage'
+
     const userPrompt = [
-      'Conversation with ' + contactName + ':',
-      thread,
+      '=== FULL CONVERSATION ===',
+      fullThread || '(no messages yet)',
       '',
-      'Client last message: "' + lastClientMsg + '"',
-      'What Leon already said in this chat (DO NOT use any of these phrases): ' + (leonSaid || 'nothing'),
+      '=== CONTEXT ===',
+      'Client: ' + contactName,
+      'CRM Stage: ' + (stage||'Contacted') + ' — ' + stageContext,
+      notes ? 'Internal notes: ' + notes : null,
+      'Detected intent: ' + intent,
       '',
-      'Write ONE reply as Leon. FIRST read the client last message carefully, then respond to THAT message only — ignore previous topics.',
+      '=== WHAT LEON ALREADY SAID (never repeat) ===',
+      leonLines.length ? leonLines.map((l,i)=>(i+1)+'. "'+l+'"').join('\n') : '(nothing yet)',
       '',
-      'Intent detection (apply to: "' + lastClientMsg + '"):',
-      '- "I manage X projects" / "I am an agency" / "multiple clients" → This is an agency/partner signal. Offer bulk rates and referral commission (10-20%). Do NOT talk about CMC News.',
-      '- "tell me more" / "what is" / "explain" / "how does" → Explain the service they asked about. Do NOT give price unless they ask.',
-      '- "how much" / "price" / "cost" → Give exact price only.',
-      '- "discount" / "bulk" → Give discount tier: 15% partner, 25% for 10+/mo, 35% for 20+/mo, 50% for 30+/mo.',
-      '- "launching" / "TGE" / "listing" → Ask what type of visibility they need.',
-      '- "raising" / "investor" → Mention CMC News for credibility.',
-      '- "yes" / "interested" / "let\'s go" → Move to next step, ask for project name.',
+      '=== YOUR TASK ===',
+      'Client just said: "' + lastClientMsg + '"',
       '',
-      'Rules:',
-      '1. Max 2 short sentences',
-      '2. Reply ONLY to: "' + lastClientMsg + '" — do not bring up other topics',
-      '3. ONLY use prices: PR $240, Sponsored $390, Organic $520, CMC Boost $1500. Bulk: 15%/25%/35%/50%',
-      '4. Never invent prices',
-      '5. No greeting, no sign-off',
-      '6. No mid-sentence line breaks. Complete sentences only.'
+      'Write EXACTLY 2 different reply options for Leon.',
+      'OPTION_1: [Best reply — direct, addresses their intent]',
+      'OPTION_2: [Alternative — different angle, tone, or approach]',
+      '',
+      'Strict rules:',
+      '- Each option max 2 sentences',
+      '- Use ONLY these prices: PR $240, Sponsored $390, Organic $520, Listicle $1650, CMC Boost $1500',
+      '- Bulk: 15% partner, 25% (10+/mo), 35% (20+/mo), 50% (30+/mo)',
+      '- NEVER use any sentence from "What Leon already said"',
+      '- No greeting (Hi/Hey), no sign-off',
+      '- English, natural Telegram style',
+      '- Intent "' + intent + '" should guide the response direction'
     ].filter(Boolean).join('\n')
 
     const r = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
       model: 'llama-3.3-70b-versatile',
       messages: [
-        { role: 'system', content: SYSTEM_PROMPT + '\n\nAlways output 2 options:\nOPTION_1: [reply]\nOPTION_2: [reply]' },
+        { role: 'system', content: SYSTEM_PROMPT },
         { role: 'user',   content: userPrompt }
       ],
-      max_tokens: 80,
-      temperature: 0.35
+      max_tokens: 250,
+      temperature: 0.55
     }, { headers: { Authorization: 'Bearer ' + GROQ_KEY, 'Content-Type': 'application/json' }})
 
-    let s = r.data.choices[0].message.content.trim()
-      .replace(/^["'`]|["'`]$/g, '')
-      .replace(/^(Leon:|Reply:|Sure,|Of course,|Great,|Absolutely,)/i, '')
-      .trim()
+    const raw = r.data.choices[0].message.content.trim()
 
-    // ── Formatting correction pass ──
-    // 1. Split into lines and trim each
-    const rawLines = s.split('\n').map(l => l.trim()).filter(l => l.length > 0)
-    // 2. Merge lines that are broken mid-sentence
-    const merged = []
-    for (const line of rawLines) {
-      if (merged.length === 0) {
-        merged.push(line)
-      } else {
-        const prev = merged[merged.length - 1]
-        // Previous line ends with sentence-ending punctuation → new paragraph
-        if (/[.!?:]$/.test(prev)) {
-          merged.push(line)
-        } else {
-          // Broken mid-sentence → merge with space
-          merged[merged.length - 1] = prev + ' ' + line
-        }
-      }
+    function cleanReply(t) {
+      return (t||'').trim()
+        .replace(/^["'`]|["'`]$/g,'')
+        .replace(/^(OPTION_\d+:|Option \d+:|Leon:|Reply:)\s*/i,'')
+        .split('\n')[0].trim()
     }
-    // 3. Remove empty lines, join with single newline
-    s = merged.filter(l => l.trim().length > 0).join('\n').trim()
 
-    log('AI reply: "' + s.slice(0,80) + '"')
-    res.json({ suggestion: s })
+    const opt1 = raw.match(/OPTION_1:([\s\S]+?)(?=OPTION_2:|$)/i)
+    const opt2 = raw.match(/OPTION_2:([\s\S]+?)$/i)
+
+    const suggestion  = cleanReply(opt1?.[1]) || cleanReply(raw.split('\n')[0])
+    const alternative = cleanReply(opt2?.[1]) || null
+    const analysis    = 'Intent: ' + intent + ' | Stage: ' + (stage||'Contacted')
+
+    log('AI [' + intent + ']: "' + suggestion.slice(0,60) + '"')
+    if(alternative) log('AI alt: "' + alternative.slice(0,60) + '"')
   } catch(e) {
     log('AI error: ' + e.message)
     res.json({ suggestion: ruleBased() })
