@@ -22,7 +22,7 @@ const SBH         = { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, 'Conten
 
 const logs = []
 function log(m) { const l='['+new Date().toLocaleTimeString('vi-VN')+'] '+m; console.log(l); logs.push(l); if(logs.length>200)logs.shift() }
-log('🚀 Coincu CRM Chat v7 — 20260618_085451')
+log('🚀 Coincu CRM Chat v8 — 20260618_085820')
 
 function requireAuth(req,res,next){
   const t=req.headers['x-auth-token']||req.query.token
