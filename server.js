@@ -49,6 +49,7 @@ async function loadSessionFromDB() {
     if (r.data && r.data[0] && r.data[0].value && r.data[0].value.length > 10) {
       _session = r.data[0].value
       log('✅ Session loaded from Supabase')
+    warmupClient()
     }
   } catch(e) { log('loadSession: ' + e.message) }
 }
@@ -66,39 +67,68 @@ async function saveSessionToDB(s) {
 
 loadSessionFromDB()
 
-// Persistent client to avoid reconnecting every request
+// Persistent client — reconnect only when needed
 let _client = null
-let _clientBusy = false
 
 async function getClient() {
   const { TelegramClient } = require('telegram')
   const { StringSession } = require('telegram/sessions')
-  if (_client && _client.connected) return _client
-  _client = new TelegramClient(new StringSession(_session), TG_API_ID, TG_API_HASH, { connectionRetries: 3 })
+  if (_client) {
+    try {
+      if (!_client.connected) await _client.connect()
+      return _client
+    } catch { _client = null }
+  }
+  _client = new TelegramClient(new StringSession(_session), TG_API_ID, TG_API_HASH, {
+    connectionRetries: 5,
+    retryDelay: 1000,
+    autoReconnect: true
+  })
   await _client.connect()
+  log('TG client connected')
   return _client
 }
 
-// Resolve entity from string ID (handles negative supergroup IDs)
+// Warm up client on session load (so first request is fast)
+async function warmupClient() {
+  if (!_session || _session.length < 10) return
+  try { await getClient(); log('✅ TG client warmed up') }
+  catch(e) { log('warmup: ' + e.message) }
+}
+
+// Entity cache to avoid repeated TG lookups
+const _entityCache = {}
+
 async function resolveEntity(client, idStr, username) {
+  const cacheKey = username || idStr
+  if (_entityCache[cacheKey]) return _entityCache[cacheKey]
+
+  let entity
   if (username) {
-    try { return await client.getEntity(username) } catch {}
+    try { entity = await client.getEntity(username) } catch {}
   }
-  const num = Number(idStr)
-  // Negative ID = supergroup/channel — wrap with peer
-  if (num < 0) {
-    try {
-      const { Api } = require('telegram/tl')
-      const channelId = Math.abs(num) - 1000000000000
-      if (channelId > 0) {
-        return await client.getEntity(new Api.PeerChannel({ channelId: BigInt(channelId) }))
-      }
-      return await client.getEntity(new Api.PeerChat({ chatId: BigInt(Math.abs(num)) }))
-    } catch {}
+  if (!entity) {
+    const num = Number(idStr)
+    if (num < 0) {
+      try {
+        const { Api } = require('telegram/tl')
+        const channelId = Math.abs(num) - 1000000000000
+        if (channelId > 0) {
+          entity = await client.getEntity(new Api.PeerChannel({ channelId: BigInt(channelId) }))
+        } else {
+          entity = await client.getEntity(new Api.PeerChat({ chatId: BigInt(Math.abs(num)) }))
+        }
+      } catch {}
+    }
+    if (!entity) {
+      try { entity = await client.getEntity(BigInt(idStr)) } catch {}
+    }
+    if (!entity) {
+      try { entity = await client.getEntity(num) } catch {}
+    }
   }
-  try { return await client.getEntity(BigInt(idStr)) } catch {}
-  try { return await client.getEntity(num) } catch {}
-  return idStr // last resort: pass raw string
+  if (entity) _entityCache[cacheKey] = entity
+  return entity || idStr
 }
 
 // ── AUTH: check status ──
@@ -174,12 +204,17 @@ app.get('/api/chat/list', requireAuth, async (req,res) => {
 })
 
 // ── MESSAGES ──
+// Message cache — avoid reloading same messages
+const _msgCache = {}
+
 app.get('/api/chat/messages/:id', requireAuth, async (req,res) => {
   if (!_session) return res.json([])
+  const cacheKey = req.params.id
+  const since = req.query.since ? parseInt(req.query.since) : 0
   try {
     const client = await getClient()
     const entity = await resolveEntity(client, req.params.id, req.query.username)
-    const msgs = await client.getMessages(entity, { limit: 80 })
+    const msgs = await client.getMessages(entity, { limit: 50 })
     const results = msgs.reverse()
       .map(m => ({ id: m.id, text: m.message, fromMe: m.out, date: m.date }))
       .filter(m => m.text)
