@@ -22,7 +22,7 @@ const SBH         = { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, 'Conten
 
 const logs = []
 function log(m) { const l='['+new Date().toLocaleTimeString('vi-VN')+'] '+m; console.log(l); logs.push(l); if(logs.length>200)logs.shift() }
-log('🚀 Coincu CRM Chat v8 — 20260618_085820')
+log('🚀 Coincu CRM Chat v9 — 20260618_085834')
 
 function requireAuth(req,res,next){
   const t=req.headers['x-auth-token']||req.query.token
@@ -830,40 +830,20 @@ app.get('/api/logs', requireAuth, (req,res) => res.json(logs))
 
 // Start Telegram event listener for incoming messages
 async function startTGListener() {
-  if (!_session || _session.length < 10) {
-    setTimeout(startTGListener, 5000)
-    return
-  }
+  let NewMessage
+  try { NewMessage = require('telegram/events/NewMessage').NewMessage } catch {}
+  if (!NewMessage) { try { NewMessage = require('telegram/events').NewMessage } catch {} }
+  if (!NewMessage) { log('TG listener: NewMessage not found, skipping'); return }
   try {
-    const { TelegramClient, events } = require('telegram')
+    const { TelegramClient } = require('telegram')
     const { StringSession } = require('telegram/sessions')
-    const listenerClient = new TelegramClient(
-      new StringSession(_session), TG_API_ID, TG_API_HASH,
-      { connectionRetries: 5 }
-    )
-    await listenerClient.connect()
-    log('✅ TG event listener started')
-
-    listenerClient.addEventHandler(async (event) => {
-      try {
-        const msg = event.message
-        if (!msg || !msg.text) return
-        const chatId = msg.chatId?.toString()
-        if (!chatId) return
-        const message = {
-          id: msg.id,
-          text: msg.text,
-          fromMe: msg.out,
-          date: msg.date
-        }
-        // broadcast removed — using polling
-      } catch(e) { log('TG event error: ' + e.message) }
-    }, new events.NewMessage({}))
-
-  } catch(e) {
-    log('TG listener error: ' + e.message + ' — retrying in 10s')
-    setTimeout(startTGListener, 10000)
-  }
+    const lc = new TelegramClient(new StringSession(_session), TG_API_ID, TG_API_HASH, { connectionRetries: 2 })
+    await lc.connect()
+    lc.addEventHandler(async (ev) => {
+      try { if (ev.message?.message) log('📨 ' + ev.message.chatId) } catch {}
+    }, new NewMessage({}))
+    log('✅ TG listener active')
+  } catch(e) { log('TG listener: ' + e.message) }
 }
 
 // Start listener after session is loaded
