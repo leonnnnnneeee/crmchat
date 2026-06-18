@@ -1,4 +1,4 @@
-// v074117
+// v075419
 // v035029
 import { useState, useEffect, useRef, useCallback } from "react"
 
@@ -676,7 +676,7 @@ export default function CRMChat({token}) {
                   {selectMode&&<div style={{width:20,height:20,borderRadius:"50%",border:"2px solid #7c3aed",background:selectedMsgs.has(i)?"#7c3aed":"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,alignSelf:"center",fontSize:12,color:"#fff",cursor:"pointer"}}>
                     {selectedMsgs.has(i)?"✓":""}
                   </div>}
-                    {!msg.fromMe&&<Avatar name={sel.name} chatId={sel.id} username={sel.username} size={26}/>}
+                    {!msg.fromMe&&<Avatar name={msg.senderName||sel.name} chatId={msg.senderId||sel.id} username={null} size={26}/>}
                     <div onContextMenu={e=>handleCtx(e,msg,i)}>
                       {msg.replyTo&&(
                         <div style={{background:"rgba(124,58,237,.15)",borderLeft:`3px solid ${TG.blue}`,padding:"4px 8px",borderRadius:"0 6px 6px 0",marginBottom:4,fontSize:11,color:TG.textSec,maxWidth:"100%",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
@@ -684,6 +684,9 @@ export default function CRMChat({token}) {
                         </div>
                       )}
                       <div className={`bbl ${msg.fromMe?"out":"in"}${msg.deleted?" del":""}${msg.replyTo?" rpl":""}`}>
+                        {!msg.fromMe && !sel?.isUser && msg.senderName && (
+                          <div style={{fontSize:11,fontWeight:700,color:"#7c8ae8",marginBottom:3,whiteSpace:"nowrap"}}>{msg.senderName}</div>
+                        )}
                         {msg.media && msg.media.type === 'photo' && msg.media.url && (
                           <img src={msg.media.url} alt="photo"
                             style={{maxWidth:'100%',borderRadius:8,display:'block',marginBottom:4}}
