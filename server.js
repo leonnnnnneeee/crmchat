@@ -211,7 +211,14 @@ app.get('/api/chat/messages/:id', requireAuth, async (req,res) => {
     const entity = await resolveEntity(client, req.params.id, req.query.username)
     const msgs = await client.getMessages(entity, { limit: 80 })
     const results = msgs.reverse()
-      .map(m => ({ id: m.id, text: m.message, fromMe: m.out, date: m.date }))
+      .map(m => ({
+        id: m.id,
+        text: m.message || (m.media ? '[Media]' : ''),
+        fromMe: m.out,
+        date: m.date,
+        hasMedia: !!m.media,
+        mediaType: m.media?.className || null,
+      }))
       .filter(m => m.text)
     res.json(results)
   } catch(e) { log('messages: '+e.message); res.json([]) }
@@ -668,6 +675,49 @@ app.post('/api/chat/topics/:id/:topicId/send', requireAuth, async (req, res) => 
     })
     res.json({ ok: true })
   } catch(e) { res.status(500).json({ error: e.message }) }
+})
+
+
+// ── SEND FILE / IMAGE ──
+const multer = require('multer')
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } })
+
+app.post('/api/chat/send-file', requireAuth, upload.single('file'), async (req, res) => {
+  if (!_session) return res.status(401).json({ error: 'Not connected' })
+  const { chatId } = req.body
+  if (!req.file) return res.status(400).json({ error: 'No file' })
+  try {
+    const client = await getClient()
+    const entity = await resolveEntity(client, chatId, req.body.username)
+    const { Api } = require('telegram/tl')
+    const isImage = req.file.mimetype.startsWith('image/')
+    await client.sendFile(entity, {
+      file: new (require('telegram').Api.InputFile)({
+        id: BigInt(Date.now()),
+        parts: 1,
+        name: req.file.originalname,
+        md5Checksum: ''
+      }),
+      fileSize: req.file.size,
+    })
+    res.json({ ok: true })
+  } catch(e) {
+    // Fallback: send as document using buffer
+    try {
+      const client = await getClient()
+      const entity = await resolveEntity(client, chatId)
+      const buf = Buffer.from(req.file.buffer)
+      await client.sendFile(entity, {
+        file: buf,
+        caption: req.file.originalname,
+        forceDocument: !req.file.mimetype.startsWith('image/')
+      })
+      res.json({ ok: true })
+    } catch(e2) {
+      log('send-file: ' + e2.message)
+      res.status(500).json({ error: e2.message })
+    }
+  }
 })
 
 app.get('/api/health', (req,res) => res.json({ ok: true, tgConnected: _session.length > 10 }))
