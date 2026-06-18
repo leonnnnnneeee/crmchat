@@ -211,19 +211,26 @@ app.get('/api/chat/messages/:id', requireAuth, async (req,res) => {
     const entity = await resolveEntity(client, req.params.id, req.query.username)
     const msgs = await client.getMessages(entity, { limit: 80 })
     const results = msgs.reverse()
-      .map(m => ({
-        id: m.id,
-        text: m.message || (m.media ? '📎 Media' : ''),
-        fromMe: m.out,
-        date: m.date,
-        hasMedia: !!m.media,
-        mediaType: m.media?.className || null,
-        senderId: m.senderId?.toString() || null,
-        senderName: m.sender?.firstName
-          ? (m.sender.firstName + (m.sender.lastName ? ' '+m.sender.lastName : ''))
-          : (m.sender?.username || null),
-      }))
-      .filter(m => m.text)
+      .map(m => {
+        const isPhoto = m.media?.className === 'MessageMediaPhoto'
+        const isDoc   = m.media?.className === 'MessageMediaDocument'
+        const isVideo = isDoc && m.media?.document?.mimeType?.startsWith('video/')
+        return {
+          id: m.id,
+          text: m.message || (isPhoto ? '' : isVideo ? '🎥 Video' : isDoc ? '📎 Document' : ''),
+          fromMe: m.out,
+          date: m.date,
+          hasMedia: !!m.media,
+          isPhoto,
+          isVideo,
+          isDoc: isDoc && !isVideo,
+          senderId: m.senderId?.toString() || null,
+          senderName: m.sender?.firstName
+            ? (m.sender.firstName + (m.sender.lastName ? ' ' + m.sender.lastName : ''))
+            : (m.sender?.username || null),
+        }
+      })
+      .filter(m => m.text !== undefined)
     res.json(results)
   } catch(e) { log('messages: '+e.message); res.json([]) }
 })
@@ -733,6 +740,40 @@ app.post('/api/chat/send-file', requireAuth, (req, res) => {
       res.status(500).json({ error: e.message })
     }
   })
+})
+
+
+// ── DOWNLOAD MEDIA from TG message ──
+const mediaCache = {}
+app.get('/api/chat/media/:chatId/:msgId', requireAuth, async (req, res) => {
+  const key = req.params.chatId + '_' + req.params.msgId
+  if (mediaCache[key]) {
+    res.setHeader('Content-Type', mediaCache[key].mime)
+    res.setHeader('Cache-Control', 'public, max-age=3600')
+    return res.send(mediaCache[key].buf)
+  }
+  try {
+    const client = await getClient()
+    const entity = await resolveEntity(client, req.params.chatId)
+    const msgs = await client.getMessages(entity, { ids: [parseInt(req.params.msgId)] })
+    const msg = msgs[0]
+    if (!msg || !msg.media) return res.status(404).send()
+    const buffer = await client.downloadMedia(msg, { thumb: null })
+    if (!buffer) return res.status(404).send()
+    const buf = Buffer.from(buffer)
+    // Detect mime type
+    let mime = 'image/jpeg'
+    if (buf[0] === 0x89 && buf[1] === 0x50) mime = 'image/png'
+    else if (buf[0] === 0x47 && buf[1] === 0x49) mime = 'image/gif'
+    else if (buf[0] === 0x25 && buf[1] === 0x50) mime = 'application/pdf'
+    mediaCache[key] = { buf, mime }
+    res.setHeader('Content-Type', mime)
+    res.setHeader('Cache-Control', 'public, max-age=3600')
+    res.send(buf)
+  } catch(e) {
+    log('media: ' + e.message)
+    res.status(404).send()
+  }
 })
 
 app.get('/api/health', (req,res) => res.json({ ok: true, tgConnected: _session.length > 10 }))
