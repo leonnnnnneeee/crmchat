@@ -678,45 +678,46 @@ app.post('/api/chat/topics/:id/:topicId/send', requireAuth, async (req, res) => 
 })
 
 
-// ── SEND FILE / IMAGE ──
-const multer = require('multer')
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } })
 
-app.post('/api/chat/send-file', requireAuth, upload.single('file'), async (req, res) => {
+// ── SEND FILE / IMAGE (using busboy) ──
+app.post('/api/chat/send-file', requireAuth, async (req, res) => {
   if (!_session) return res.status(401).json({ error: 'Not connected' })
-  const { chatId } = req.body
-  if (!req.file) return res.status(400).json({ error: 'No file' })
   try {
-    const client = await getClient()
-    const entity = await resolveEntity(client, chatId, req.body.username)
-    const { Api } = require('telegram/tl')
-    const isImage = req.file.mimetype.startsWith('image/')
-    await client.sendFile(entity, {
-      file: new (require('telegram').Api.InputFile)({
-        id: BigInt(Date.now()),
-        parts: 1,
-        name: req.file.originalname,
-        md5Checksum: ''
-      }),
-      fileSize: req.file.size,
+    const Busboy = require('busboy')
+    const busboy = Busboy({ headers: req.headers })
+    let chatId = null, username = null, fileBuffer = null, fileName = '', fileMime = ''
+    busboy.on('field', (name, val) => {
+      if (name === 'chatId') chatId = val
+      if (name === 'username') username = val
     })
-    res.json({ ok: true })
+    busboy.on('file', (name, file, info) => {
+      fileName = info.filename
+      fileMime = info.mimeType
+      const chunks = []
+      file.on('data', d => chunks.push(d))
+      file.on('end', () => { fileBuffer = Buffer.concat(chunks) })
+    })
+    busboy.on('finish', async () => {
+      if (!fileBuffer || !chatId) return res.status(400).json({ error: 'Missing file or chatId' })
+      try {
+        const client = await getClient()
+        const entity = await resolveEntity(client, chatId, username)
+        await client.sendFile(entity, {
+          file: fileBuffer,
+          caption: fileName,
+          forceDocument: !fileMime.startsWith('image/')
+        })
+        log('File sent: ' + fileName)
+        res.json({ ok: true })
+      } catch(e) {
+        log('send-file error: ' + e.message)
+        res.status(500).json({ error: e.message })
+      }
+    })
+    req.pipe(busboy)
   } catch(e) {
-    // Fallback: send as document using buffer
-    try {
-      const client = await getClient()
-      const entity = await resolveEntity(client, chatId)
-      const buf = Buffer.from(req.file.buffer)
-      await client.sendFile(entity, {
-        file: buf,
-        caption: req.file.originalname,
-        forceDocument: !req.file.mimetype.startsWith('image/')
-      })
-      res.json({ ok: true })
-    } catch(e2) {
-      log('send-file: ' + e2.message)
-      res.status(500).json({ error: e2.message })
-    }
+    log('send-file: ' + e.message)
+    res.status(500).json({ error: e.message })
   }
 })
 
