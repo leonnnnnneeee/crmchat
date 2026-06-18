@@ -1,4 +1,4 @@
-// v10-20260618_093504
+// v-sprint1-100557
 // v035029
 import { useState, useEffect, useRef, useCallback } from "react"
 
@@ -160,7 +160,7 @@ function ChatContextMenu({x,y,chat,onClose,onPin,onMute,onMarkRead,onArchive,isP
 }
 
 // ── Context Menu (right-click) ──
-function ContextMenu({x,y,msg,onDelete,onCopy,onReply,onClose,onDeleteAll,onSelect}) {
+function ContextMenu({x,y,msg,onDelete,onCopy,onReply,onClose,onDeleteAll,onSelect,onForward,onReact}) {
   const ref=useRef(null)
   useEffect(()=>{
     function handler(e){if(ref.current&&!ref.current.contains(e.target))onClose()}
@@ -193,9 +193,21 @@ function ContextMenu({x,y,msg,onDelete,onCopy,onReply,onClose,onDeleteAll,onSele
       padding:"4px 0",minWidth:200,
       boxShadow:"0 8px 32px rgba(0,0,0,.7)",
     }}>
-      <Item icon="↩️" label="Reply"        action={onReply}/>
-      <Item icon="📋" label="Copy Text"     action={onCopy}/>
-      <Item icon="☑️" label="Select Message" action={onSelect}/>
+      {/* Quick reactions */}
+      <div style={{display:"flex",gap:4,padding:"6px 12px",borderBottom:"1px solid #2d1155"}}>
+        {["👍","❤️","😂","🔥","💪","✅","🙏","😎"].map(e=>(
+          <span key={e} onClick={()=>{onReact(e);onClose()}}
+            style={{fontSize:18,cursor:"pointer",padding:"2px 4px",borderRadius:6,transition:"background .1s"}}
+            onMouseEnter={ev=>ev.target.style.background="#2d1155"}
+            onMouseLeave={ev=>ev.target.style.background="transparent"}>
+            {e}
+          </span>
+        ))}
+      </div>
+      <Item icon="↩️" label="Reply"          action={onReply}/>
+      <Item icon="📋" label="Copy Text"       action={onCopy}/>
+      <Item icon="↪️" label="Forward"         action={onForward}/>
+      <Item icon="☑️" label="Select Message"  action={onSelect}/>
       <Item sep/>
       <Item icon="🗑" label="Delete Message"      action={onDelete} danger/>
       <Item icon="🗑" label="Delete All Messages"  action={onDeleteAll} danger/>
@@ -345,6 +357,7 @@ export default function CRMChat({token}) {
   _authToken = token
   const [chats,setChats]=useState([])
   const [sel,setSel]=useState(null)
+  const [folder,setFolder]=useState('all') // all | unread | personal | work | bots
   const [topics,setTopics]=useState({})
   const [selTopic,setSelTopic]=useState(null)
   const [loadingTopics,setLoadingTopics]=useState(false)
@@ -355,6 +368,7 @@ export default function CRMChat({token}) {
   const [loadChats,setLoadChats]=useState(true)
   const [loadMsgs,setLoadMsgs]=useState(false)
   const [onlineStatus,setOnlineStatus]=useState('')
+  const [notifPerm,setNotifPerm]=useState(false)
   const [showTmpl,setShowTmpl]=useState(false)
   const [tmplCat,setTmplCat]=useState("all")
   const [aiText,setAiText]=useState("")
@@ -377,7 +391,11 @@ export default function CRMChat({token}) {
   const [mutedChats,setMutedChats]=useState(new Set())
   const [archivedChats,setArchivedChats]=useState(new Set())
   const [selectedMsgs,setSelectedMsgs]=useState(new Set())
-  const [selectMode,setSelectMode]=useState(false) // {x,y,msg,idx}
+  const [selectMode,setSelectMode]=useState(false)
+  const [forwardMsg,setForwardMsg]=useState(null)
+  const [reactions,setReactions]=useState({})
+  const [chatSearch,setChatSearch]=useState('')
+  const [chatSearchOpen,setChatSearchOpen]=useState(false) // {x,y,msg,idx}
   const [replyTo,setReplyTo]=useState(null)
   const endRef=useRef(null)
 
@@ -671,6 +689,10 @@ export default function CRMChat({token}) {
             <div style={{display:"flex",gap:6,marginLeft:8}}>
               <button className="hb" title="Call" style={{fontSize:16}}>📞</button>
               <button className="hb" title="Search in chat" style={{fontSize:16}}>🔍</button>
+              <button onClick={()=>setChatSearchOpen(p=>!p)} title="Search in chat"
+                style={{width:34,height:34,background:chatSearchOpen?TG.blue:TG.elevated,borderRadius:8,border:"none",cursor:"pointer",fontSize:15}}>
+                🔍
+              </button>
               <button onClick={()=>loadMessages(sel)} title="Refresh messages"
                 style={{width:34,height:34,background:TG.elevated,borderRadius:8,border:"none",cursor:"pointer",fontSize:15}}>
                 🔄
@@ -722,7 +744,24 @@ export default function CRMChat({token}) {
                         {msg.isPhoto && <ChatPhoto chatId={sel.id} msgId={msg.id} authToken={token}/>}
                         {msg.isVideo && <div style={{padding:'4px 0',color:TG.textSec,fontSize:13}}>🎥 Video</div>}
                         {msg.isDoc && <div style={{padding:'4px 0',color:TG.textSec,fontSize:13}}>📎 Document</div>}
-                        {msg.text}
+                        {chatSearch && msg.text?.toLowerCase().includes(chatSearch.toLowerCase())
+                          ? msg.text.split(new RegExp(`(${chatSearch})`, 'gi')).map((part,i) =>
+                              part.toLowerCase()===chatSearch.toLowerCase()
+                                ? <mark key={i} style={{background:"#f59e0b",color:"#000",borderRadius:2}}>{part}</mark>
+                                : part
+                            )
+                          : msg.text}
+                        {reactions[msg.id]&&Object.keys(reactions[msg.id]).length>0&&(
+                          <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:3}}>
+                            {Object.entries(reactions[msg.id]).map(([e,n])=>(
+                              <span key={e} onClick={()=>setReactions(p=>({...p,[msg.id]:{...p[msg.id],[e]:(p[msg.id][e]||1)-1}}))}
+                                style={{background:"rgba(124,58,237,.2)",border:"1px solid rgba(124,58,237,.3)",
+                                  borderRadius:99,padding:"1px 6px",fontSize:12,cursor:"pointer",userSelect:"none"}}>
+                                {e}{n>1?` ${n}`:""}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                         <div className="bfoot">
                           <span className={`bt${msg.fromMe?"":" in"}`}>{fmtMsgTime(msg.date)}</span>
                           {msg.fromMe&&<span style={{fontSize:10,color:msg.pending?"rgba(255,255,255,.3)":"rgba(255,255,255,.6)"}}>{msg.pending?"⏳":"✓✓"}</span>}
@@ -909,6 +948,43 @@ export default function CRMChat({token}) {
       )}
 
       {/* Context menu */}
+
+      {/* Forward Message Modal */}
+      {forwardMsg&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.7)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center"}}
+          onClick={()=>setForwardMsg(null)}>
+          <div style={{background:TG.panel,borderRadius:16,padding:20,width:320,maxHeight:"70vh",overflow:"hidden",display:"flex",flexDirection:"column"}}
+            onClick={e=>e.stopPropagation()}>
+            <div style={{fontWeight:700,fontSize:16,marginBottom:12,color:TG.text}}>Forward to...</div>
+            <div style={{fontSize:12,color:TG.textSec,marginBottom:12,padding:"8px 10px",background:TG.elevated,borderRadius:8}}>
+              "{forwardMsg.text?.slice(0,60)}{forwardMsg.text?.length>60?'...':''}"
+            </div>
+            <div style={{overflowY:"auto",flex:1}}>
+              {chats.filter(c=>c.name).slice(0,20).map(c=>(
+                <div key={c.id} onClick={async()=>{
+                  try {
+                    await fetch("/api/chat/send",{method:"POST",
+                      headers:{"Content-Type":"application/json","x-auth-token":token},
+                      body:JSON.stringify({chatId:c.id,text:"↪️ "+forwardMsg.text})
+                    })
+                    alert("Forwarded to "+c.name)
+                  } catch(e){ alert("Failed: "+e.message) }
+                  setForwardMsg(null)
+                }} style={{display:"flex",gap:10,padding:"10px 8px",cursor:"pointer",borderRadius:8,alignItems:"center"}}
+                  onMouseEnter={e=>e.currentTarget.style.background=TG.elevated}
+                  onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                  <Avatar name={c.name} chatId={c.id} username={c.username} size={36}/>
+                  <span style={{fontSize:14,color:TG.text}}>{c.name}</span>
+                </div>
+              ))}
+            </div>
+            <button onClick={()=>setForwardMsg(null)}
+              style={{marginTop:12,padding:"8px",background:TG.elevated,border:"none",borderRadius:8,color:TG.textSec,cursor:"pointer",fontSize:13}}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
       {chatCtxMenu&&(
         <ChatContextMenu
           x={chatCtxMenu.x} y={chatCtxMenu.y} chat={chatCtxMenu.chat}
@@ -929,6 +1005,13 @@ export default function CRMChat({token}) {
           onReply={()=>setReplyTo(ctxMenu.msg)}
           onDeleteAll={deleteAllMsgs}
           onSelect={()=>{setSelectMode(true);setSelectedMsgs(new Set([ctxMenu.idx]))}}
+          onForward={()=>setForwardMsg(ctxMenu.msg)}
+          onReact={emoji=>{
+            setReactions(p=>{
+              const prev = p[ctxMenu.msg.id] || {}
+              return {...p, [ctxMenu.msg.id]: {...prev, [emoji]: (prev[emoji]||0)+1}}
+            })
+          }}
           onClose={()=>setCtxMenu(null)}
         />
       )}
