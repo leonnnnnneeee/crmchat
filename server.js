@@ -213,11 +213,15 @@ app.get('/api/chat/messages/:id', requireAuth, async (req,res) => {
     const results = msgs.reverse()
       .map(m => ({
         id: m.id,
-        text: m.message || (m.media ? '[Media]' : ''),
+        text: m.message || (m.media ? '📎 Media' : ''),
         fromMe: m.out,
         date: m.date,
         hasMedia: !!m.media,
         mediaType: m.media?.className || null,
+        senderId: m.senderId?.toString() || null,
+        senderName: m.sender?.firstName
+          ? (m.sender.firstName + (m.sender.lastName ? ' '+m.sender.lastName : ''))
+          : (m.sender?.username || null),
       }))
       .filter(m => m.text)
     res.json(results)
@@ -679,46 +683,56 @@ app.post('/api/chat/topics/:id/:topicId/send', requireAuth, async (req, res) => 
 
 
 
-// ── SEND FILE / IMAGE (using busboy) ──
-app.post('/api/chat/send-file', requireAuth, async (req, res) => {
+// ── SEND FILE / IMAGE ──
+app.post('/api/chat/send-file', requireAuth, (req, res) => {
   if (!_session) return res.status(401).json({ error: 'Not connected' })
-  try {
-    const Busboy = require('busboy')
-    const busboy = Busboy({ headers: req.headers })
-    let chatId = null, username = null, fileBuffer = null, fileName = '', fileMime = ''
-    busboy.on('field', (name, val) => {
-      if (name === 'chatId') chatId = val
-      if (name === 'username') username = val
-    })
-    busboy.on('file', (name, file, info) => {
-      fileName = info.filename
-      fileMime = info.mimeType
-      const chunks = []
-      file.on('data', d => chunks.push(d))
-      file.on('end', () => { fileBuffer = Buffer.concat(chunks) })
-    })
-    busboy.on('finish', async () => {
-      if (!fileBuffer || !chatId) return res.status(400).json({ error: 'Missing file or chatId' })
-      try {
-        const client = await getClient()
-        const entity = await resolveEntity(client, chatId, username)
-        await client.sendFile(entity, {
-          file: fileBuffer,
-          caption: fileName,
-          forceDocument: !fileMime.startsWith('image/')
-        })
-        log('File sent: ' + fileName)
-        res.json({ ok: true })
-      } catch(e) {
-        log('send-file error: ' + e.message)
-        res.status(500).json({ error: e.message })
+  const chunks = []
+  req.on('data', chunk => chunks.push(chunk))
+  req.on('end', async () => {
+    try {
+      const boundary = req.headers['content-type']?.split('boundary=')[1]
+      if (!boundary) return res.status(400).json({ error: 'No boundary' })
+      const body = Buffer.concat(chunks)
+      const bodyStr = body.toString('binary')
+
+      // Parse multipart manually
+      const parts = bodyStr.split('--' + boundary)
+      let chatId = '', username = '', fileBuffer = null, fileName = 'file', fileMime = 'application/octet-stream'
+
+      for (const part of parts) {
+        if (part.includes('Content-Disposition: form-data')) {
+          const nameMatch = part.match(/name="([^"]+)"/)
+          const fileMatch = part.match(/filename="([^"]+)"/)
+          const mimeMatch = part.match(/Content-Type: ([^
+]+)/)
+          const headerEnd = part.indexOf('\r\n\r\n')
+          if (headerEnd === -1) continue
+          const value = part.slice(headerEnd + 4, part.lastIndexOf('\r\n'))
+
+          if (fileMatch) {
+            fileName = fileMatch[1]
+            fileMime = mimeMatch ? mimeMatch[1].trim() : 'application/octet-stream'
+            fileBuffer = Buffer.from(value, 'binary')
+          } else if (nameMatch?.[1] === 'chatId') chatId = value.trim()
+          else if (nameMatch?.[1] === 'username') username = value.trim()
+        }
       }
-    })
-    req.pipe(busboy)
-  } catch(e) {
-    log('send-file: ' + e.message)
-    res.status(500).json({ error: e.message })
-  }
+
+      if (!fileBuffer || !chatId) return res.status(400).json({ error: 'Missing file or chatId' })
+      const client = await getClient()
+      const entity = await resolveEntity(client, chatId, username || undefined)
+      await client.sendFile(entity, {
+        file: fileBuffer,
+        caption: fileName,
+        forceDocument: !fileMime.startsWith('image/')
+      })
+      log('File sent: ' + fileName + ' to ' + chatId)
+      res.json({ ok: true })
+    } catch(e) {
+      log('send-file: ' + e.message)
+      res.status(500).json({ error: e.message })
+    }
+  })
 })
 
 app.get('/api/health', (req,res) => res.json({ ok: true, tgConnected: _session.length > 10 }))
