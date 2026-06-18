@@ -248,15 +248,17 @@ app.get('/api/chat/messages/:id', requireAuth, async (req,res) => {
         const isPhoto = m.media?.className === 'MessageMediaPhoto'
         const isDoc   = m.media?.className === 'MessageMediaDocument'
         const isVideo = isDoc && m.media?.document?.mimeType?.startsWith('video/')
+        const isAudio = isDoc && (m.media?.document?.mimeType?.startsWith('audio/') || m.media?.document?.attributes?.some?.(a=>a.className==='DocumentAttributeAudio'))
         return {
           id: m.id,
-          text: m.message || (isPhoto ? '' : isVideo ? '🎥 Video' : isDoc ? '📎 Document' : ''),
+          text: m.message || (isPhoto ? '' : isAudio ? '🎤 Voice' : isVideo ? '🎥 Video' : isDoc ? '📎 Document' : ''),
           fromMe: m.out,
           date: m.date,
           hasMedia: !!m.media,
           isPhoto,
           isVideo,
-          isDoc: isDoc && !isVideo,
+          isAudio,
+          isDoc: isDoc && !isVideo && !isAudio,
           senderId: m.senderId?.toString() || null,
           senderName: m.sender?.firstName
             ? (m.sender.firstName + (m.sender.lastName ? ' ' + m.sender.lastName : ''))
