@@ -1,4 +1,4 @@
-// v094750
+// v020729
 // v035029
 import { useState, useEffect, useRef, useCallback } from "react"
 
@@ -309,6 +309,7 @@ const STYLES = `
 .qb.l{background:rgba(229,57,53,.1);border:1px solid rgba(229,57,53,.25);color:${TG.red}}
 .rpl-bar{background:#2d1155;border-left:3px solid ${TG.blue};padding:6px 10px;border-radius:0 8px 8px 0;margin-bottom:8px;font-size:12px;color:${TG.textSec};display:flex;align-items:center;gap:8px}
 @keyframes spin{to{transform:rotate(360deg)}}
+@keyframes pulse{0%,100%{opacity:.4}50%{opacity:.8}}
 `
 
 export default function CRMChat({token}) {
@@ -428,7 +429,7 @@ export default function CRMChat({token}) {
       setTimeout(async()=>{
         loadingRef.current = false
         await loadMessages(sel, selTopic?.id || null)
-      }, 300)
+      }, 200)
     } catch(e) {
       setMsgs(p=>p.filter(m=>m.id!==tempMsg.id))
       setInput(text)
