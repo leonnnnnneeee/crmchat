@@ -1,4 +1,4 @@
-// v-fix2-103841
+// v-full-104515
 // v035029
 import { useState, useEffect, useRef, useCallback } from "react"
 
@@ -160,7 +160,7 @@ function ChatContextMenu({x,y,chat,onClose,onPin,onMute,onMarkRead,onArchive,isP
 }
 
 // ── Context Menu (right-click) ──
-function ContextMenu({x,y,msg,onDelete,onCopy,onReply,onClose,onDeleteAll,onSelect,onForward,onReact,onPin}) {
+function ContextMenu({x,y,msg,onDelete,onCopy,onReply,onClose,onDeleteAll,onSelect,onForward,onReact,onPin,onInfo}) {
   const ref=useRef(null)
   useEffect(()=>{
     function handler(e){if(ref.current&&!ref.current.contains(e.target))onClose()}
@@ -204,6 +204,7 @@ function ContextMenu({x,y,msg,onDelete,onCopy,onReply,onClose,onDeleteAll,onSele
           </span>
         ))}
       </div>
+      <Item icon="ℹ️" label="Message Info"    action={onInfo}/>
       <Item icon="📌" label="Pin Message"     action={onPin}/>
       <Item icon="↩️" label="Reply"          action={onReply}/>
       <Item icon="📋" label="Copy Text"       action={onCopy}/>
@@ -423,6 +424,7 @@ export default function CRMChat({token}) {
   const [onlineStatus,setOnlineStatus]=useState('')
   const [typing,setTyping]=useState(false)
   const [showScrollBtn,setShowScrollBtn]=useState(false)
+  const firstUnreadRef=useRef(null)
   const [notifPerm,setNotifPerm]=useState(false)
   const [showTmpl,setShowTmpl]=useState(false)
   const [tmplCat,setTmplCat]=useState("all")
@@ -451,6 +453,8 @@ export default function CRMChat({token}) {
   const [reactions,setReactions]=useState({})
   const [chatSearch,setChatSearch]=useState('')
   const [chatSearchOpen,setChatSearchOpen]=useState(false)
+  const [globalSearch,setGlobalSearch]=useState('')
+  const [globalSearchOpen,setGlobalSearchOpen]=useState(false)
   const [lightbox,setLightbox]=useState(null)
   const [gifOpen,setGifOpen]=useState(false)
   const [gifs,setGifs]=useState([])
@@ -459,6 +463,10 @@ export default function CRMChat({token}) {
   const [scheduleOpen,setScheduleOpen]=useState(false)
   const [scheduleTime,setScheduleTime]=useState('')
   const [scheduledMsgs,setScheduledMsgs]=useState([])
+  const [pollOpen,setPollOpen]=useState(false)
+  const [pollQuestion,setPollQuestion]=useState('')
+  const [pollOptions,setPollOptions]=useState(['',''])
+  const [msgInfoOpen,setMsgInfoOpen]=useState(null)
   const [recording,setRecording]=useState(false)
   const [recordSecs,setRecordSecs]=useState(0)
   const mediaRecRef=useRef(null)
@@ -792,8 +800,14 @@ export default function CRMChat({token}) {
                   return a.toDateString()!==b.toDateString()
                 }catch{return false}
               })()
+              const isFirstUnread = i>0 && msg.unread && !msgs[i-1]?.unread
               return(
-                <div key={i}>
+                <div key={i} ref={isFirstUnread?firstUnreadRef:null}>
+                  {isFirstUnread&&<div style={{display:"flex",alignItems:"center",gap:8,margin:"8px 0",padding:"4px 0"}}>
+                    <div style={{flex:1,height:1,background:"rgba(124,58,237,.4)"}}/>
+                    <span style={{fontSize:11,color:"#a78bfa",fontWeight:600,whiteSpace:"nowrap"}}>↑ Unread messages</span>
+                    <div style={{flex:1,height:1,background:"rgba(124,58,237,.4)"}}/>
+                  </div>}
                   {showSep&&<div className="dsep"><span>{fmtDateSep(msg.date)}</span></div>}
                   <div style={{display:"flex",flexDirection:msg.fromMe?"row-reverse":"row",alignItems:"flex-end",gap:8,marginBottom:isSameGroup?1:6,cursor:selectMode?"pointer":"default"}}
                     onClick={selectMode?()=>setSelectedMsgs(prev=>{const s=new Set(prev);s.has(i)?s.delete(i):s.add(i);return s}):undefined}>
@@ -832,6 +846,21 @@ export default function CRMChat({token}) {
                           </audio>
                         )}
                         {msg.isDoc && <div style={{padding:'4px 0',color:TG.textSec,fontSize:13}}>📎 Document</div>}
+                        {/* Render poll messages nicely */}
+                        {msg.text?.startsWith('📊 ') && (
+                          <div style={{minWidth:200}}>
+                            <div style={{fontWeight:600,marginBottom:8,fontSize:14}}>{msg.text.split('\n')[0]}</div>
+                            {msg.text.split('\n').slice(1).filter(l=>l.trim()).map((opt,i)=>(
+                              <div key={i} style={{background:"rgba(124,58,237,.15)",borderRadius:8,
+                                padding:"7px 12px",marginBottom:4,fontSize:13,cursor:"pointer",
+                                border:"1px solid rgba(124,58,237,.2)"}}
+                                onMouseEnter={e=>e.currentTarget.style.background="rgba(124,58,237,.25)"}
+                                onMouseLeave={e=>e.currentTarget.style.background="rgba(124,58,237,.15)"}>
+                                {opt}
+                              </div>
+                            ))}
+                          </div>
+                        )}
                         {chatSearch && msg.text?.toLowerCase().includes(chatSearch.toLowerCase())
                           ? msg.text.split(new RegExp(`(${chatSearch})`, 'gi')).map((part,i) =>
                               part.toLowerCase()===chatSearch.toLowerCase()
@@ -960,6 +989,14 @@ export default function CRMChat({token}) {
             </div>
           )}
           {/* Scroll to bottom button */}
+          {firstUnreadRef.current&&showScrollBtn&&(
+            <button onClick={()=>firstUnreadRef.current?.scrollIntoView({behavior:"smooth",block:"center"})}
+              style={{position:"absolute",bottom:130,right:20,padding:"4px 12px",borderRadius:20,
+                background:"rgba(124,58,237,.9)",border:"none",cursor:"pointer",
+                fontSize:12,color:"#fff",fontWeight:600,zIndex:10,boxShadow:"0 2px 8px rgba(0,0,0,.4)"}}>
+              ↑ Unread
+            </button>
+          )}
           {showScrollBtn&&(
             <button onClick={()=>endRef.current?.scrollIntoView({behavior:"smooth"})}
               style={{position:"absolute",bottom:90,right:20,width:38,height:38,borderRadius:"50%",
@@ -1096,6 +1133,90 @@ export default function CRMChat({token}) {
 
 
 
+
+
+      {/* Message Info Modal */}
+      {msgInfoOpen&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center"}}
+          onClick={()=>setMsgInfoOpen(null)}>
+          <div style={{background:TG.panel,borderRadius:16,padding:24,width:320}} onClick={e=>e.stopPropagation()}>
+            <div style={{fontWeight:700,fontSize:16,marginBottom:16,color:TG.text}}>ℹ️ Message Info</div>
+            <div style={{background:TG.elevated,borderRadius:10,padding:"10px 12px",marginBottom:16,fontSize:13,color:TG.text,lineHeight:1.5}}>
+              {msgInfoOpen.text}
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:13}}>
+                <span style={{color:TG.textSec}}>Sent</span>
+                <span style={{color:TG.text}}>{new Date((msgInfoOpen.date||0)*1000).toLocaleString()}</span>
+              </div>
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:13}}>
+                <span style={{color:TG.textSec}}>Status</span>
+                <span style={{color:TG.green}}>✓✓ Delivered</span>
+              </div>
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:13}}>
+                <span style={{color:TG.textSec}}>Message ID</span>
+                <span style={{color:TG.textMuted,fontFamily:"monospace"}}>{msgInfoOpen.id}</span>
+              </div>
+            </div>
+            <button onClick={()=>setMsgInfoOpen(null)}
+              style={{width:"100%",marginTop:16,padding:"9px",background:TG.elevated,
+                color:TG.textSec,border:"none",borderRadius:8,cursor:"pointer",fontSize:13}}>
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+      {/* Poll Modal */}
+      {pollOpen&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center"}}
+          onClick={()=>setPollOpen(false)}>
+          <div style={{background:TG.panel,borderRadius:16,padding:24,width:360}} onClick={e=>e.stopPropagation()}>
+            <div style={{fontWeight:700,fontSize:16,marginBottom:16,color:TG.text}}>📊 Create Poll</div>
+            <input value={pollQuestion} onChange={e=>setPollQuestion(e.target.value)}
+              placeholder="Ask a question..."
+              style={{width:"100%",background:TG.elevated,border:"1px solid #3d1f6a",borderRadius:8,
+                padding:"9px 12px",color:TG.text,fontSize:14,marginBottom:12,boxSizing:"border-box"}}/>
+            <div style={{marginBottom:8,fontSize:12,color:TG.textSec}}>Options:</div>
+            {pollOptions.map((opt,i)=>(
+              <div key={i} style={{display:"flex",gap:6,marginBottom:8}}>
+                <input value={opt} onChange={e=>{const o=[...pollOptions];o[i]=e.target.value;setPollOptions(o)}}
+                  placeholder={`Option ${i+1}`}
+                  style={{flex:1,background:TG.elevated,border:"1px solid #3d1f6a",borderRadius:8,
+                    padding:"7px 10px",color:TG.text,fontSize:13}}/>
+                {pollOptions.length>2&&<button onClick={()=>setPollOptions(p=>p.filter((_,j)=>j!==i))}
+                  style={{background:"none",border:"none",color:TG.textMuted,cursor:"pointer",fontSize:16}}>✕</button>}
+              </div>
+            ))}
+            {pollOptions.length<6&&(
+              <button onClick={()=>setPollOptions(p=>[...p,''])}
+                style={{width:"100%",padding:"7px",background:"transparent",border:"1px dashed #3d1f6a",
+                  borderRadius:8,color:TG.textSec,cursor:"pointer",fontSize:13,marginBottom:12}}>
+                + Add option
+              </button>
+            )}
+            <div style={{display:"flex",gap:8,marginTop:4}}>
+              <button onClick={async()=>{
+                if(!pollQuestion.trim()) return alert('Enter a question')
+                const validOpts = pollOptions.filter(o=>o.trim())
+                if(validOpts.length<2) return alert('Need at least 2 options')
+                const pollText = '📊 '+pollQuestion+'\n'+validOpts.map((o,i)=>`${i+1}. ${o}`).join('\n')
+                await fetch("/api/chat/send",{method:"POST",
+                  headers:{"Content-Type":"application/json","x-auth-token":token},
+                  body:JSON.stringify({chatId:sel.id,text:pollText})
+                })
+                setPollOpen(false);setPollQuestion('');setPollOptions(['',''])
+                setTimeout(()=>{loadingRef.current=false;loadMessages(sel)},500)
+              }} style={{flex:1,padding:"9px",background:TG.blue,color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontWeight:600}}>
+                Send Poll
+              </button>
+              <button onClick={()=>setPollOpen(false)}
+                style={{padding:"9px 16px",background:TG.elevated,color:TG.textSec,border:"none",borderRadius:8,cursor:"pointer"}}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Schedule Message Modal */}
       {scheduleOpen&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center"}}
@@ -1125,6 +1246,43 @@ export default function CRMChat({token}) {
         <div style={{padding:"6px 16px",background:"rgba(245,158,11,.1)",borderTop:"1px solid rgba(245,158,11,.2)",
           fontSize:12,color:"#f59e0b",flexShrink:0}}>
           ⏰ {scheduledMsgs.filter(m=>m.chatId===sel.id).length} message(s) scheduled
+        </div>
+      )}
+
+      {/* Global Search */}
+      {globalSearchOpen&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.7)",zIndex:9998,display:"flex",alignItems:"flex-start",justifyContent:"center",paddingTop:60}}
+          onClick={()=>setGlobalSearchOpen(false)}>
+          <div style={{background:TG.panel,borderRadius:16,width:520,maxHeight:"70vh",display:"flex",flexDirection:"column",overflow:"hidden"}}
+            onClick={e=>e.stopPropagation()}>
+            <div style={{padding:"12px 16px",borderBottom:"1px solid "+TG.border}}>
+              <input value={globalSearch} onChange={e=>setGlobalSearch(e.target.value)}
+                placeholder="Search messages, chats..."
+                style={{width:"100%",background:TG.elevated,border:"none",borderRadius:20,padding:"9px 16px",
+                  color:TG.text,fontSize:14,outline:"none",boxSizing:"border-box"}}
+                autoFocus/>
+            </div>
+            <div style={{overflowY:"auto",flex:1}}>
+              {globalSearch.length>1 && chats.filter(c=>c.name?.toLowerCase().includes(globalSearch.toLowerCase())).map(c=>(
+                <div key={c.id} onClick={()=>{setSel(c);setSelTopic(null);setGlobalSearchOpen(false)}}
+                  style={{display:"flex",gap:12,padding:"10px 16px",cursor:"pointer",alignItems:"center"}}
+                  onMouseEnter={e=>e.currentTarget.style.background=TG.elevated}
+                  onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                  <Avatar name={c.name} chatId={c.id} username={c.username} size={38}/>
+                  <div>
+                    <div style={{fontSize:14,fontWeight:600,color:TG.text}}>{c.name}</div>
+                    <div style={{fontSize:12,color:TG.textSec}}>{c.lastMsg?.slice(0,50)}</div>
+                  </div>
+                </div>
+              ))}
+              {globalSearch.length>1 && chats.filter(c=>c.name?.toLowerCase().includes(globalSearch.toLowerCase())).length===0&&(
+                <div style={{padding:20,textAlign:"center",color:TG.textMuted,fontSize:13}}>No results for "{globalSearch}"</div>
+              )}
+              {globalSearch.length<=1&&(
+                <div style={{padding:20,textAlign:"center",color:TG.textMuted,fontSize:13}}>Type to search chats and messages</div>
+              )}
+            </div>
+          </div>
         </div>
       )}
       {/* Image Lightbox */}
@@ -1208,6 +1366,7 @@ export default function CRMChat({token}) {
           onSelect={()=>{setSelectMode(true);setSelectedMsgs(new Set([ctxMenu.idx]))}}
           onForward={()=>setForwardMsg(ctxMenu.msg)}
           onPin={()=>setPinnedMsgs(p=>({...p,[sel.id]:p[sel.id]?.id===ctxMenu.msg.id?null:ctxMenu.msg}))}
+          onInfo={()=>setMsgInfoOpen(ctxMenu.msg)}
           onReact={emoji=>{
             setReactions(p=>{
               const prev = p[ctxMenu.msg.id] || {}
