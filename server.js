@@ -217,7 +217,7 @@ app.get('/api/chat/list', requireAuth, async (req,res) => {
   if (!_session) return res.json([])
   try {
     const client = await getClient()
-    const dialogs = await withTimeout(client.getDialogs({ limit: 60 }), 15000, 'getDialogs')
+    const dialogs = await withTimeout(client.getDialogs({ limit: 40 }), 15000, 'getDialogs')
     const chats = dialogs.map(d => ({
       id: d.id.toString(),
       name: d.title || d.name || 'Unknown',
@@ -824,6 +824,47 @@ app.get('/api/chat/media/:chatId/:msgId', (req, res, next) => {
   } catch(e) {
     log('media error ' + req.params.msgId + ': ' + e.message)
     res.status(404).send()
+  }
+})
+
+
+// ── USER ONLINE STATUS ──
+app.get('/api/chat/status/:id', requireAuth, async (req, res) => {
+  if (!_session) return res.json({ status: 'unknown' })
+  try {
+    const client = await withTimeout(getClient(), 8000, 'getClient')
+    const entity = await withTimeout(resolveEntity(client, req.params.id, req.query.username), 6000, 'resolve')
+    const fullUser = await withTimeout(
+      client.invoke(new (require('telegram/tl').Api.users.GetFullUser)({ id: entity })),
+      8000, 'getFullUser'
+    )
+    const status = fullUser?.users?.[0]?.status
+    if (!status) return res.json({ status: 'unknown' })
+    const className = status.className || ''
+    if (className === 'UserStatusOnline') {
+      res.json({ status: 'online' })
+    } else if (className === 'UserStatusRecently') {
+      res.json({ status: 'recently' })
+    } else if (className === 'UserStatusLastWeek') {
+      res.json({ status: 'last week' })
+    } else if (className === 'UserStatusLastMonth') {
+      res.json({ status: 'last month' })
+    } else if (className === 'UserStatusOffline') {
+      const wasOnline = status.wasOnline
+      if (wasOnline) {
+        const diff = Math.floor(Date.now()/1000) - wasOnline
+        if (diff < 60) res.json({ status: 'just now' })
+        else if (diff < 3600) res.json({ status: Math.floor(diff/60) + 'm ago' })
+        else if (diff < 86400) res.json({ status: Math.floor(diff/3600) + 'h ago' })
+        else res.json({ status: 'offline' })
+      } else {
+        res.json({ status: 'offline' })
+      }
+    } else {
+      res.json({ status: 'offline' })
+    }
+  } catch(e) {
+    res.json({ status: 'unknown' })
   }
 })
 
