@@ -719,8 +719,7 @@ app.post('/api/chat/send-file', requireAuth, (req, res) => {
         if (part.includes('Content-Disposition: form-data')) {
           const nameMatch = part.match(/name="([^"]+)"/)
           const fileMatch = part.match(/filename="([^"]+)"/)
-          const mimeMatch = part.match(/Content-Type: ([^
-]+)/)
+          const mimeMatch = part.match(/Content-Type: ([^\r\n]+)/)
           const headerEnd = part.indexOf('\r\n\r\n')
           if (headerEnd === -1) continue
           const value = part.slice(headerEnd + 4, part.lastIndexOf('\r\n'))
