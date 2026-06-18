@@ -510,6 +510,7 @@ If client is an agency, VC, launchpad, or has multiple projects: mention bulk pr
 
     log('AI [' + intent + ']: "' + suggestion.slice(0,60) + '"')
     if(alternative) log('AI alt: "' + alternative.slice(0,60) + '"')
+    res.json({ suggestion, alternative, analysis })
   } catch(e) {
     log('AI error: ' + e.message)
     res.json({ suggestion: ruleBased() })
