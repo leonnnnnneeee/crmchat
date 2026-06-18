@@ -800,24 +800,32 @@ app.get('/api/chat/media/:chatId/:msgId', (req, res, next) => {
     const msg = msgs && msgs[0]
     if (!msg || !msg.media) return res.status(404).send()
 
-    // Try thumb first (fast), fallback to full download
-    let buffer
-    try {
-      buffer = await withTimeout(client.downloadMedia(msg.media, { thumb: 0 }), 20000, 'downloadThumb')
-    } catch {
-      buffer = await withTimeout(client.downloadMedia(msg.media, {}), 25000, 'downloadFull')
+    // Download photo — try multiple methods
+    let buffer = null
+    const methods = [
+      () => client.downloadMedia(msg, { thumb: -1 }),
+      () => client.downloadMedia(msg, {}),
+      () => client.downloadMedia(msg.media, {}),
+    ]
+    for (const method of methods) {
+      try {
+        buffer = await withTimeout(method(), 20000, 'download')
+        if (buffer && buffer.length > 0) break
+      } catch(e) { log('download attempt failed: ' + e.message) }
     }
 
-    if (!buffer || !buffer.length) return res.status(404).send()
-    const buf = Buffer.from(buffer)
+    if (!buffer || !buffer.length) {
+      log('media: all download methods failed for msg ' + req.params.msgId)
+      return res.status(404).send()
+    }
 
-    // Detect mime from magic bytes
+    const buf = Buffer.from(buffer)
     let mime = 'image/jpeg'
     if (buf[0] === 0x89 && buf[1] === 0x50) mime = 'image/png'
     else if (buf[0] === 0x47 && buf[1] === 0x49) mime = 'image/gif'
-    else if (buf[0] === 0xff && buf[1] === 0xd8) mime = 'image/jpeg'
 
     mediaCache[key] = { buf, mime }
+    log('media ok: ' + req.params.msgId + ' ' + buf.length + ' bytes')
     res.setHeader('Content-Type', mime)
     res.setHeader('Cache-Control', 'public, max-age=86400')
     res.send(buf)
