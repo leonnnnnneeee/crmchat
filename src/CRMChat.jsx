@@ -1,4 +1,4 @@
-// v075419
+// v075716
 // v035029
 import { useState, useEffect, useRef, useCallback } from "react"
 
@@ -687,11 +687,18 @@ export default function CRMChat({token}) {
                         {!msg.fromMe && !sel?.isUser && msg.senderName && (
                           <div style={{fontSize:11,fontWeight:700,color:"#7c8ae8",marginBottom:3,whiteSpace:"nowrap"}}>{msg.senderName}</div>
                         )}
-                        {msg.media && msg.media.type === 'photo' && msg.media.url && (
-                          <img src={msg.media.url} alt="photo"
-                            style={{maxWidth:'100%',borderRadius:8,display:'block',marginBottom:4}}
-                            onError={e=>e.target.style.display='none'}/>
+                        {msg.isPhoto && (
+                          <img
+                            src={`/api/chat/media/${sel.id}/${msg.id}`}
+                            alt="photo"
+                            style={{maxWidth:'100%',maxHeight:300,borderRadius:8,display:'block',marginBottom:msg.text?4:0,cursor:'pointer'}}
+                            onClick={e=>{window.open(e.target.src,'_blank')}}
+                            onError={e=>{e.target.style.display='none'}}
+                            loading="lazy"
+                          />
                         )}
+                        {msg.isVideo && <div style={{padding:'4px 0',color:TG.textSec,fontSize:13}}>🎥 Video</div>}
+                        {msg.isDoc && <div style={{padding:'4px 0',color:TG.textSec,fontSize:13}}>📎 Document</div>}
                         {msg.text}
                         <div className="bfoot">
                           <span className={`bt${msg.fromMe?"":" in"}`}>{fmtMsgTime(msg.date)}</span>
