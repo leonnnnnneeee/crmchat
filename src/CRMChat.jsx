@@ -1,4 +1,4 @@
-// v-sprint1-100557
+// v-sprint2-100957
 // v035029
 import { useState, useEffect, useRef, useCallback } from "react"
 
@@ -395,7 +395,15 @@ export default function CRMChat({token}) {
   const [forwardMsg,setForwardMsg]=useState(null)
   const [reactions,setReactions]=useState({})
   const [chatSearch,setChatSearch]=useState('')
-  const [chatSearchOpen,setChatSearchOpen]=useState(false) // {x,y,msg,idx}
+  const [chatSearchOpen,setChatSearchOpen]=useState(false)
+  const [lightbox,setLightbox]=useState(null)
+  const [gifOpen,setGifOpen]=useState(false)
+  const [gifs,setGifs]=useState([])
+  const [gifQuery,setGifQuery]=useState('')
+  const [recording,setRecording]=useState(false)
+  const [recordSecs,setRecordSecs]=useState(0)
+  const mediaRecRef=useRef(null)
+  const recordTimerRef=useRef(null) // {x,y,msg,idx}
   const [replyTo,setReplyTo]=useState(null)
   const endRef=useRef(null)
 
@@ -742,7 +750,16 @@ export default function CRMChat({token}) {
                           <div style={{fontSize:11,fontWeight:700,color:"#7c8ae8",marginBottom:3,whiteSpace:"nowrap"}}>{msg.senderName}</div>
                         )}
                         {msg.isPhoto && <ChatPhoto chatId={sel.id} msgId={msg.id} authToken={token}/>}
-                        {msg.isVideo && <div style={{padding:'4px 0',color:TG.textSec,fontSize:13}}>🎥 Video</div>}
+                        {msg.isVideo && (
+                          <video controls style={{maxWidth:'100%',maxHeight:200,borderRadius:8,display:'block'}}>
+                            <source src={`/api/chat/media/${sel.id}/${msg.id}?t=${token}`}/>
+                          </video>
+                        )}
+                        {msg.isAudio && (
+                          <audio controls style={{width:'100%',marginBottom:4}}>
+                            <source src={`/api/chat/media/${sel.id}/${msg.id}?t=${token}`}/>
+                          </audio>
+                        )}
                         {msg.isDoc && <div style={{padding:'4px 0',color:TG.textSec,fontSize:13}}>📎 Document</div>}
                         {chatSearch && msg.text?.toLowerCase().includes(chatSearch.toLowerCase())
                           ? msg.text.split(new RegExp(`(${chatSearch})`, 'gi')).map((part,i) =>
@@ -833,6 +850,49 @@ export default function CRMChat({token}) {
                 style={{padding:"7px 14px",background:"#2d1155",color:"#9b7ec8",border:"1px solid #3d1f6a",borderRadius:8,cursor:"pointer",fontSize:13}}>
                 Cancel
               </button>
+            </div>
+          )}
+          {/* GIF Picker */}
+          {gifOpen&&(
+            <div style={{height:220,background:TG.panel,borderTop:"1px solid "+TG.border,flexShrink:0,display:"flex",flexDirection:"column"}}>
+              <div style={{padding:"6px 10px",borderBottom:"1px solid "+TG.border}}>
+                <input value={gifQuery}
+                  onChange={e=>{setGifQuery(e.target.value);searchGifs(e.target.value)}}
+                  placeholder="Search GIFs..."
+                  style={{width:"100%",background:TG.elevated,border:"none",borderRadius:16,padding:"6px 12px",color:TG.text,fontSize:13,outline:"none",boxSizing:"border-box"}}
+                  autoFocus/>
+              </div>
+              <div style={{flex:1,overflowX:"auto",display:"flex",gap:6,padding:"8px 10px",alignItems:"center"}}>
+                {gifs.length===0&&<div style={{color:TG.textMuted,fontSize:13,padding:"0 10px"}}>Search for GIFs above</div>}
+                {gifs.map(g=>{
+                  const url = g.media_formats?.gif?.url || g.media_formats?.tinygif?.url
+                  if(!url) return null
+                  return (
+                    <img key={g.id} src={url} alt={g.title}
+                      style={{height:120,borderRadius:8,cursor:"pointer",flexShrink:0}}
+                      onClick={async()=>{
+                        setGifOpen(false)
+                        // Send GIF as a message with the URL
+                        await fetch("/api/chat/send",{method:"POST",
+                          headers:{"Content-Type":"application/json","x-auth-token":token},
+                          body:JSON.stringify({chatId:sel.id,text:url})
+                        })
+                        setTimeout(()=>{loadingRef.current=false;loadMessages(sel)},500)
+                      }}/>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+          {/* Voice recording indicator */}
+          {recording&&(
+            <div style={{padding:"8px 16px",background:"rgba(229,57,53,.1)",borderTop:"1px solid rgba(229,57,53,.2)",
+              display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
+              <div style={{width:8,height:8,borderRadius:"50%",background:"#e53935",animation:"pulse 1s infinite"}}/>
+              <span style={{fontSize:13,color:"#e53935",fontWeight:600}}>Recording... {recordSecs}s</span>
+              <span style={{fontSize:12,color:TG.textSec,flex:1}}>Release 🎤 to send, or swipe away to cancel</span>
+              <button onClick={()=>{mediaRecRef.current?.stop();clearInterval(recordTimerRef.current);setRecording(false);setRecordSecs(0)}}
+                style={{background:"none",border:"none",color:TG.textSec,cursor:"pointer",fontSize:13}}>Cancel</button>
             </div>
           )}
           {/* Input area */}
@@ -949,6 +1009,30 @@ export default function CRMChat({token}) {
 
       {/* Context menu */}
 
+
+      {/* Image Lightbox */}
+      {lightbox&&(
+        <div onClick={()=>setLightbox(null)}
+          style={{position:"fixed",inset:0,background:"rgba(0,0,0,.92)",zIndex:99999,
+            display:"flex",alignItems:"center",justifyContent:"center",cursor:"zoom-out"}}>
+          <img src={lightbox} alt="photo"
+            style={{maxWidth:"95vw",maxHeight:"95vh",objectFit:"contain",borderRadius:8}}
+            onClick={e=>e.stopPropagation()}/>
+          <button onClick={()=>setLightbox(null)}
+            style={{position:"absolute",top:16,right:16,background:"rgba(255,255,255,.15)",
+              border:"none",borderRadius:"50%",width:40,height:40,cursor:"pointer",
+              color:"#fff",fontSize:20,display:"flex",alignItems:"center",justifyContent:"center"}}>
+            ✕
+          </button>
+          <a href={lightbox} download target="_blank"
+            style={{position:"absolute",top:16,right:64,background:"rgba(255,255,255,.15)",
+              borderRadius:"50%",width:40,height:40,display:"flex",alignItems:"center",
+              justifyContent:"center",textDecoration:"none",fontSize:18}}
+            onClick={e=>e.stopPropagation()}>
+            ⬇️
+          </a>
+        </div>
+      )}
       {/* Forward Message Modal */}
       {forwardMsg&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.7)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center"}}
