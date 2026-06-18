@@ -263,7 +263,7 @@ app.get('/api/chat/messages/:id', requireAuth, async (req,res) => {
             : (m.sender?.username || null),
         }
       })
-      .filter(m => m.text !== undefined)
+      .filter(m => m.text || m.isPhoto || m.isVideo || m.isDoc)
     log('messages loaded: ' + results.length + ' msgs in ' + (Date.now()-t0) + 'ms')
     res.json(results)
   } catch(e) { log('messages error: '+e.message+' ('+(Date.now()-t0)+'ms)'); res.json([]) }
@@ -778,7 +778,12 @@ app.post('/api/chat/send-file', requireAuth, (req, res) => {
 
 // ── DOWNLOAD MEDIA from TG message ──
 const mediaCache = {}
-app.get('/api/chat/media/:chatId/:msgId', requireAuth, async (req, res) => {
+app.get('/api/chat/media/:chatId/:msgId', (req, res, next) => {
+  // Allow auth via query param for img src tags
+  const t = req.headers['x-auth-token'] || req.query.token || req.query.t
+  if (t !== VALID_TOKEN) return res.status(401).send()
+  next()
+}, async (req, res) => {
   const key = req.params.chatId + '_' + req.params.msgId
   if (mediaCache[key]) {
     res.setHeader('Content-Type', mediaCache[key].mime)
