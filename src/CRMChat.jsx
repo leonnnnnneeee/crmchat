@@ -1,4 +1,4 @@
-// v-sprint3-101433
+// v-ui-103048
 // v035029
 import { useState, useEffect, useRef, useCallback } from "react"
 
@@ -273,7 +273,7 @@ const STYLES = `
 .msgs{flex:1;overflow-y:auto;padding:12px 16px;display:flex;flex-direction:column;gap:3px}
 .msgs::-webkit-scrollbar{width:4px}
 .msgs::-webkit-scrollbar-thumb{background:${TG.elevated};border-radius:2px}
-.bbl{display:inline-block;max-width:70%;min-width:60px;padding:8px 12px 4px;line-height:1.55;font-size:14px;cursor:pointer;border-radius:14px;word-break:normal;overflow-wrap:break-word;white-space:normal}
+.bbl{display:inline-block;max-width:68%;padding:7px 12px 4px;line-height:1.55;font-size:14px;cursor:pointer;border-radius:18px;word-break:normal;overflow-wrap:break-word;white-space:normal;min-width:60px}
 .bbl:hover{opacity:.92}
 .bbl.in{background:#182533;color:${TG.text};border-radius:14px 14px 14px 3px}
 .bbl.out{background:${TG.msgOut};color:#fff;border-radius:14px 14px 3px 14px}
@@ -325,6 +325,45 @@ const STYLES = `
 @keyframes pulse{0%,100%{opacity:.4}50%{opacity:.8}}
 `
 
+
+
+// ── Link Preview ──
+const linkCache = {}
+function LinkPreview({url}) {
+  const [meta, setMeta] = useState(linkCache[url] || null)
+  const [failed, setFailed] = useState(false)
+  useEffect(()=>{
+    if(meta || failed) return
+    // Use allorigins proxy to fetch OG tags
+    fetch('https://api.allorigins.win/get?url='+encodeURIComponent(url))
+      .then(r=>r.json())
+      .then(d=>{
+        const html = d.contents || ''
+        const title = html.match(/<meta[^>]*property="og:title"[^>]*content="([^"]+)"/)?.[1] ||
+                      html.match(/<title>([^<]+)<\/title>/)?.[1] || ''
+        const desc  = html.match(/<meta[^>]*property="og:description"[^>]*content="([^"]+)"/)?.[1] || ''
+        const img   = html.match(/<meta[^>]*property="og:image"[^>]*content="([^"]+)"/)?.[1] || ''
+        const domain = new URL(url).hostname.replace('www.','')
+        const result = {title, desc, img, domain}
+        linkCache[url] = result
+        setMeta(result)
+      })
+      .catch(()=>setFailed(true))
+  },[url])
+  if(!meta || failed) return null
+  return (
+    <a href={url} target="_blank" rel="noreferrer" style={{display:"block",textDecoration:"none",marginTop:6}}>
+      <div style={{background:"rgba(0,0,0,.2)",borderRadius:8,overflow:"hidden",border:"1px solid rgba(255,255,255,.08)"}}>
+        {meta.img&&<img src={meta.img} alt="" style={{width:"100%",maxHeight:120,objectFit:"cover",display:"block"}} onError={e=>e.target.style.display="none"}/>}
+        <div style={{padding:"6px 10px"}}>
+          <div style={{fontSize:11,color:"#a78bfa",marginBottom:2}}>{meta.domain}</div>
+          {meta.title&&<div style={{fontSize:13,fontWeight:600,color:"#fff",marginBottom:2,lineHeight:1.3}}>{meta.title.slice(0,80)}</div>}
+          {meta.desc&&<div style={{fontSize:12,color:"rgba(255,255,255,.6)",lineHeight:1.4}}>{meta.desc.slice(0,100)}</div>}
+        </div>
+      </div>
+    </a>
+  )
+}
 
 // ── ChatPhoto — lazy load with spinner ──
 const imgCache = new Set()
@@ -383,6 +422,7 @@ export default function CRMChat({token}) {
   const [loadMsgs,setLoadMsgs]=useState(false)
   const [onlineStatus,setOnlineStatus]=useState('')
   const [typing,setTyping]=useState(false)
+  const [showScrollBtn,setShowScrollBtn]=useState(false)
   const [notifPerm,setNotifPerm]=useState(false)
   const [showTmpl,setShowTmpl]=useState(false)
   const [tmplCat,setTmplCat]=useState("all")
@@ -752,20 +792,29 @@ export default function CRMChat({token}) {
               return(
                 <div key={i}>
                   {showSep&&<div className="dsep"><span>{fmtDateSep(msg.date)}</span></div>}
-                  <div style={{display:"flex",flexDirection:msg.fromMe?"row-reverse":"row",alignItems:"flex-end",gap:8,marginBottom:2,cursor:selectMode?"pointer":"default"}}
+                  <div style={{display:"flex",flexDirection:msg.fromMe?"row-reverse":"row",alignItems:"flex-end",gap:8,marginBottom:isSameGroup?1:6,cursor:selectMode?"pointer":"default"}}
                     onClick={selectMode?()=>setSelectedMsgs(prev=>{const s=new Set(prev);s.has(i)?s.delete(i):s.add(i);return s}):undefined}>
                   {selectMode&&<div style={{width:20,height:20,borderRadius:"50%",border:"2px solid #7c3aed",background:selectedMsgs.has(i)?"#7c3aed":"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,alignSelf:"center",fontSize:12,color:"#fff",cursor:"pointer"}}>
                     {selectedMsgs.has(i)?"✓":""}
                   </div>}
-                    {!msg.fromMe&&<Avatar name={msg.senderName||sel.name} chatId={msg.senderId||sel.id} username={null} size={26}/>}
+                    {!msg.fromMe&&(isLastInGroup
+                      ? <Avatar name={msg.senderName||sel.name} chatId={msg.senderId||sel.id} username={null} size={26}/>
+                      : <div style={{width:26,flexShrink:0}}/>
+                    )}
                     <div onContextMenu={e=>handleCtx(e,msg,i)}>
                       {msg.replyTo&&(
                         <div style={{background:"rgba(124,58,237,.15)",borderLeft:`3px solid ${TG.blue}`,padding:"4px 8px",borderRadius:"0 6px 6px 0",marginBottom:4,fontSize:11,color:TG.textSec,maxWidth:"100%",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
                           ↩ {msg.replyTo.fromMe?"You":sel.name}: {msg.replyTo.text}
                         </div>
                       )}
-                      <div className={`bbl msg-bubble ${msg.fromMe?"out":"in"}${msg.deleted?" del":""}${msg.replyTo?" rpl":""}`}>
-                        {!msg.fromMe && !sel?.isUser && msg.senderName && (
+                      <div className={`bbl msg-bubble ${msg.fromMe?"out":"in"}${msg.deleted?" del":""}${msg.replyTo?" rpl":""}`}
+                        style={{
+                          borderBottomRightRadius: msg.fromMe && isLastInGroup ? 4 : undefined,
+                          borderBottomLeftRadius: !msg.fromMe && isLastInGroup ? 4 : undefined,
+                          borderTopRightRadius: msg.fromMe && isSameGroup ? 4 : undefined,
+                          borderTopLeftRadius: !msg.fromMe && isSameGroup ? 4 : undefined,
+                        }}>
+                        {!msg.fromMe && !sel?.isUser && msg.senderName && !isSameGroup && (
                           <div style={{fontSize:11,fontWeight:700,color:"#7c8ae8",marginBottom:3,whiteSpace:"nowrap"}}>{msg.senderName}</div>
                         )}
                         {msg.isPhoto && <ChatPhoto chatId={sel.id} msgId={msg.id} authToken={token}/>}
@@ -787,6 +836,10 @@ export default function CRMChat({token}) {
                                 : part
                             )
                           : msg.text}
+                        {/* Link preview */}
+                        {msg.text && /https?:\/\/[^\s]+/.test(msg.text) && (
+                          <LinkPreview url={msg.text.match(/https?:\/\/[^\s]+/)[0]}/>
+                        )}
                         {reactions[msg.id]&&Object.keys(reactions[msg.id]).length>0&&(
                           <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:3}}>
                             {Object.entries(reactions[msg.id]).map(([e,n])=>(
@@ -902,6 +955,16 @@ export default function CRMChat({token}) {
                 })}
               </div>
             </div>
+          )}
+          {/* Scroll to bottom button */}
+          {showScrollBtn&&(
+            <button onClick={()=>endRef.current?.scrollIntoView({behavior:"smooth"})}
+              style={{position:"absolute",bottom:90,right:20,width:38,height:38,borderRadius:"50%",
+                background:TG.elevated,border:"1px solid #3d1f6a",cursor:"pointer",
+                fontSize:18,display:"flex",alignItems:"center",justifyContent:"center",
+                boxShadow:"0 2px 8px rgba(0,0,0,.4)",zIndex:10}}>
+              ↓
+            </button>
           )}
           {/* Voice recording indicator */}
           {recording&&(
