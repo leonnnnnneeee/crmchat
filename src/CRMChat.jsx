@@ -1,4 +1,4 @@
-// v-fix-105737
+// v-lc-105924
 // v035029
 import { useState, useEffect, useRef, useCallback } from "react"
 
@@ -273,6 +273,7 @@ function AISuggestPanel({text,analysis,alternative,loading,onUse,onUseAlt,onRege
   )
 }
 
+const linkCache = {}
 function LinkPreview({url}) {
   const [meta, setMeta] = useState(linkCache[url] || null)
   const [failed, setFailed] = useState(false)
