@@ -761,32 +761,38 @@ app.get('/api/chat/media/:chatId/:msgId', requireAuth, async (req, res) => {
     return res.send(mediaCache[key].buf)
   }
   try {
-    const client = await getClient()
-    const entity = await resolveEntity(client, req.params.chatId)
+    const client = await withTimeout(getClient(), 10000, 'getClient')
+    const entity = await withTimeout(resolveEntity(client, req.params.chatId), 8000, 'resolve')
     const msgs = await withTimeout(
       client.getMessages(entity, { ids: [parseInt(req.params.msgId)] }),
-      8000, 'getMessages'
+      10000, 'getMessages'
     )
-    const msg = msgs[0]
+    const msg = msgs && msgs[0]
     if (!msg || !msg.media) return res.status(404).send()
-    // Use thumb for preview — much faster than full download
-    const buffer = await withTimeout(
-      client.downloadMedia(msg, { thumb: 1 }),
-      15000, 'downloadMedia'
-    )
-    if (!buffer) return res.status(404).send()
+
+    // Try thumb first (fast), fallback to full download
+    let buffer
+    try {
+      buffer = await withTimeout(client.downloadMedia(msg.media, { thumb: 0 }), 20000, 'downloadThumb')
+    } catch {
+      buffer = await withTimeout(client.downloadMedia(msg.media, {}), 25000, 'downloadFull')
+    }
+
+    if (!buffer || !buffer.length) return res.status(404).send()
     const buf = Buffer.from(buffer)
-    // Detect mime type
+
+    // Detect mime from magic bytes
     let mime = 'image/jpeg'
     if (buf[0] === 0x89 && buf[1] === 0x50) mime = 'image/png'
     else if (buf[0] === 0x47 && buf[1] === 0x49) mime = 'image/gif'
-    else if (buf[0] === 0x25 && buf[1] === 0x50) mime = 'application/pdf'
+    else if (buf[0] === 0xff && buf[1] === 0xd8) mime = 'image/jpeg'
+
     mediaCache[key] = { buf, mime }
     res.setHeader('Content-Type', mime)
-    res.setHeader('Cache-Control', 'public, max-age=3600')
+    res.setHeader('Cache-Control', 'public, max-age=86400')
     res.send(buf)
   } catch(e) {
-    log('media: ' + e.message)
+    log('media error ' + req.params.msgId + ': ' + e.message)
     res.status(404).send()
   }
 })
