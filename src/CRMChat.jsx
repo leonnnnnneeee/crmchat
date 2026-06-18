@@ -1,4 +1,4 @@
-// v-full-104515
+// v-ai2-105240
 // v035029
 import { useState, useEffect, useRef, useCallback } from "react"
 
@@ -218,118 +218,61 @@ function ContextMenu({x,y,msg,onDelete,onCopy,onReply,onClose,onDeleteAll,onSele
 }
 
 // ── AI Suggest floating panel ──
-function AISuggestPanel({text,loading,onUse,onRegenerate,onClose}) {
+function AISuggestPanel({text,analysis,alternative,loading,onUse,onUseAlt,onRegenerate,onClose}) {
   if(!text&&!loading) return null
   return (
-    <div style={{
-      margin:"0 16px 8px",padding:"12px 14px",
-      background:"rgba(124,58,237,.12)",border:"1px solid rgba(124,58,237,.35)",
-      borderRadius:12,flexShrink:0,
-    }}>
-      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}>
-        <span style={{fontSize:14}}>✨</span>
+    <div style={{margin:"0 16px 8px",background:"rgba(124,58,237,.1)",border:"1px solid rgba(124,58,237,.3)",borderRadius:12,flexShrink:0,overflow:"hidden"}}>
+      {/* Header */}
+      <div style={{padding:"7px 14px",borderBottom:"1px solid rgba(124,58,237,.2)",display:"flex",alignItems:"center",gap:6}}>
+        <span style={{fontSize:13}}>✨</span>
         <span style={{fontSize:12,fontWeight:700,color:"#c4a8e8"}}>AI Suggest</span>
-        <div style={{flex:1}}/>
-        <button onClick={onClose} style={{background:"none",border:"none",color:TG.textMuted,cursor:"pointer",fontSize:16,padding:"0 2px",lineHeight:1}}>✕</button>
+        {analysis&&<span style={{fontSize:11,color:"#9b7ec8",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginLeft:4}}>· {analysis}</span>}
+        <button onClick={onClose} style={{background:"none",border:"none",color:"#6b7280",cursor:"pointer",fontSize:14,padding:"0 2px",flexShrink:0}}>✕</button>
       </div>
       {loading?(
-        <div style={{display:"flex",gap:6,alignItems:"center",color:TG.textSec,fontSize:13}}>
+        <div style={{padding:"12px 14px",display:"flex",gap:8,alignItems:"center",color:"#9b7ec8",fontSize:13}}>
           <span style={{animation:"spin 1s linear infinite",display:"inline-block"}}>⏳</span>
-          Reading conversation...
+          Analyzing conversation...
         </div>
       ):(
-        <>
-          <div style={{fontSize:14,color:TG.text,lineHeight:1.6,marginBottom:10}}>{text}</div>
-          <div style={{display:"flex",gap:8}}>
-            <button onClick={onUse} style={{flex:1,padding:"7px",background:TG.blue,color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontWeight:600,fontSize:13}}>
-              Use this ↑
-            </button>
-            <button onClick={onRegenerate} style={{padding:"7px 12px",background:"#2d1155",color:TG.textSec,border:"1px solid #3d1f6a",borderRadius:8,cursor:"pointer",fontSize:13}}>
-              Try again
+        <div style={{padding:"8px 12px",display:"flex",flexDirection:"column",gap:6}}>
+          {/* Option 1 */}
+          <div>
+            <div style={{fontSize:10,color:"#7c3aed",fontWeight:700,marginBottom:3,letterSpacing:.5}}>OPTION 1</div>
+            <div style={{fontSize:13,color:"#f0e6ff",lineHeight:1.55,marginBottom:5,padding:"7px 10px",
+              background:"rgba(124,58,237,.1)",borderRadius:8,borderLeft:"3px solid #7c3aed"}}>
+              {text}
+            </div>
+            <button onClick={onUse} style={{width:"100%",padding:"6px",background:"#3b82f6",color:"#fff",
+              border:"none",borderRadius:7,cursor:"pointer",fontWeight:600,fontSize:12}}>
+              Use ↑
             </button>
           </div>
-        </>
+          {/* Option 2 */}
+          {alternative&&(
+            <div>
+              <div style={{fontSize:10,color:"#6b7280",fontWeight:700,marginBottom:3,letterSpacing:.5}}>OPTION 2</div>
+              <div style={{fontSize:13,color:"#d1d5db",lineHeight:1.55,marginBottom:5,padding:"7px 10px",
+                background:"rgba(255,255,255,.04)",borderRadius:8,borderLeft:"3px solid #4b5563"}}>
+                {alternative}
+              </div>
+              <button onClick={onUseAlt} style={{width:"100%",padding:"6px",background:"transparent",
+                color:"#a78bfa",border:"1px solid rgba(124,58,237,.4)",borderRadius:7,cursor:"pointer",fontSize:12}}>
+                Use ↑
+              </button>
+            </div>
+          )}
+          {/* Regenerate */}
+          <button onClick={onRegenerate} style={{padding:"5px",background:"transparent",
+            color:"#6b7280",border:"1px solid #374151",borderRadius:7,cursor:"pointer",fontSize:11}}>
+            ↻ Regenerate
+          </button>
+        </div>
       )}
     </div>
   )
 }
 
-const STYLES = `
-.crm-root{display:grid;grid-template-columns:56px 270px 1fr 295px;height:100%;background:${TG.bg};font-family:'Inter',system-ui,sans-serif;overflow:hidden;color:${TG.text}}
-.sidebar{background:${TG.panel};display:flex;flex-direction:column;align-items:center;padding:14px 0;gap:4px;border-right:1px solid ${TG.border}}
-.si{width:42px;height:42px;display:flex;align-items:center;justify-content:center;border-radius:12px;cursor:pointer;color:${TG.textMuted};font-size:20px;transition:all .15s}
-.si:hover{background:${TG.elevated};color:${TG.textSec}}
-.si.on{background:#fff;color:${TG.blue}}
-.lc{background:${TG.panel};border-right:1px solid ${TG.border};display:flex;flex-direction:column;overflow:hidden}
-.sinp{width:100%;background:${TG.elevated};border:none;border-radius:20px;padding:8px 14px 8px 34px;color:${TG.text};font-size:13px;outline:none;font-family:inherit}
-.sinp::placeholder{color:${TG.textMuted}}
-.ci{display:flex;gap:12px;padding:10px 16px;cursor:pointer;align-items:center;transition:background .1s;border-bottom:1px solid ${TG.border};position:relative}
-.ci:hover{background:${TG.elevated}}
-.ci.sel{background:${TG.blue}22;border-left:3px solid ${TG.blue}}
-.mc{display:flex;flex-direction:column;background:${TG.bg};overflow:hidden}
-.chdr{height:58px;background:${TG.panel};border-bottom:1px solid ${TG.border};display:flex;align-items:center;padding:0 16px;gap:12px;flex-shrink:0}
-.hb{width:34px;height:34px;background:${TG.elevated};border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:${TG.textSec};font-size:16px;border:none;transition:all .15s}
-.hb:hover{background:#3d1f6a;color:${TG.text}}
-.hb.on{background:rgba(124,58,237,.25);color:#c4a8e8}
-.msgs{flex:1;overflow-y:auto;padding:12px 16px;display:flex;flex-direction:column;gap:3px}
-.msgs::-webkit-scrollbar{width:4px}
-.msgs::-webkit-scrollbar-thumb{background:${TG.elevated};border-radius:2px}
-.bbl{display:inline-block;max-width:68%;padding:7px 12px 4px;line-height:1.55;font-size:14px;cursor:pointer;border-radius:18px;word-break:normal;overflow-wrap:break-word;white-space:normal;min-width:60px}
-.bbl:hover{opacity:.92}
-.bbl.in{background:#182533;color:${TG.text};border-radius:14px 14px 14px 3px}
-.bbl.out{background:${TG.msgOut};color:#fff;border-radius:14px 14px 3px 14px}
-.bbl.del{opacity:.4;font-style:italic}
-.bbl.rpl{border-left:3px solid rgba(124,58,237,.6);padding-left:10px}
-.bfoot{display:flex;justify-content:flex-end;align-items:center;gap:3px;margin-top:3px;white-space:nowrap;flex-wrap:nowrap}
-.bt{font-size:10px;color:rgba(255,255,255,.4)}
-.bt.in{color:${TG.textMuted}}
-.dsep{text-align:center;font-size:11px;color:${TG.textMuted};padding:8px 0;user-select:none}
-.dsep span{background:${TG.elevated};padding:3px 12px;border-radius:99px}
-.ia{padding:10px 14px 12px;background:${TG.panel};border-top:1px solid ${TG.border};flex-shrink:0}
-.reacts{display:flex;gap:5px;margin-bottom:10px}
-.re{font-size:18px;cursor:pointer;padding:2px 5px;border-radius:7px;background:${TG.elevated};border:none;transition:transform .1s}
-.re:hover{transform:scale(1.25)}
-.ir{display:flex;gap:8px;align-items:flex-end}
-.mi{flex:1;background:${TG.elevated};border:1px solid #3d1f6a;border-radius:20px;padding:9px 16px;color:${TG.text};font-size:14px;outline:none;font-family:inherit;resize:none;max-height:100px;line-height:1.5;transition:border-color .15s}
-.mi:focus{border-color:${TG.blue}}
-.mi::placeholder{color:${TG.textMuted}}
-.ib{width:38px;height:38px;border-radius:50%;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:17px;transition:all .15s;flex-shrink:0}
-.ib.g{background:${TG.elevated};color:${TG.textSec}}
-.ib.g:hover{background:#3d1f6a;color:${TG.text}}
-.ib.s{background:${TG.blue};color:#fff}
-.ib.s:hover{background:${TG.blueHover}}
-.ib.on{background:rgba(124,58,237,.25);color:#c4a8e8}
-.ib:disabled{opacity:.4;cursor:default}
-.tp{margin:0 16px 8px;background:${TG.panel};border:1px solid ${TG.border};border-radius:12px;overflow:hidden;max-height:210px;flex-shrink:0}
-.tpcat{display:flex;gap:5px;padding:8px 10px;border-bottom:1px solid ${TG.border};overflow-x:auto}
-.tpcat::-webkit-scrollbar{height:0}
-.tc{font-size:11px;padding:4px 10px;border:none;border-radius:99px;cursor:pointer;white-space:nowrap;font-weight:500;font-family:inherit;transition:all .15s}
-.tlist{overflow-y:auto;max-height:160px}
-.ti{padding:10px 14px;cursor:pointer;border-bottom:1px solid ${TG.border};transition:background .1s}
-.ti:hover{background:${TG.elevated}}
-.rc{background:${TG.panel};border-left:1px solid ${TG.border};overflow-y:auto;flex-shrink:0}
-.rc::-webkit-scrollbar{width:4px}
-.rc::-webkit-scrollbar-thumb{background:${TG.elevated};border-radius:2px}
-.rs{padding:14px 16px;border-bottom:1px solid ${TG.border}}
-.rl{font-size:10px;font-weight:700;color:${TG.textMuted};text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px}
-.ri{width:100%;background:${TG.elevated};border:1px solid #3d1f6a;border-radius:8px;padding:8px 10px;color:${TG.text};font-size:13px;outline:none;font-family:inherit;margin-bottom:8px}
-.ri:focus{border-color:${TG.blue}}
-.rr{display:flex;align-items:center;gap:8px;font-size:13px;color:${TG.textSec};margin-bottom:7px}
-.rr i{color:${TG.blue};width:16px;font-size:15px}
-.qb{width:100%;padding:9px 12px;border-radius:8px;font-size:12px;cursor:pointer;text-align:left;font-weight:500;transition:all .1s;margin-bottom:5px;font-family:inherit}
-.qb.d{background:${TG.elevated};border:1px solid #3d1f6a;color:${TG.textSec}}
-.qb.d:hover{background:#3d1f6a;color:${TG.text}}
-.qb.w{background:rgba(79,174,78,.12);border:1px solid rgba(79,174,78,.3);color:${TG.green}}
-.qb.l{background:rgba(229,57,53,.1);border:1px solid rgba(229,57,53,.25);color:${TG.red}}
-.rpl-bar{background:#2d1155;border-left:3px solid ${TG.blue};padding:6px 10px;border-radius:0 8px 8px 0;margin-bottom:8px;font-size:12px;color:${TG.textSec};display:flex;align-items:center;gap:8px}
-@keyframes spin{to{transform:rotate(360deg)}}
-@keyframes pulse{0%,100%{opacity:.4}50%{opacity:.8}}
-`
-
-
-
-// ── Link Preview ──
-const linkCache = {}
 function LinkPreview({url}) {
   const [meta, setMeta] = useState(linkCache[url] || null)
   const [failed, setFailed] = useState(false)
