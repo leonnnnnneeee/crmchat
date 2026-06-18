@@ -842,36 +842,33 @@ app.get('/api/chat/status/:id', requireAuth, async (req, res) => {
   try {
     const client = await withTimeout(getClient(), 8000, 'getClient')
     const entity = await withTimeout(resolveEntity(client, req.params.id, req.query.username), 6000, 'resolve')
-    const fullUser = await withTimeout(
-      client.invoke(new (require('telegram/tl').Api.users.GetFullUser)({ id: entity })),
-      8000, 'getFullUser'
-    )
-    const status = fullUser?.users?.[0]?.status
-    if (!status) return res.json({ status: 'unknown' })
-    const className = status.className || ''
-    if (className === 'UserStatusOnline') {
-      res.json({ status: 'online' })
-    } else if (className === 'UserStatusRecently') {
-      res.json({ status: 'recently' })
-    } else if (className === 'UserStatusLastWeek') {
-      res.json({ status: 'last week' })
-    } else if (className === 'UserStatusLastMonth') {
-      res.json({ status: 'last month' })
-    } else if (className === 'UserStatusOffline') {
-      const wasOnline = status.wasOnline
-      if (wasOnline) {
-        const diff = Math.floor(Date.now()/1000) - wasOnline
-        if (diff < 60) res.json({ status: 'just now' })
-        else if (diff < 3600) res.json({ status: Math.floor(diff/60) + 'm ago' })
-        else if (diff < 86400) res.json({ status: Math.floor(diff/3600) + 'h ago' })
-        else res.json({ status: 'offline' })
-      } else {
-        res.json({ status: 'offline' })
+
+    // getEntity returns user with status field directly
+    const user = await withTimeout(client.getEntity(entity), 5000, 'getEntity')
+    const status = user?.status
+    log('User status for ' + req.params.id + ': ' + JSON.stringify(status))
+
+    if (!status) return res.json({ status: 'recently' })
+
+    const cn = status.className || status._ || ''
+    if (cn.includes('Online')) return res.json({ status: 'online' })
+    if (cn.includes('Recently')) return res.json({ status: 'recently' })
+    if (cn.includes('LastWeek')) return res.json({ status: 'last week' })
+    if (cn.includes('LastMonth')) return res.json({ status: 'last month' })
+    if (cn.includes('Offline')) {
+      const was = status.wasOnline
+      if (was) {
+        const diff = Math.floor(Date.now()/1000) - was
+        if (diff < 60)   return res.json({ status: 'just now' })
+        if (diff < 3600) return res.json({ status: Math.floor(diff/60) + 'm ago' })
+        if (diff < 86400)return res.json({ status: Math.floor(diff/3600) + 'h ago' })
       }
-    } else {
-      res.json({ status: 'offline' })
+      return res.json({ status: 'offline' })
     }
+    // Default — privacy hidden
+    return res.json({ status: 'recently' })
   } catch(e) {
+    log('status error: ' + e.message)
     res.json({ status: 'unknown' })
   }
 })
