@@ -1,4 +1,4 @@
-// v091144
+// v093044
 // v035029
 import { useState, useEffect, useRef, useCallback } from "react"
 
@@ -354,6 +354,7 @@ export default function CRMChat({token}) {
   const [sending,setSending]=useState(false)
   const [loadChats,setLoadChats]=useState(true)
   const [loadMsgs,setLoadMsgs]=useState(false)
+  const [onlineStatus,setOnlineStatus]=useState('')
   const [showTmpl,setShowTmpl]=useState(false)
   const [tmplCat,setTmplCat]=useState("all")
   const [aiText,setAiText]=useState("")
@@ -661,7 +662,9 @@ export default function CRMChat({token}) {
                 {selTopic ? selTopic.title : sel.name}
               </div>
               <div style={{fontSize:12,color:TG.textSec}}>
-                {selTopic ? sel.name : sel?.memberCount ? sel.memberCount+' members' : sel?.isUser ? '● online' : 'Group'}
+                {selTopic ? sel.name : sel?.memberCount ? sel.memberCount+' members' :
+                sel?.isUser ? (onlineStatus==='online' ? '● online' : onlineStatus ? '○ '+onlineStatus : '○ offline') :
+                'Group'}
               </div>
             </div>
             <StageBadge stage={cStage}/>
