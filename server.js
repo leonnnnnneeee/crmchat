@@ -22,7 +22,7 @@ const SBH         = { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, 'Conten
 
 const logs = []
 function log(m) { const l='['+new Date().toLocaleTimeString('vi-VN')+'] '+m; console.log(l); logs.push(l); if(logs.length>200)logs.shift() }
-log('🚀 Coincu CRM Chat v6 — 20260618_081620')
+log('🚀 Coincu CRM Chat v7 — 20260618_085451')
 
 function requireAuth(req,res,next){
   const t=req.headers['x-auth-token']||req.query.token
@@ -78,25 +78,48 @@ function withTimeout(promise, ms=15000, name='op') {
   ])
 }
 
+let _clientReady = false
+
 async function getClient() {
   const { TelegramClient } = require('telegram')
   const { StringSession } = require('telegram/sessions')
-  if (_client) {
+
+  if (_client && _clientReady) {
     try {
-      if (!_client.connected) await withTimeout(_client.connect(), 8000, 'reconnect')
+      // Quick ping to verify connection is alive
+      await withTimeout(_client.getMe(), 3000, 'ping')
       return _client
-    } catch { _client = null }
+    } catch {
+      _clientReady = false
+      _client = null
+    }
   }
-  _client = new TelegramClient(new StringSession(_session), TG_API_ID, TG_API_HASH, {
-    connectionRetries: 3,
-    retryDelay: 500,
-    autoReconnect: true,
-    requestRetries: 2
-  })
+
+  if (!_client) {
+    _client = new TelegramClient(new StringSession(_session), TG_API_ID, TG_API_HASH, {
+      connectionRetries: 3,
+      retryDelay: 1000,
+      autoReconnect: true,
+      requestRetries: 2,
+    })
+  }
+
   await withTimeout(_client.connect(), 10000, 'connect')
-  log('TG client connected')
+  _clientReady = true
+  log('TG client (re)connected')
   return _client
 }
+
+// Keep client alive with periodic ping every 2 minutes
+setInterval(async () => {
+  if (!_client || !_clientReady) return
+  try {
+    await withTimeout(_client.getMe(), 5000, 'keepalive')
+  } catch {
+    _clientReady = false
+    log('TG client keepalive failed — will reconnect on next request')
+  }
+}, 120000)
 
 // Warm up client on session load (so first request is fast)
 async function warmupClient() {
@@ -215,10 +238,11 @@ app.get('/api/chat/list', requireAuth, async (req,res) => {
 // ── MESSAGES ──
 app.get('/api/chat/messages/:id', requireAuth, async (req,res) => {
   if (!_session) return res.json([])
+  const t0 = Date.now()
   try {
     const client = await withTimeout(getClient(), 10000, 'getClient')
     const entity = await withTimeout(resolveEntity(client, req.params.id, req.query.username), 8000, 'resolveEntity')
-    const msgs = await withTimeout(client.getMessages(entity, { limit: 50 }), 12000, 'getMessages')
+    const msgs = await withTimeout(client.getMessages(entity, { limit: 40 }), 12000, 'getMessages')
     const results = msgs.reverse()
       .map(m => {
         const isPhoto = m.media?.className === 'MessageMediaPhoto'
@@ -240,8 +264,9 @@ app.get('/api/chat/messages/:id', requireAuth, async (req,res) => {
         }
       })
       .filter(m => m.text !== undefined)
+    log('messages loaded: ' + results.length + ' msgs in ' + (Date.now()-t0) + 'ms')
     res.json(results)
-  } catch(e) { log('messages: '+e.message); res.json([]) }
+  } catch(e) { log('messages error: '+e.message+' ('+(Date.now()-t0)+'ms)'); res.json([]) }
 })
 
 // ── SEND MESSAGE ──
