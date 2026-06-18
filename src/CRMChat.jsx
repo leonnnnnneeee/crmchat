@@ -1,4 +1,4 @@
-// v020729
+// v074117
 // v035029
 import { useState, useEffect, useRef, useCallback } from "react"
 
@@ -260,7 +260,7 @@ const STYLES = `
 .msgs{flex:1;overflow-y:auto;padding:12px 16px;display:flex;flex-direction:column;gap:3px}
 .msgs::-webkit-scrollbar{width:4px}
 .msgs::-webkit-scrollbar-thumb{background:${TG.elevated};border-radius:2px}
-.bbl{display:inline-block;max-width:70%;padding:8px 12px 4px 12px;line-height:1.55;font-size:14px;cursor:pointer;border-radius:14px;word-break:break-word;overflow-wrap:anywhere;white-space:pre-wrap}
+.bbl{display:inline-block;max-width:70%;min-width:60px;padding:8px 12px 4px;line-height:1.55;font-size:14px;cursor:pointer;border-radius:14px;word-break:normal;overflow-wrap:break-word;white-space:normal}
 .bbl:hover{opacity:.92}
 .bbl.in{background:#182533;color:${TG.text};border-radius:14px 14px 14px 3px}
 .bbl.out{background:${TG.msgOut};color:#fff;border-radius:14px 14px 3px 14px}
@@ -684,6 +684,11 @@ export default function CRMChat({token}) {
                         </div>
                       )}
                       <div className={`bbl ${msg.fromMe?"out":"in"}${msg.deleted?" del":""}${msg.replyTo?" rpl":""}`}>
+                        {msg.media && msg.media.type === 'photo' && msg.media.url && (
+                          <img src={msg.media.url} alt="photo"
+                            style={{maxWidth:'100%',borderRadius:8,display:'block',marginBottom:4}}
+                            onError={e=>e.target.style.display='none'}/>
+                        )}
                         {msg.text}
                         <div className="bfoot">
                           <span className={`bt${msg.fromMe?"":" in"}`}>{fmtMsgTime(msg.date)}</span>
