@@ -1,4 +1,4 @@
-// v-fix-103517
+// v-fix2-103841
 // v035029
 import { useState, useEffect, useRef, useCallback } from "react"
 
@@ -782,6 +782,9 @@ export default function CRMChat({token}) {
             )}
             {msgs.map((msg,i)=>{
               const prev=msgs[i-1]
+              const next=msgs[i+1]
+              const isSameGroup = !!(prev && prev.fromMe===msg.fromMe && (msg.date-prev.date)<120)
+              const isLastInGroup = !next || next.fromMe!==msg.fromMe || (next.date-msg.date)>=120
               const showSep=i===0||(()=>{
                 try{
                   const a=typeof msg.date==="number"?new Date(msg.date*1000):new Date(msg.date)
