@@ -1,4 +1,4 @@
-// v-sprint2-100957
+// v-sprint3-101433
 // v035029
 import { useState, useEffect, useRef, useCallback } from "react"
 
@@ -160,7 +160,7 @@ function ChatContextMenu({x,y,chat,onClose,onPin,onMute,onMarkRead,onArchive,isP
 }
 
 // ── Context Menu (right-click) ──
-function ContextMenu({x,y,msg,onDelete,onCopy,onReply,onClose,onDeleteAll,onSelect,onForward,onReact}) {
+function ContextMenu({x,y,msg,onDelete,onCopy,onReply,onClose,onDeleteAll,onSelect,onForward,onReact,onPin}) {
   const ref=useRef(null)
   useEffect(()=>{
     function handler(e){if(ref.current&&!ref.current.contains(e.target))onClose()}
@@ -204,6 +204,7 @@ function ContextMenu({x,y,msg,onDelete,onCopy,onReply,onClose,onDeleteAll,onSele
           </span>
         ))}
       </div>
+      <Item icon="📌" label="Pin Message"     action={onPin}/>
       <Item icon="↩️" label="Reply"          action={onReply}/>
       <Item icon="📋" label="Copy Text"       action={onCopy}/>
       <Item icon="↪️" label="Forward"         action={onForward}/>
@@ -355,6 +356,19 @@ function ChatPhoto({chatId, msgId, authToken}) {
 
 export default function CRMChat({token}) {
   _authToken = token
+  const [theme,setTheme]=useState(()=>localStorage.getItem('crm_theme')||'dark')
+  useEffect(()=>{
+    document.body.style.background=theme==='light'?'#fff':''
+    document.body.style.colorScheme=theme
+  },[theme])
+  const TGlight = {bg:'#fff',panel:'#f0f0f0',surface:'#e8e8e8',elevated:'#ddd',
+    border:'#ccc',text:'#000',textSec:'#444',textMuted:'#888',
+    blue:'#2196f3',green:'#4caf50',red:'#f44336',
+    msgOut:'#dcf8c6',msgIn:'#fff',accentPurple:'#7c3aed'}
+  useEffect(()=>{
+    document.body.style.background = theme==='light'?'#f5f5f5':'#120929'
+    document.body.style.color = theme==='light'?'#000':'#f0e6ff'
+  },[theme])
   const [chats,setChats]=useState([])
   const [sel,setSel]=useState(null)
   const [folder,setFolder]=useState('all') // all | unread | personal | work | bots
@@ -368,6 +382,7 @@ export default function CRMChat({token}) {
   const [loadChats,setLoadChats]=useState(true)
   const [loadMsgs,setLoadMsgs]=useState(false)
   const [onlineStatus,setOnlineStatus]=useState('')
+  const [typing,setTyping]=useState(false)
   const [notifPerm,setNotifPerm]=useState(false)
   const [showTmpl,setShowTmpl]=useState(false)
   const [tmplCat,setTmplCat]=useState("all")
@@ -400,6 +415,10 @@ export default function CRMChat({token}) {
   const [gifOpen,setGifOpen]=useState(false)
   const [gifs,setGifs]=useState([])
   const [gifQuery,setGifQuery]=useState('')
+  const [pinnedMsgs,setPinnedMsgs]=useState({})
+  const [scheduleOpen,setScheduleOpen]=useState(false)
+  const [scheduleTime,setScheduleTime]=useState('')
+  const [scheduledMsgs,setScheduledMsgs]=useState([])
   const [recording,setRecording]=useState(false)
   const [recordSecs,setRecordSecs]=useState(0)
   const mediaRecRef=useRef(null)
@@ -745,7 +764,7 @@ export default function CRMChat({token}) {
                           ↩ {msg.replyTo.fromMe?"You":sel.name}: {msg.replyTo.text}
                         </div>
                       )}
-                      <div className={`bbl ${msg.fromMe?"out":"in"}${msg.deleted?" del":""}${msg.replyTo?" rpl":""}`}>
+                      <div className={`bbl msg-bubble ${msg.fromMe?"out":"in"}${msg.deleted?" del":""}${msg.replyTo?" rpl":""}`}>
                         {!msg.fromMe && !sel?.isUser && msg.senderName && (
                           <div style={{fontSize:11,fontWeight:700,color:"#7c8ae8",marginBottom:3,whiteSpace:"nowrap"}}>{msg.senderName}</div>
                         )}
@@ -1010,6 +1029,38 @@ export default function CRMChat({token}) {
       {/* Context menu */}
 
 
+
+      {/* Schedule Message Modal */}
+      {scheduleOpen&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center"}}
+          onClick={()=>setScheduleOpen(false)}>
+          <div style={{background:TG.panel,borderRadius:16,padding:24,width:300}} onClick={e=>e.stopPropagation()}>
+            <div style={{fontWeight:700,fontSize:16,marginBottom:16,color:TG.text}}>⏰ Schedule Message</div>
+            <div style={{fontSize:13,color:TG.textSec,marginBottom:8}}>"{input.slice(0,50)}{input.length>50?'...':''}"</div>
+            <input type="datetime-local" value={scheduleTime} onChange={e=>setScheduleTime(e.target.value)}
+              min={new Date().toISOString().slice(0,16)}
+              style={{width:"100%",background:TG.elevated,border:"1px solid #3d1f6a",borderRadius:8,
+                padding:"8px 12px",color:TG.text,fontSize:13,marginBottom:16,boxSizing:"border-box"}}/>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={sendScheduled} disabled={!scheduleTime}
+                style={{flex:1,padding:"9px",background:TG.blue,color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontWeight:600}}>
+                Schedule
+              </button>
+              <button onClick={()=>setScheduleOpen(false)}
+                style={{padding:"9px 16px",background:TG.elevated,color:TG.textSec,border:"none",borderRadius:8,cursor:"pointer"}}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Scheduled messages indicator */}
+      {scheduledMsgs.filter(m=>m.chatId===sel?.id).length>0&&(
+        <div style={{padding:"6px 16px",background:"rgba(245,158,11,.1)",borderTop:"1px solid rgba(245,158,11,.2)",
+          fontSize:12,color:"#f59e0b",flexShrink:0}}>
+          ⏰ {scheduledMsgs.filter(m=>m.chatId===sel.id).length} message(s) scheduled
+        </div>
+      )}
       {/* Image Lightbox */}
       {lightbox&&(
         <div onClick={()=>setLightbox(null)}
@@ -1090,6 +1141,7 @@ export default function CRMChat({token}) {
           onDeleteAll={deleteAllMsgs}
           onSelect={()=>{setSelectMode(true);setSelectedMsgs(new Set([ctxMenu.idx]))}}
           onForward={()=>setForwardMsg(ctxMenu.msg)}
+          onPin={()=>setPinnedMsgs(p=>({...p,[sel.id]:p[sel.id]?.id===ctxMenu.msg.id?null:ctxMenu.msg}))}
           onReact={emoji=>{
             setReactions(p=>{
               const prev = p[ctxMenu.msg.id] || {}
