@@ -204,17 +204,12 @@ app.get('/api/chat/list', requireAuth, async (req,res) => {
 })
 
 // ── MESSAGES ──
-// Message cache — avoid reloading same messages
-const _msgCache = {}
-
 app.get('/api/chat/messages/:id', requireAuth, async (req,res) => {
   if (!_session) return res.json([])
-  const cacheKey = req.params.id
-  const since = req.query.since ? parseInt(req.query.since) : 0
   try {
     const client = await getClient()
     const entity = await resolveEntity(client, req.params.id, req.query.username)
-    const msgs = await client.getMessages(entity, { limit: 50 })
+    const msgs = await client.getMessages(entity, { limit: 80 })
     const results = msgs.reverse()
       .map(m => ({ id: m.id, text: m.message, fromMe: m.out, date: m.date }))
       .filter(m => m.text)
