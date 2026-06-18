@@ -456,7 +456,7 @@ If client is an agency, VC, launchpad, or has multiple projects: mention bulk pr
     const r = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
       model: 'llama-3.3-70b-versatile',
       messages: [
-        { role: 'system', content: 'You are a sales assistant. Follow the user instructions exactly. Never invent prices. Only use the exact prices given.' },
+        { role: 'system', content: SYSTEM_PROMPT + '\n\nAlways output 2 options:\nOPTION_1: [reply]\nOPTION_2: [reply]' },
         { role: 'user',   content: userPrompt }
       ],
       max_tokens: 80,
