@@ -22,7 +22,7 @@ const SBH         = { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, 'Conten
 
 const logs = []
 function log(m) { const l='['+new Date().toLocaleTimeString('vi-VN')+'] '+m; console.log(l); logs.push(l); if(logs.length>200)logs.shift() }
-log('🚀 Coincu CRM Chat v4 — 20260617_092729')
+log('🚀 Coincu CRM Chat v5 — 20260618_075917')
 
 function requireAuth(req,res,next){
   const t=req.headers['x-auth-token']||req.query.token
@@ -70,21 +70,30 @@ loadSessionFromDB()
 // Persistent client — reconnect only when needed
 let _client = null
 
+// Timeout wrapper — prevents any TG op from hanging forever
+function withTimeout(promise, ms=15000, name='op') {
+  return Promise.race([
+    promise,
+    new Promise((_,reject) => setTimeout(()=>reject(new Error(`${name} timeout after ${ms}ms`)), ms))
+  ])
+}
+
 async function getClient() {
   const { TelegramClient } = require('telegram')
   const { StringSession } = require('telegram/sessions')
   if (_client) {
     try {
-      if (!_client.connected) await _client.connect()
+      if (!_client.connected) await withTimeout(_client.connect(), 8000, 'reconnect')
       return _client
     } catch { _client = null }
   }
   _client = new TelegramClient(new StringSession(_session), TG_API_ID, TG_API_HASH, {
-    connectionRetries: 5,
-    retryDelay: 1000,
-    autoReconnect: true
+    connectionRetries: 3,
+    retryDelay: 500,
+    autoReconnect: true,
+    requestRetries: 2
   })
-  await _client.connect()
+  await withTimeout(_client.connect(), 10000, 'connect')
   log('TG client connected')
   return _client
 }
@@ -185,7 +194,7 @@ app.get('/api/chat/list', requireAuth, async (req,res) => {
   if (!_session) return res.json([])
   try {
     const client = await getClient()
-    const dialogs = await client.getDialogs({ limit: 60 })
+    const dialogs = await withTimeout(client.getDialogs({ limit: 60 }), 15000, 'getDialogs')
     const chats = dialogs.map(d => ({
       id: d.id.toString(),
       name: d.title || d.name || 'Unknown',
@@ -207,9 +216,9 @@ app.get('/api/chat/list', requireAuth, async (req,res) => {
 app.get('/api/chat/messages/:id', requireAuth, async (req,res) => {
   if (!_session) return res.json([])
   try {
-    const client = await getClient()
-    const entity = await resolveEntity(client, req.params.id, req.query.username)
-    const msgs = await client.getMessages(entity, { limit: 80 })
+    const client = await withTimeout(getClient(), 10000, 'getClient')
+    const entity = await withTimeout(resolveEntity(client, req.params.id, req.query.username), 8000, 'resolveEntity')
+    const msgs = await withTimeout(client.getMessages(entity, { limit: 50 }), 12000, 'getMessages')
     const results = msgs.reverse()
       .map(m => {
         const isPhoto = m.media?.className === 'MessageMediaPhoto'
@@ -241,8 +250,8 @@ app.post('/api/chat/send', requireAuth, async (req,res) => {
   if (!_session) return res.status(401).json({ error: 'Not connected' })
   try {
     const client = await getClient()
-    const entity = await resolveEntity(client, chatId, req.body.username)
-    await client.sendMessage(entity, { message: text })
+    const entity = await withTimeout(resolveEntity(client, chatId, req.body.username), 8000, 'resolveEntity')
+    await withTimeout(client.sendMessage(entity, { message: text }), 10000, 'sendMessage')
     log('Sent to '+chatId+': '+text.slice(0,40))
     res.json({ ok: true })
   } catch(e) { log('send: '+e.message); res.status(500).json({ error: e.message }) }
@@ -534,7 +543,7 @@ app.get('/api/chat/photo/:id', requireAuth, async (req, res) => {
   try {
     await pc.connect()
     const entity = await resolveEntity(pc, req.params.id, req.query.username)
-    const buffer = await pc.downloadProfilePhoto(entity, { isBig: false })
+    const buffer = await withTimeout(pc.downloadProfilePhoto(entity, { isBig: false }), 10000, 'downloadProfilePhoto')
     await pc.disconnect()
     if (buffer && buffer.length > 0) {
       const buf = Buffer.from(buffer)
@@ -755,10 +764,17 @@ app.get('/api/chat/media/:chatId/:msgId', requireAuth, async (req, res) => {
   try {
     const client = await getClient()
     const entity = await resolveEntity(client, req.params.chatId)
-    const msgs = await client.getMessages(entity, { ids: [parseInt(req.params.msgId)] })
+    const msgs = await withTimeout(
+      client.getMessages(entity, { ids: [parseInt(req.params.msgId)] }),
+      8000, 'getMessages'
+    )
     const msg = msgs[0]
     if (!msg || !msg.media) return res.status(404).send()
-    const buffer = await client.downloadMedia(msg, { thumb: null })
+    // Use thumb for preview — much faster than full download
+    const buffer = await withTimeout(
+      client.downloadMedia(msg, { thumb: 1 }),
+      15000, 'downloadMedia'
+    )
     if (!buffer) return res.status(404).send()
     const buf = Buffer.from(buffer)
     // Detect mime type
@@ -826,5 +842,14 @@ setTimeout(startTGListener, 3000)
 // ── STATIC FILES — must be LAST, after all API routes ──
 app.use(express.static(require('path').join(__dirname, 'dist')))
 app.get('*', (req,res) => res.sendFile(require('path').join(__dirname,'dist','index.html')))
+
+// Prevent crashes from unhandled rejections
+process.on('unhandledRejection', (reason) => {
+  log('Unhandled rejection: ' + (reason?.message || reason))
+})
+process.on('uncaughtException', (err) => {
+  log('Uncaught exception: ' + err.message)
+  // Don't exit — keep server running
+})
 
 app.listen(PORT, () => log('Listening on port ' + PORT))
