@@ -1,4 +1,4 @@
-// v090909
+// v091144
 // v035029
 import { useState, useEffect, useRef, useCallback } from "react"
 
@@ -311,6 +311,35 @@ const STYLES = `
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes pulse{0%,100%{opacity:.4}50%{opacity:.8}}
 `
+
+
+// ── ChatPhoto — lazy load with spinner ──
+const imgCache = new Set()
+function ChatPhoto({chatId, msgId, authToken}) {
+  const [status, setStatus] = useState(imgCache.has(msgId) ? 'loaded' : 'loading')
+  const src = `/api/chat/media/${chatId}/${msgId}?t=${authToken}`
+  return (
+    <div style={{marginBottom:4,minHeight:status==='loaded'?0:80,background:status==='loading'?'rgba(124,58,237,.1)':'transparent',borderRadius:8,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden'}}>
+      {status==='loading' && (
+        <div style={{position:'absolute',color:'#7c3aed',fontSize:20}}>⏳</div>
+      )}
+      <img
+        src={src}
+        alt="photo"
+        style={{maxWidth:'100%',maxHeight:320,borderRadius:8,display:status==='error'?'none':'block',cursor:'pointer'}}
+        onLoad={()=>{ imgCache.add(msgId); setStatus('loaded') }}
+        onError={()=>setStatus('error')}
+        onClick={()=>window.open(src,'_blank')}
+        loading="lazy"
+      />
+      {status==='error' && (
+        <div style={{padding:'8px 12px',color:'#9b7ec8',fontSize:12,cursor:'pointer'}} onClick={()=>setStatus('loading')}>
+          📷 Tap to retry
+        </div>
+      )}
+    </div>
+  )
+}
 
 export default function CRMChat({token}) {
   _authToken = token
@@ -687,18 +716,7 @@ export default function CRMChat({token}) {
                         {!msg.fromMe && !sel?.isUser && msg.senderName && (
                           <div style={{fontSize:11,fontWeight:700,color:"#7c8ae8",marginBottom:3,whiteSpace:"nowrap"}}>{msg.senderName}</div>
                         )}
-                        {msg.isPhoto && (
-                          <div style={{marginBottom:msg.text?4:0}}>
-                            <img
-                              src={`/api/chat/media/${sel.id}/${msg.id}?t=${token}`}
-                              alt="photo"
-                              style={{maxWidth:'100%',maxHeight:300,borderRadius:8,display:'block',cursor:'pointer',background:'#1a0533'}}
-                              onClick={e=>{window.open(e.target.src,'_blank')}}
-                              onError={e=>{e.target.parentElement.innerHTML='<div style="padding:8px;color:#9b7ec8;font-size:12px">📷 Photo (tap to reload)</div>'}}
-                              loading="lazy"
-                            />
-                          </div>
-                        )}
+                        {msg.isPhoto && <ChatPhoto chatId={sel.id} msgId={msg.id} authToken={token}/>}
                         {msg.isVideo && <div style={{padding:'4px 0',color:TG.textSec,fontSize:13}}>🎥 Video</div>}
                         {msg.isDoc && <div style={{padding:'4px 0',color:TG.textSec,fontSize:13}}>📎 Document</div>}
                         {msg.text}
