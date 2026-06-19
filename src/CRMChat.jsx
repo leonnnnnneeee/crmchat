@@ -476,6 +476,7 @@ export default function CRMChat({token}) {
   const [msgs,setMsgs]=useState([])
   const [search,setSearch]=useState("")
   const [input,setInput]=useState("")
+  const inputRef = useRef(null)
   const [sending,setSending]=useState(false)
   const [loadChats,setLoadChats]=useState(true)
   const [loadMsgs,setLoadMsgs]=useState(false)
@@ -603,6 +604,13 @@ export default function CRMChat({token}) {
   useEffect(()=>{
     if(!loadingMore) endRef.current?.scrollIntoView({behavior:"smooth"})
   },[msgs, loadingMore])
+
+  useEffect(()=>{
+    if (inputRef.current) {
+      inputRef.current.style.height = 'auto'
+      inputRef.current.style.height = Math.min(inputRef.current.scrollHeight, 120) + 'px'
+    }
+  }, [input, editingMsg])
 
   // Send message — send then reload (no polling = no duplicates)
   const loadingRef = useRef(false)
@@ -1733,12 +1741,9 @@ export default function CRMChat({token}) {
               <button className="ib g" title="Attach file"
                 onClick={()=>document.getElementById('fileInput').click()} style={{fontSize:17}}>📎</button>
               <textarea className="message-input" placeholder="Type a message..."
-                value={input} rows={1}
+                ref={inputRef} value={input} rows={1}
                 onChange={e=>{
                   setInput(e.target.value)
-                  // Auto-resize
-                  e.target.style.height='auto'
-                  e.target.style.height=Math.min(e.target.scrollHeight,120)+'px'
                 }}
                 onKeyDown={e=>{
                   if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send()}
