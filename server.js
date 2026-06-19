@@ -22,7 +22,7 @@ const SBH         = { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, 'Conten
 
 const logs = []
 function log(m) { const l='['+new Date().toLocaleTimeString('vi-VN')+'] '+m; console.log(l); logs.push(l); if(logs.length>200)logs.shift() }
-log('🚀 Coincu CRM Chat v14 — 20260619_023925')
+log('🚀 Coincu CRM Chat v15 — 20260619_031810')
 
 function requireAuth(req,res,next){
   const t=req.headers['x-auth-token']||req.query.token
@@ -892,6 +892,45 @@ app.get('/api/chat/status/:id', requireAuth, async (req, res) => {
     log('status error: ' + e.message)
     res.json({ status: 'unknown' })
   }
+})
+
+
+// ── AI SUMMARIZE ──
+app.post('/api/ai/summarize', requireAuth, async (req,res) => {
+  const { messages, contactName } = req.body
+  if (!messages?.length) return res.json({ summary: 'No messages to summarize.' })
+  try {
+    const thread = messages.slice(-30).map(m=>(m.fromMe?'Leon':'Client')+': '+m.text).join('\n')
+    const r = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
+      model: 'llama-3.3-70b-versatile',
+      messages: [
+        { role:'system', content:'You are a concise sales analyst. Summarize Telegram sales conversations.' },
+        { role:'user', content:'Summarize this conversation with '+contactName+' in 3-5 bullet points:\n'+thread }
+      ],
+      max_tokens: 200, temperature: 0.3
+    }, { headers: { Authorization:'Bearer '+GROQ_KEY, 'Content-Type':'application/json' }})
+    res.json({ summary: r.data.choices[0].message.content.trim() })
+  } catch(e) { res.json({ summary: 'Error: '+e.message }) }
+})
+
+// ── AI EXTRACT LEAD INFO ──
+app.post('/api/ai/extract', requireAuth, async (req,res) => {
+  const { messages, contactName } = req.body
+  if (!messages?.length) return res.json({ info: {} })
+  try {
+    const thread = messages.slice(-40).map(m=>(m.fromMe?'Leon':'Client')+': '+m.text).join('\n')
+    const r = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
+      model: 'llama-3.3-70b-versatile',
+      messages: [
+        { role:'system', content:'Extract lead info from sales chat. Return ONLY JSON, no markdown.' },
+        { role:'user', content:'Extract from this conversation:\n'+thread+'\n\nReturn JSON with: company, project_type, stage, pain_points, budget_hint, timeline, services_interested, next_action' }
+      ],
+      max_tokens: 300, temperature: 0.1
+    }, { headers: { Authorization:'Bearer '+GROQ_KEY, 'Content-Type':'application/json' }})
+    let raw = r.data.choices[0].message.content.trim().replace(/```json|```/g,'')
+    try { res.json({ info: JSON.parse(raw) }) }
+    catch { res.json({ info: { raw } }) }
+  } catch(e) { res.json({ info: { error: e.message } }) }
 })
 
 app.get('/api/health', (req,res) => res.json({ ok: true, tgConnected: _session.length > 10 }))
