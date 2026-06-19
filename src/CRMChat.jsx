@@ -1,4 +1,4 @@
-// v-ai-20260619_071242
+// v-interact-20260619_071928
 // v035029
 import { useState, useEffect, useRef, useCallback } from "react"
 
@@ -116,253 +116,111 @@ function fmtDateSep(ts) {
 }
 
 
-// ── Chat List Context Menu (right-click on chat) ──
-function ChatContextMenu({x,y,chat,onClose,onPin,onMute,onMarkRead,onArchive,isPinned,isMuted}) {
+// ── Chat List Context Menu ──
+function ChatContextMenu({x,y,chat,onClose,onPin,onMute,onMarkRead,onArchive,isPinned,isMuted,onMoveFolder}) {
   const ref = useRef(null)
   useEffect(()=>{
-    function h(e){if(ref.current&&!ref.current.contains(e.target))onClose()}
-    document.addEventListener("mousedown",h)
-    return()=>document.removeEventListener("mousedown",h)
+    const h = e => { if(ref.current&&!ref.current.contains(e.target)) onClose() }
+    const k = e => { if(e.key==='Escape') onClose() }
+    document.addEventListener('mousedown',h)
+    document.addEventListener('keydown',k)
+    return()=>{ document.removeEventListener('mousedown',h); document.removeEventListener('keydown',k) }
   },[onClose])
 
-  const menuW=220, menuH=280
-  const adjX=x+menuW>window.innerWidth?x-menuW:x
-  const adjY=y+menuH>window.innerHeight?y-menuH:y
+  const W=220, H=320
+  const ax = x+W>window.innerWidth  ? x-W : x
+  const ay = y+H>window.innerHeight ? y-H : y
 
-  const Item=({icon,label,action,danger,sep})=>sep?(
-    <div style={{height:1,background:"#2d1155",margin:"3px 0"}}/>
-  ):(
-    <div onClick={()=>{action();onClose()}}
-      style={{padding:"10px 16px",cursor:"pointer",display:"flex",alignItems:"center",gap:12,fontSize:13,color:danger?"#e53935":TG.text}}
-      onMouseEnter={e=>e.currentTarget.style.background="#2d1155"}
-      onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-      <span style={{fontSize:16,width:20,textAlign:"center"}}>{icon}</span>
-      {label}
-    </div>
-  )
+  const Item=({icon,label,action,danger,sep,sub})=>sep
+    ? <div style={{height:1,background:'#2d1155',margin:'3px 8px'}}/>
+    : <div onClick={()=>{action?.();onClose()}}
+        style={{padding:'9px 14px',cursor:'pointer',display:'flex',alignItems:'center',
+          gap:10,fontSize:13,color:danger?'#e53935':'#f0e6ff',borderRadius:6,margin:'1px 4px'}}
+        onMouseEnter={e=>e.currentTarget.style.background='#2d1155'}
+        onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+        <span style={{fontSize:16,width:20,textAlign:'center'}}>{icon}</span>
+        {label}
+        {sub&&<span style={{marginLeft:'auto',fontSize:11,color:'#6b7280'}}>›</span>}
+      </div>
 
   return (
     <div ref={ref} style={{
-      position:"fixed",left:adjX,top:adjY,zIndex:9999,
-      background:"#1a0533",border:"1px solid #3d1f6a",borderRadius:12,
-      padding:"4px 0",minWidth:220,
-      boxShadow:"0 8px 32px rgba(0,0,0,.7)"
+      position:'fixed',left:ax,top:ay,zIndex:9999,
+      background:'#1a0533',border:'1px solid #3d1f6a',borderRadius:12,
+      padding:'4px 0',minWidth:220,
+      boxShadow:'0 8px 32px rgba(0,0,0,.7)',
     }}>
-      <Item icon="🪟" label="Open in new window" action={()=>window.open(window.location.href,'_blank')}/>
+      <Item icon={isPinned?'📌':'📌'} label={isPinned?'Unpin':'Pin'}          action={onPin}/>
+      <Item icon={isMuted?'🔔':'🔕'}  label={isMuted?'Unmute':'Mute'}         action={onMute}/>
+      <Item icon='✅'                  label='Mark as read'                     action={onMarkRead}/>
       <Item sep/>
-      <Item icon={isPinned?"📌":"📌"} label={isPinned?"Unpin":"Pin"} action={onPin}/>
-      <Item icon={isMuted?"🔔":"🔕"} label={isMuted?"Unmute":"Mute"} action={onMute}/>
-      <Item icon="✅" label="Mark as read" action={onMarkRead}/>
-      <Item icon="📁" label="Archive" action={onArchive}/>
+      <Item icon='📁'                  label='Archive'                          action={onArchive}/>
+      <Item icon='🗂️'                 label='Move to folder'                   action={onMoveFolder} sub/>
       <Item sep/>
-      <Item icon="🚪" label={chat?.isUser?"Leave chat":"Leave group"} action={()=>alert('Leave feature coming soon')} danger/>
+      <Item icon='🚪'                  label={chat?.isUser?'Leave chat':'Leave group'}
+        action={()=>alert('TODO: leave chat')} danger/>
     </div>
   )
 }
 
-// ── Context Menu (right-click) ──
-function ContextMenu({x,y,msg,onDelete,onCopy,onReply,onClose,onDeleteAll,onSelect,onForward,onReact,onPin,onInfo}) {
-  const ref=useRef(null)
+
+// ── Message Context Menu ──
+function ContextMenu({x,y,msg,onDelete,onCopy,onReply,onClose,onDeleteAll,onSelect,onForward,onReact,onPin,onInfo,onEdit}) {
+  const ref = useRef(null)
   useEffect(()=>{
-    function handler(e){if(ref.current&&!ref.current.contains(e.target))onClose()}
-    document.addEventListener("mousedown",handler)
-    return()=>document.removeEventListener("mousedown",handler)
+    const h = e => { if(ref.current&&!ref.current.contains(e.target)) onClose() }
+    const k = e => { if(e.key==='Escape') onClose() }
+    document.addEventListener('mousedown',h)
+    document.addEventListener('keydown',k)
+    return()=>{ document.removeEventListener('mousedown',h); document.removeEventListener('keydown',k) }
   },[onClose])
 
-  const menuW=200
-  const menuH=220
-  const adjX=x+menuW>window.innerWidth?x-menuW:x
-  const adjY=y+menuH>window.innerHeight?y-menuH:y
+  const W=200, H=380
+  const ax = x+W>window.innerWidth  ? x-W : x
+  const ay = y+H>window.innerHeight ? y-H : y
 
-  const Item = ({icon,label,action,danger,sep}) => sep ? (
-    <div style={{height:1,background:"#2d1155",margin:"3px 0"}}/>
-  ) : (
-    <div onClick={()=>{action();onClose()}}
-      style={{padding:"9px 16px",cursor:"pointer",display:"flex",alignItems:"center",gap:10,
-        fontSize:13,color:danger?"#e53935":TG.text,transition:"background .1s"}}
-      onMouseEnter={e=>e.currentTarget.style.background="#2d1155"}
-      onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-      <span style={{fontSize:15}}>{icon}</span>
-      {label}
-    </div>
-  )
+  const Item=({icon,label,action,danger,sep})=>sep
+    ? <div style={{height:1,background:'#2d1155',margin:'3px 8px'}}/>
+    : <div onClick={()=>{action?.();onClose()}}
+        style={{padding:'9px 14px',cursor:'pointer',display:'flex',alignItems:'center',
+          gap:10,fontSize:13,color:danger?'#e53935':'#f0e6ff',borderRadius:6,margin:'1px 4px'}}
+        onMouseEnter={e=>e.currentTarget.style.background='#2d1155'}
+        onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+        <span style={{fontSize:15,width:20,textAlign:'center'}}>{icon}</span>{label}
+      </div>
 
   return (
     <div ref={ref} style={{
-      position:"fixed",left:adjX,top:adjY,zIndex:9999,
-      background:"#1a0533",border:"1px solid #3d1f6a",borderRadius:12,
-      padding:"4px 0",minWidth:200,
-      boxShadow:"0 8px 32px rgba(0,0,0,.7)",
+      position:'fixed',left:ax,top:ay,zIndex:9999,
+      background:'#1a0533',border:'1px solid #3d1f6a',borderRadius:12,
+      padding:'4px 0',minWidth:200,
+      boxShadow:'0 8px 32px rgba(0,0,0,.7)',
     }}>
       {/* Quick reactions */}
-      <div style={{display:"flex",gap:4,padding:"6px 12px",borderBottom:"1px solid #2d1155"}}>
-        {["👍","❤️","😂","🔥","💪","✅","🙏","😎"].map(e=>(
-          <span key={e} onClick={()=>{onReact(e);onClose()}}
-            style={{fontSize:18,cursor:"pointer",padding:"2px 4px",borderRadius:6,transition:"background .1s"}}
-            onMouseEnter={ev=>ev.target.style.background="#2d1155"}
-            onMouseLeave={ev=>ev.target.style.background="transparent"}>
+      <div style={{display:'flex',gap:2,padding:'6px 10px',borderBottom:'1px solid #2d1155',flexWrap:'wrap'}}>
+        {['👍','❤️','😂','🔥','💪','✅','🙏','😎'].map(e=>(
+          <span key={e} onClick={()=>{onReact?.(e);onClose()}}
+            style={{fontSize:18,cursor:'pointer',padding:'2px 5px',borderRadius:6,transition:'background .1s'}}
+            onMouseEnter={ev=>ev.target.style.background='#2d1155'}
+            onMouseLeave={ev=>ev.target.style.background='transparent'}>
             {e}
           </span>
         ))}
       </div>
-      <Item icon="ℹ️" label="Message Info"    action={onInfo}/>
-      <Item icon="📌" label="Pin Message"     action={onPin}/>
-      <Item icon="↩️" label="Reply"          action={onReply}/>
-      <Item icon="📋" label="Copy Text"       action={onCopy}/>
-      <Item icon="↪️" label="Forward"         action={onForward}/>
-      <Item icon="☑️" label="Select Message"  action={onSelect}/>
+      <Item icon='↩️' label='Reply'          action={onReply}/>
+      <Item icon='📋' label='Copy text'      action={onCopy}/>
+      <Item icon='↪️' label='Forward'        action={onForward}/>
+      {msg?.fromMe && <Item icon='✏️' label='Edit message'  action={onEdit}/>}
+      <Item icon='📌' label='Pin message'    action={onPin}/>
+      <Item icon='ℹ️' label='Message info'   action={onInfo}/>
       <Item sep/>
-      <Item icon="🗑" label="Delete Message"      action={onDelete} danger/>
-      <Item icon="🗑" label="Delete All Messages"  action={onDeleteAll} danger/>
+      <Item icon='☑️' label='Select'         action={onSelect}/>
+      {msg?.fromMe && <Item icon='🗑️' label='Delete'   action={onDelete} danger/>}
+      {msg?.fromMe && <Item icon='🗑️' label='Delete all' action={onDeleteAll} danger/>}
     </div>
   )
 }
 
-// ── AI Suggest floating panel ──
-function AISuggestPanel({text,analysis,alternative,messages,loading,onUse,onUseAlt,onUseAll,onRegenerate,onClose,hasResearch}) {
-  const [editIdx,setEditIdx] = useState(null)
-  const [edited,setEdited]   = useState({})
-
-  if(!text && !loading) return null
-
-  const msgs = messages && messages.length > 0 ? messages : [
-    ...(text ? [{text}] : []),
-    ...(alternative ? [{text:alternative}] : [])
-  ]
-
-  const getMsg = i => edited[i] !== undefined ? edited[i] : (msgs[i]?.text||'')
-
-  return (
-    <div style={{margin:"0 16px 8px",background:"rgba(124,58,237,.08)",
-      border:"1px solid rgba(124,58,237,.25)",borderRadius:12,overflow:"hidden",flexShrink:0}}>
-
-      {/* Header */}
-      <div style={{padding:"7px 12px",background:"rgba(124,58,237,.12)",
-        display:"flex",alignItems:"center",gap:8,borderBottom:"1px solid rgba(124,58,237,.15)"}}>
-        <span style={{fontSize:13}}>✨</span>
-        <span style={{fontSize:12,fontWeight:700,color:"#c4a8e8"}}>AI Reply</span>
-        {hasResearch&&<span style={{fontSize:10,background:"#3d1f6a",color:"#a78bfa",
-          padding:"1px 7px",borderRadius:20,fontWeight:600}}>🔍 Based on project research</span>}
-        {analysis&&<span style={{fontSize:11,color:"#7c6a9a",flex:1,
-          overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{analysis}</span>}
-        <button onClick={onClose}
-          style={{background:"none",border:"none",color:"#6b7280",cursor:"pointer",fontSize:14}}>✕</button>
-      </div>
-
-      {loading ? (
-        <div style={{padding:"12px 14px",display:"flex",gap:8,alignItems:"center",
-          color:"#9b7ec8",fontSize:13}}>
-          <span style={{animation:"spin 1s linear infinite",display:"inline-block"}}>⏳</span>
-          Analyzing conversation{hasResearch?' & researching project':''}...
-        </div>
-      ) : (
-        <div style={{padding:"8px 10px",display:"flex",flexDirection:"column",gap:6}}>
-
-          {/* Split message bubbles */}
-          {msgs.map((msg,i) => (
-            <div key={i} style={{background:"rgba(124,58,237,.1)",borderRadius:10,
-              border:"1px solid rgba(124,58,237,.2)",overflow:"hidden"}}>
-              <div style={{padding:"2px 10px 0",display:"flex",alignItems:"center",
-                justifyContent:"space-between",gap:6}}>
-                <span style={{fontSize:10,color:"#7c3aed",fontWeight:700,letterSpacing:.5}}>
-                  MSG {i+1}
-                </span>
-                <button onClick={()=>setEditIdx(editIdx===i?null:i)}
-                  style={{background:"none",border:"none",color:"#6b7280",
-                    cursor:"pointer",fontSize:11,padding:"2px 4px"}}>
-                  {editIdx===i?'done':'edit'}
-                </button>
-              </div>
-
-              {editIdx===i ? (
-                <textarea
-                  value={getMsg(i)}
-                  onChange={e=>setEdited(p=>({...p,[i]:e.target.value}))}
-                  style={{width:"100%",background:"transparent",border:"none",
-                    padding:"4px 10px 8px",color:"#f0e6ff",fontSize:13,
-                    lineHeight:1.5,resize:"none",outline:"none",
-                    fontFamily:"inherit",boxSizing:"border-box",minHeight:60}}
-                  autoFocus/>
-              ) : (
-                <div style={{padding:"4px 10px 8px",fontSize:13,color:"#f0e6ff",
-                  lineHeight:1.5,whiteSpace:"pre-wrap"}}>
-                  {getMsg(i)}
-                </div>
-              )}
-
-              <div style={{padding:"0 8px 6px",display:"flex",gap:6}}>
-                <button onClick={()=>onUse(getMsg(i))}
-                  style={{flex:1,padding:"5px",background:"#7c3aed",color:"#fff",
-                    border:"none",borderRadius:7,cursor:"pointer",fontSize:12,fontWeight:600}}>
-                  Send ↑
-                </button>
-                <button onClick={()=>navigator.clipboard.writeText(getMsg(i))}
-                  style={{padding:"5px 10px",background:"transparent",color:"#9b7ec8",
-                    border:"1px solid rgba(124,58,237,.3)",borderRadius:7,cursor:"pointer",fontSize:12}}>
-                  Copy
-                </button>
-              </div>
-            </div>
-          ))}
-
-          {/* Send all + Regenerate */}
-          <div style={{display:"flex",gap:6,marginTop:2}}>
-            {msgs.length > 1 && (
-              <button onClick={()=>onUseAll(msgs.map((m,i)=>getMsg(i)))}
-                style={{flex:1,padding:"6px",background:"rgba(124,58,237,.25)",
-                  color:"#c4a8e8",border:"1px solid rgba(124,58,237,.4)",
-                  borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600}}>
-                📨 Send all as sequence
-              </button>
-            )}
-            <button onClick={onRegenerate}
-              style={{padding:"6px 12px",background:"transparent",color:"#6b7280",
-                border:"1px solid #374151",borderRadius:8,cursor:"pointer",fontSize:11}}>
-              ↻ Retry
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-
-function LinkPreview({url}) {
-  const [meta, setMeta] = useState(linkCache[url] || null)
-  const [failed, setFailed] = useState(false)
-  useEffect(()=>{
-    if(meta || failed) return
-    // Use allorigins proxy to fetch OG tags
-    fetch('https://api.allorigins.win/get?url='+encodeURIComponent(url))
-      .then(r=>r.json())
-      .then(d=>{
-        const html = d.contents || ''
-        const title = html.match(/<meta[^>]*property="og:title"[^>]*content="([^"]+)"/)?.[1] ||
-                      html.match(/<title>([^<]+)<\/title>/)?.[1] || ''
-        const desc  = html.match(/<meta[^>]*property="og:description"[^>]*content="([^"]+)"/)?.[1] || ''
-        const img   = html.match(/<meta[^>]*property="og:image"[^>]*content="([^"]+)"/)?.[1] || ''
-        const domain = new URL(url).hostname.replace('www.','')
-        const result = {title, desc, img, domain}
-        linkCache[url] = result
-        setMeta(result)
-      })
-      .catch(()=>setFailed(true))
-  },[url])
-  if(!meta || failed) return null
-  return (
-    <a href={url} target="_blank" rel="noreferrer" style={{display:"block",textDecoration:"none",marginTop:6}}>
-      <div style={{background:"rgba(0,0,0,.2)",borderRadius:8,overflow:"hidden",border:"1px solid rgba(255,255,255,.08)"}}>
-        {meta.img&&<img src={meta.img} alt="" style={{width:"100%",maxHeight:120,objectFit:"cover",display:"block"}} onError={e=>e.target.style.display="none"}/>}
-        <div style={{padding:"6px 10px"}}>
-          <div style={{fontSize:11,color:"#a78bfa",marginBottom:2}}>{meta.domain}</div>
-          {meta.title&&<div style={{fontSize:13,fontWeight:600,color:"#fff",marginBottom:2,lineHeight:1.3}}>{meta.title.slice(0,80)}</div>}
-          {meta.desc&&<div style={{fontSize:12,color:"rgba(255,255,255,.6)",lineHeight:1.4}}>{meta.desc.slice(0,100)}</div>}
-        </div>
-      </div>
-    </a>
-  )
-}
 
 // ── ChatPhoto — lazy load with spinner ──
 const imgCache = new Set()
@@ -444,11 +302,14 @@ export default function CRMChat({token}) {
   const [addNote,setAddNote]=useState(false)
   const [ctxMenu,setCtxMenu]=useState(null)
   const [chatCtxMenu,setChatCtxMenu]=useState(null)
+
   const [pinnedChats,setPinnedChats]=useState(new Set())
   const [mutedChats,setMutedChats]=useState(new Set())
   const [archivedChats,setArchivedChats]=useState(new Set())
   const [selectedMsgs,setSelectedMsgs]=useState(new Set())
   const [selectMode,setSelectMode]=useState(false)
+  const [editingMsg,setEditingMsg]=useState(null)   // {id, text}
+  const [editedMsgs,setEditedMsgs]=useState({})     // {msgId: newText}
   const [forwardMsg,setForwardMsg]=useState(null)
   const [reactions,setReactions]=useState({})
   const [chatSearch,setChatSearch]=useState('')
@@ -1181,13 +1042,16 @@ export default function CRMChat({token}) {
                             ))}
                           </div>
                         )}
-                        {chatSearch && msg.text?.toLowerCase().includes(chatSearch.toLowerCase())
-                          ? msg.text.split(new RegExp(`(${chatSearch})`, 'gi')).map((part,i) =>
-                              part.toLowerCase()===chatSearch.toLowerCase()
-                                ? <mark key={i} style={{background:"#f59e0b",color:"#000",borderRadius:2}}>{part}</mark>
-                                : part
-                            )
-                          : msg.text}
+                        {(()=>{
+                          const displayText = editedMsgs[msg.id] || msg.text || ''
+                          return chatSearch && displayText.toLowerCase().includes(chatSearch.toLowerCase())
+                            ? displayText.split(new RegExp(`(${chatSearch})`, 'gi')).map((part,i) =>
+                                part.toLowerCase()===chatSearch.toLowerCase()
+                                  ? <mark key={i} style={{background:"#f59e0b",color:"#000",borderRadius:2}}>{part}</mark>
+                                  : part
+                              )
+                            : displayText
+                        })()}
                         {/* Link preview */}
                         {msg.text && (msg.text.includes('http://') || msg.text.includes('https://')) && (
                           <LinkPreview url={(msg.text.match(/https?:\/\/\S+/)||[''])[0]}/>
@@ -1712,6 +1576,7 @@ export default function CRMChat({token}) {
           onForward={()=>setForwardMsg(ctxMenu.msg)}
           onPin={()=>setPinnedMsgs(p=>({...p,[sel.id]:p[sel.id]?.id===ctxMenu.msg.id?null:ctxMenu.msg}))}
           onInfo={()=>setMsgInfoOpen(ctxMenu.msg)}
+          onEdit={()=>{ if(ctxMenu.msg?.fromMe) setEditingMsg({id:ctxMenu.msg.id,text:ctxMenu.msg.text||''}) }}
           onReact={emoji=>{
             setReactions(p=>{
               const prev = p[ctxMenu.msg.id] || {}
