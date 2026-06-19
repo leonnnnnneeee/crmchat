@@ -608,7 +608,7 @@ export default function CRMChat({token}) {
     .bbl.in{background:#1e0a3c;color:#f0e6ff;border-radius:18px 18px 18px 4px}
     .bbl.del{opacity:.4;font-style:italic} .bbl.rpl{border-left:3px solid rgba(124,58,237,.6);padding-left:10px}
     .bfoot{display:flex;justify-content:flex-end;align-items:center;gap:3px;margin-top:3px;white-space:nowrap}
-    .ia{display:flex;align-items:flex-end;padding:8px 12px;gap:8px;background:#1a0533;border-top:1px solid #0d0618;flex-shrink:0}
+    .ia{display:flex;flex-direction:column;padding:6px 12px 8px;gap:4px;background:#1a0533;border-top:1px solid #0d0618;flex-shrink:0}
     .ib{flex:1;background:#2d1155;border:none;border-radius:20px;padding:9px 14px;color:#f0e6ff;font-size:14px;resize:none;outline:none;max-height:120px;line-height:1.4;font-family:inherit}
     .sb{width:36px;height:36px;border-radius:50%;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
     .rc{display:flex;flex-direction:column;height:100%;overflow-y:auto;background:#1a0533;border-left:1px solid #0d0618;padding:20px 16px;gap:16px}
@@ -624,6 +624,17 @@ export default function CRMChat({token}) {
     .mi:hover{background:#2d1155}
     .msgs::-webkit-scrollbar{width:4px} .msgs::-webkit-scrollbar-thumb{background:#2d1155;border-radius:2px}
     @keyframes spin{to{transform:rotate(360deg)}} @keyframes pulse{0%,100%{opacity:.4}50%{opacity:.8}}
+    .reacts{display:flex;gap:6px;padding:4px 0 6px;flex-wrap:wrap}
+    .re{background:none;border:none;cursor:pointer;font-size:20px;padding:2px 4px;border-radius:6px;transition:background .1s;line-height:1}
+    .re:hover{background:#2d1155}
+    .ir{display:flex;align-items:center;gap:6px;flex:1}
+    .ib{background:none;border:none;cursor:pointer;border-radius:8px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;transition:background .1s;font-size:16px;color:#9b7ec8}
+    .ib:hover,.ib.on{background:#2d1155;color:#f0e6ff}
+    .ib.s{background:#7c3aed;color:#fff;border-radius:50%;width:36px;height:36px;font-size:18px}
+    .ib.s:hover{background:#6d2ed5}
+    .ti{padding:8px 12px;cursor:pointer;border-radius:8px;font-size:13px;transition:background .1s;color:#f0e6ff;border-bottom:1px solid #2d1155}
+    .ti:hover{background:#2d1155}
+    .tmpl-panel{position:absolute;bottom:100%;right:0;background:#1a0533;border:1px solid #3d1f6a;border-radius:12px;padding:8px 0;min-width:300px;max-height:300px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,.5);z-index:100}
   `
 
   return (<>
