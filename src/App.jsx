@@ -228,7 +228,14 @@ export default function App() {
     const controller = new AbortController()
     const timeout = setTimeout(()=>{ controller.abort(); setChecking(false) }, 5000)
     fetch("/api/tg/status",{headers:{"x-auth-token":token}, signal:controller.signal})
-      .then(r=>r.json())
+      .then(r => {
+        if (r.status === 401) {
+          setToken("");
+          localStorage.removeItem("crm_token");
+          throw new Error("Unauthorized");
+        }
+        return r.json()
+      })
       .then(d=>{ clearTimeout(timeout); setTgOk(d.connected); setChecking(false) })
       .catch(()=>{ clearTimeout(timeout); setChecking(false) })
   },[token])

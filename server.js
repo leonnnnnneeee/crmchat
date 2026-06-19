@@ -8,11 +8,26 @@ const PORT = process.env.PORT || 3002
 app.use(express.json())
 // static files served after API routes (see bottom)
 
-const VALID_TOKEN = process.env.AUTH_TOKEN || 'coincu_crm_2024'
+const bcrypt = require('bcryptjs')
+const jwt = require('jsonwebtoken')
+const rateLimit = require('express-rate-limit')
+
+// JWT Secret: Nên lưu trong file .env, nếu không có sẽ tự động random mỗi lần restart (an toàn hơn static token)
+const JWT_SECRET = process.env.JWT_SECRET || require('crypto').randomBytes(32).toString('hex')
+
+// Tạm thời mã hóa password cứng lúc khởi động để bảo vệ trên bộ nhớ.
+// TODO: Tốt nhất nên lưu trực tiếp chuỗi hash (đã mã hóa) vào file .env thay vì plaintext.
 const USERS = [
-  { u: 'Leon',  p: process.env.LEON_PASSWORD  || 'coincu123'  },
-  { u: 'admin', p: process.env.ADMIN_PASSWORD || 'coincu2026' },
+  { u: 'Leon',  hash: bcrypt.hashSync(process.env.LEON_PASSWORD  || 'coincu123', 10) },
+  { u: 'admin', hash: bcrypt.hashSync(process.env.ADMIN_PASSWORD || 'coincu2026', 10) },
 ]
+
+// Rate Limiting: Chống brute-force (tối đa 5 lần thử mỗi 15 phút từ 1 IP)
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: { ok: false, message: 'Bạn đã nhập sai quá nhiều lần. Vui lòng thử lại sau 15 phút.' }
+})
 const TG_API_ID   = parseInt(process.env.TG_API_ID   || '23444646')
 const TG_API_HASH =          process.env.TG_API_HASH  || '83816a4a3a3006b19549b2ba782acae0'
 const GROQ_KEY    =          process.env.GROQ_API_KEY || ''
@@ -26,15 +41,26 @@ log('🚀 Coincu CRM Chat v16 — 20260619_071242')
 
 function requireAuth(req,res,next){
   const t=req.headers['x-auth-token']||req.query.token
-  if(t===VALID_TOKEN)return next()
-  res.status(401).json({error:'Unauthorized'})
+  if(!t)return res.status(401).json({error:'Unauthorized: Missing token'})
+  try {
+    const decoded = jwt.verify(t, JWT_SECRET)
+    req.user = decoded
+    return next()
+  } catch(err) {
+    return res.status(401).json({error:'Unauthorized: Invalid or expired token'})
+  }
 }
 
 // ── LOGIN ──
-app.post('/api/login',(req,res)=>{
-  const{username,password}=req.body
-  if(USERS.some(v=>v.u===username&&v.p===password)) res.json({ok:true,token:VALID_TOKEN})
-  else res.json({ok:false,message:'Sai username hoặc password'})
+app.post('/api/login', loginLimiter, (req,res)=>{
+  const {username,password}=req.body
+  const user = USERS.find(v=>v.u===username)
+  if(user && bcrypt.compareSync(password, user.hash)) {
+    const token = jwt.sign({ username: user.u }, JWT_SECRET, { expiresIn: '24h' })
+    res.json({ok:true,token})
+  } else {
+    res.json({ok:false,message:'Sai username hoặc password'})
+  }
 })
 
 // ── TELEGRAM SESSION (in-memory + env fallback) ──
