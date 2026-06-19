@@ -1341,7 +1341,7 @@ export default function CRMChat({token}) {
               <Avatar name={sel.name} chatId={sel.id} username={sel.username} size={38}/>
               <div style={{flex:1}}>
                 <div style={{fontWeight:700,fontSize:15,color:TG.text}}>{sel.name}</div>
-                <div style={{fontSize:12,color:TG.textSec}}>{sel.memberCount} members · {topics[sel.id].length} topics</div>
+                <div style={{fontSize:12,color:TG.textSec}}>{sel.memberCount} members · {topics[sel.id]?.length || 0} topics</div>
               </div>
               <div style={{position:"relative"}}>
                 <span style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:TG.textMuted,fontSize:12}}>🔍</span>
