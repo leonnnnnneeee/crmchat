@@ -1,4 +1,4 @@
-// v-menu-081312
+// v-ctx-081844
 // v035029
 import { useState, useEffect, useRef, useCallback } from "react"
 
@@ -1132,7 +1132,7 @@ export default function CRMChat({token}) {
           {filtered.map(chat=>{
             const isSel=sel?.id===chat.id
             return(
-              <div key={chat.id} className={`ci${isSel?" sel":""}`} onClick={()=>{
+              <div key={chat.id} className={`ci${isSel?" sel":""}`} onContextMenu={e=>{e.preventDefault();setChatCtxMenu({x:e.clientX,y:e.clientY,chat})}} onClick={()=>{
                 setSel(chat)
                 // Mark as read when chat is opened
                 if(chat.unread > 0) {
