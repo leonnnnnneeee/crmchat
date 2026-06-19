@@ -1,4 +1,4 @@
-// v-filter2-080630
+// v-menu-081312
 // v035029
 import { useState, useEffect, useRef, useCallback } from "react"
 
@@ -117,33 +117,40 @@ function fmtDateSep(ts) {
 
 
 // ── Chat List Context Menu ──
-function ChatContextMenu({x,y,chat,onClose,onPin,onMute,onMarkRead,onMarkUnread,onArchive,onUnarchive,isPinned,isMuted,isArchived,isRead}) {
-  const ref = useRef(null)
+function ChatContextMenu({x,y,chat,onClose,
+  onPin,onMute,onMarkRead,onMarkUnread,onArchive,onUnarchive,
+  onPreview,onSetFolder,onLeave,
+  isPinned,isMuted,isArchived,isRead,currentFolder}) {
+  const ref    = useRef(null)
+  const [showFolderSub,setShowFolderSub] = useState(false)
+
   useEffect(()=>{
     const h = e => { if(ref.current && !ref.current.contains(e.target)) onClose() }
     const k = e => { if(e.key==='Escape') onClose() }
-    document.addEventListener('mousedown', h)
-    document.addEventListener('keydown', k)
+    document.addEventListener('mousedown',h)
+    document.addEventListener('keydown',k)
     return()=>{ document.removeEventListener('mousedown',h); document.removeEventListener('keydown',k) }
   },[onClose])
 
-  const W=230, H=360
+  const W=230, H=400
   const ax = x+W > window.innerWidth  ? x-W : x
   const ay = y+H > window.innerHeight ? y-H : y
 
-  const Item = ({icon, label, action, danger, sep, sub}) => sep
+  const Item = ({icon,label,action,danger,sep,right})=> sep
     ? <div style={{height:1,background:'#2d1155',margin:'3px 8px'}}/>
     : <div
-        onClick={e=>{e.stopPropagation();action?.();onClose()}}
+        onClick={e=>{e.stopPropagation(); if(action){action(); if(!right) onClose()} }}
         style={{padding:'9px 14px',cursor:'pointer',display:'flex',alignItems:'center',
           gap:10,fontSize:13,color:danger?'#e53935':'#f0e6ff',
-          borderRadius:6,margin:'1px 4px',userSelect:'none'}}
+          borderRadius:6,margin:'1px 4px',userSelect:'none',position:'relative'}}
         onMouseEnter={e=>e.currentTarget.style.background='#2d1155'}
         onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
         <span style={{fontSize:16,width:20,textAlign:'center',flexShrink:0}}>{icon}</span>
         <span style={{flex:1}}>{label}</span>
-        {sub&&<span style={{fontSize:11,color:'#6b7280'}}>›</span>}
+        {right&&<span style={{fontSize:11,color:'#6b7280'}}>›</span>}
       </div>
+
+  const FOLDERS = ['All','Clients','Leads','Campaigns','AI Tools','Archived']
 
   return (
     <div ref={ref} style={{
@@ -152,38 +159,68 @@ function ChatContextMenu({x,y,chat,onClose,onPin,onMute,onMarkRead,onMarkUnread,
       padding:'4px 0',minWidth:230,
       boxShadow:'0 8px 32px rgba(0,0,0,.75)',
     }} onClick={e=>e.stopPropagation()}>
-      {/* Chat name header */}
+
+      {/* Chat info header */}
       <div style={{padding:'8px 14px 6px',borderBottom:'1px solid #2d1155',marginBottom:2}}>
         <div style={{fontSize:12,fontWeight:700,color:'#f0e6ff',overflow:'hidden',
           textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
-          {chat?.name || 'Chat'}
+          {chat?.name||'Chat'}
         </div>
-        <div style={{fontSize:11,color:'#6b4d94',marginTop:2}}>
-          {chat?.isUser ? 'Private' : chat?.isChannel ? 'Channel' : 'Group'}
-          {chat?.memberCount ? ` · ${chat.memberCount} members` : ''}
+        <div style={{fontSize:11,color:'#6b4d94',marginTop:1}}>
+          {chat?.isUser?'Private':chat?.isChannel?'Channel':'Group'}
+          {chat?.memberCount?` · ${chat.memberCount} members`:''}
+          {currentFolder&&currentFolder!=='All'?` · 📁 ${currentFolder}`:''}
         </div>
       </div>
 
       <Item icon='🪟' label='Open in new tab'
-        action={()=>window.open(window.location.href,'_blank')}/>
+        action={()=>window.open(`${window.location.origin}${window.location.pathname}?chat=${chat?.id}`,'_blank')}/>
+      <Item icon='👁️' label='Preview chat'  action={onPreview}/>
       <Item sep/>
-      <Item icon={isPinned?'📌':'📌'} label={isPinned?'Unpin':'Pin to top'}
-        action={onPin}/>
-      <Item icon={isMuted?'🔔':'🔕'} label={isMuted?'Unmute':'Mute'}
-        action={onMute}/>
+      <Item icon={isPinned?'📌':'📌'} label={isPinned?'Unpin':'Pin to top'} action={onPin}/>
+      <Item icon={isMuted?'🔔':'🔕'}  label={isMuted?'Unmute':'Mute'}       action={onMute}/>
       <Item sep/>
       {isRead
-        ? <Item icon='✉️' label='Mark as unread'  action={onMarkUnread}/>
-        : <Item icon='✅' label='Mark as read'    action={onMarkRead}/>
+        ? <Item icon='✉️' label='Mark as unread' action={onMarkUnread}/>
+        : <Item icon='✅' label='Mark as read'   action={onMarkRead}/>
       }
       {isArchived
-        ? <Item icon='📤' label='Unarchive'        action={onUnarchive}/>
-        : <Item icon='📁' label='Archive'          action={onArchive}/>
+        ? <Item icon='📤' label='Unarchive'  action={onUnarchive}/>
+        : <Item icon='📁' label='Archive'    action={onArchive}/>
       }
-      <Item icon='🗂️' label='Add to folder' action={()=>alert('TODO: folders coming soon')} sub/>
+
+      {/* Add to Folder with submenu */}
+      <div style={{position:'relative'}}
+        onMouseEnter={()=>setShowFolderSub(true)}
+        onMouseLeave={()=>setShowFolderSub(false)}>
+        <Item icon='🗂️' label='Add to folder' action={()=>setShowFolderSub(p=>!p)} right/>
+        {showFolderSub&&(
+          <div style={{
+            position:'absolute',left:'100%',top:0,
+            background:'#1a0533',border:'1px solid #3d1f6a',borderRadius:10,
+            padding:'4px 0',minWidth:160,zIndex:10000,
+            boxShadow:'0 8px 24px rgba(0,0,0,.7)',
+          }}>
+            {FOLDERS.map(f=>(
+              <div key={f} onClick={e=>{e.stopPropagation();onSetFolder(f);onClose()}}
+                style={{padding:'9px 14px',cursor:'pointer',fontSize:13,
+                  color:currentFolder===f?'#a78bfa':'#f0e6ff',
+                  display:'flex',alignItems:'center',gap:8,
+                  borderRadius:6,margin:'1px 4px',
+                  background:currentFolder===f?'rgba(124,58,237,.2)':'transparent'}}
+                onMouseEnter={e=>e.currentTarget.style.background='#2d1155'}
+                onMouseLeave={e=>e.currentTarget.style.background=currentFolder===f?'rgba(124,58,237,.2)':'transparent'}>
+                {currentFolder===f&&<span style={{fontSize:10}}>✓</span>}
+                {f}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       <Item sep/>
       <Item icon='🚪' label={chat?.isUser?'Delete chat':'Leave group'}
-        action={()=>alert('TODO: leave/delete via Telegram API')} danger/>
+        action={onLeave} danger/>
     </div>
   )
 }
@@ -444,7 +481,10 @@ export default function CRMChat({token}) {
   const [typing,setTyping]=useState(false)
   const [showScrollBtn,setShowScrollBtn]=useState(false)
   const firstUnreadRef=useRef(null)
-  const [readChats,setReadChats]=useState(new Set()) // chatIds marked as read this session
+  const [readChats,setReadChats]=useState(new Set())
+  const [chatFolders,setChatFolders]=useState({})   // {chatId: folderName}
+  const [confirmLeave,setConfirmLeave]=useState(null) // chat to confirm leave
+  const [previewChat,setPreviewChat]=useState(null)   // chat preview modal // chatIds marked as read this session
   const [notifPerm,setNotifPerm]=useState(false)
   const [showTmpl,setShowTmpl]=useState(false)
   const [tmplCat,setTmplCat]=useState("all")
@@ -1828,23 +1868,94 @@ export default function CRMChat({token}) {
           </div>
         </div>
       )}
+
+      {/* Chat Preview Modal */}
+      {previewChat&&(
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.6)',zIndex:9998,
+          display:'flex',alignItems:'center',justifyContent:'center'}}
+          onClick={()=>setPreviewChat(null)}>
+          <div style={{background:'#1a0533',borderRadius:16,padding:24,width:340,
+            boxShadow:'0 8px 32px rgba(0,0,0,.7)'}} onClick={e=>e.stopPropagation()}>
+            <div style={{display:'flex',alignItems:'center',gap:14,marginBottom:16}}>
+              <Avatar name={previewChat.name} chatId={previewChat.id} username={previewChat.username} size={52}/>
+              <div>
+                <div style={{fontWeight:700,fontSize:16,color:'#f0e6ff'}}>{previewChat.name}</div>
+                <div style={{fontSize:12,color:'#6b4d94',marginTop:3}}>
+                  {previewChat.isUser?'Private chat':previewChat.isChannel?'Channel':'Group'}
+                  {previewChat.memberCount?` · ${previewChat.memberCount} members`:''}
+                </div>
+              </div>
+            </div>
+            {previewChat.lastMsg&&(
+              <div style={{background:'#120929',borderRadius:10,padding:'10px 12px',
+                fontSize:13,color:'#9b7ec8',marginBottom:16,lineHeight:1.5}}>
+                {previewChat.lastMsg}
+              </div>
+            )}
+            <div style={{display:'flex',gap:8}}>
+              <button onClick={()=>{setSel(previewChat);setSelTopic(null);setPreviewChat(null)}}
+                style={{flex:1,padding:'9px',background:'#7c3aed',color:'#fff',
+                  border:'none',borderRadius:8,cursor:'pointer',fontWeight:600,fontSize:13}}>
+                Open Chat
+              </button>
+              <button onClick={()=>setPreviewChat(null)}
+                style={{padding:'9px 16px',background:'#2d1155',color:'#9b7ec8',
+                  border:'none',borderRadius:8,cursor:'pointer',fontSize:13}}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Leave/Delete Confirmation */}
+      {confirmLeave&&(
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.6)',zIndex:9998,
+          display:'flex',alignItems:'center',justifyContent:'center'}}
+          onClick={()=>setConfirmLeave(null)}>
+          <div style={{background:'#1a0533',borderRadius:16,padding:24,width:320,
+            boxShadow:'0 8px 32px rgba(0,0,0,.7)'}} onClick={e=>e.stopPropagation()}>
+            <div style={{fontWeight:700,fontSize:16,color:'#f0e6ff',marginBottom:8}}>
+              {confirmLeave.isUser?'Delete chat?':'Leave group?'}
+            </div>
+            <div style={{fontSize:13,color:'#9b7ec8',marginBottom:20,lineHeight:1.5}}>
+              {confirmLeave.isUser
+                ?`Delete conversation with ${confirmLeave.name}? This cannot be undone.`
+                :`Leave "${confirmLeave.name}"? You won't receive messages anymore.`}
+              <br/><span style={{fontSize:11,color:'#6b4d94',marginTop:6,display:'block'}}>
+                ⚠️ TODO: Requires Telegram API — local only for now
+              </span>
+            </div>
+            <div style={{display:'flex',gap:8}}>
+              <button onClick={()=>{
+                // TODO: call Telegram leave API when available
+                setArchivedChats(p=>{const s=new Set(p);s.add(confirmLeave.id);return s})
+                if(sel?.id===confirmLeave.id) setSel(null)
+                setConfirmLeave(null)
+                alert('Chat hidden locally. Telegram leave API not yet connected.')
+              }} style={{flex:1,padding:'9px',background:'#e53935',color:'#fff',
+                border:'none',borderRadius:8,cursor:'pointer',fontWeight:600,fontSize:13}}>
+                {confirmLeave.isUser?'Delete':'Leave'}
+              </button>
+              <button onClick={()=>setConfirmLeave(null)}
+                style={{padding:'9px 16px',background:'#2d1155',color:'#9b7ec8',
+                  border:'none',borderRadius:8,cursor:'pointer',fontSize:13}}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {chatCtxMenu&&(
         <ChatContextMenu
           x={chatCtxMenu.x} y={chatCtxMenu.y} chat={chatCtxMenu.chat}
           isPinned={pinnedChats.has(chatCtxMenu.chat?.id)}
           isMuted={mutedChats.has(chatCtxMenu.chat?.id)}
           isArchived={archivedChats.has(chatCtxMenu.chat?.id)}
-          isRead={readChats.has(chatCtxMenu.chat?.id) || !chatCtxMenu.chat?.unread}
-          onPin={()=>setPinnedChats(p=>{
-            const s=new Set(p)
-            s.has(chatCtxMenu.chat.id)?s.delete(chatCtxMenu.chat.id):s.add(chatCtxMenu.chat.id)
-            return s
-          })}
-          onMute={()=>setMutedChats(p=>{
-            const s=new Set(p)
-            s.has(chatCtxMenu.chat.id)?s.delete(chatCtxMenu.chat.id):s.add(chatCtxMenu.chat.id)
-            return s
-          })}
+          isRead={readChats.has(chatCtxMenu.chat?.id)||!chatCtxMenu.chat?.unread}
+          currentFolder={chatFolders[chatCtxMenu.chat?.id]||null}
+          onPin={()=>setPinnedChats(p=>{const s=new Set(p);s.has(chatCtxMenu.chat.id)?s.delete(chatCtxMenu.chat.id):s.add(chatCtxMenu.chat.id);return s})}
+          onMute={()=>setMutedChats(p=>{const s=new Set(p);s.has(chatCtxMenu.chat.id)?s.delete(chatCtxMenu.chat.id):s.add(chatCtxMenu.chat.id);return s})}
           onMarkRead={()=>{
             setChats(p=>p.map(c=>c.id===chatCtxMenu.chat.id?{...c,unread:0}:c))
             setReadChats(p=>new Set([...p,chatCtxMenu.chat.id]))
@@ -1858,6 +1969,9 @@ export default function CRMChat({token}) {
             if(sel?.id===chatCtxMenu.chat.id) setSel(null)
           }}
           onUnarchive={()=>setArchivedChats(p=>{const s=new Set(p);s.delete(chatCtxMenu.chat.id);return s})}
+          onPreview={()=>{ setPreviewChat(chatCtxMenu.chat); setChatCtxMenu(null) }}
+          onSetFolder={f=>setChatFolders(p=>({...p,[chatCtxMenu.chat.id]:f}))}
+          onLeave={()=>{ setConfirmLeave(chatCtxMenu.chat); setChatCtxMenu(null) }}
           onClose={()=>setChatCtxMenu(null)}
         />
       )}
