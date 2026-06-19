@@ -651,7 +651,10 @@ export default function CRMChat({token}) {
   useEffect(()=>{
     if (inputRef.current) {
       inputRef.current.style.height = 'auto'
-      inputRef.current.style.height = Math.min(inputRef.current.scrollHeight, 120) + 'px'
+      inputRef.current.style.height = Math.min(inputRef.current.scrollHeight, 250) + 'px'
+      if (isNearBottom.current) {
+        endRef.current?.scrollIntoView({behavior:"auto"})
+      }
     }
   }, [input, editingMsg])
 
