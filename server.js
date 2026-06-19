@@ -22,7 +22,7 @@ const SBH         = { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, 'Conten
 
 const logs = []
 function log(m) { const l='['+new Date().toLocaleTimeString('vi-VN')+'] '+m; console.log(l); logs.push(l); if(logs.length>200)logs.shift() }
-log('🚀 Coincu CRM Chat v15 — 20260619_031810')
+log('🚀 Coincu CRM Chat v16 — 20260619_071242')
 
 function requireAuth(req,res,next){
   const t=req.headers['x-auth-token']||req.query.token
@@ -426,91 +426,134 @@ AGENCIES / PARTNERS
 If client is an agency, VC, launchpad, or has multiple projects: mention bulk pricing and referral/partner model.`
 
   try {
-    // === SMARTER CONTEXT-AWARE PROMPT ===
-    // Build full conversation with role labels
-    const fullThread = history.map(m => {
-      const who = m.fromMe ? 'Leon' : contactName
-      return who + ': ' + m.text
-    }).join('\n')
 
-    // Detect intent from last message
+    // === PROJECT RESEARCH + SPLIT MESSAGE AI ===
+
+    // Detect if client shared project info (URL, token, project name)
+    const urlMatch = lastClientMsg.match(/https?:\/\/\S+/)
+    const twitterMatch = lastClientMsg.match(/twitter\.com\/\S+|x\.com\/\S+|@\w{3,}/i)
+    const hasProjectInfo = urlMatch || twitterMatch ||
+      /\.(com|io|xyz|app|finance|network|protocol|token|chain)\b/i.test(lastClientMsg) ||
+      /whitepaper|pitch deck|our project|we are building|we build|launching|mainnet|testnet|presale|tge/i.test(lastClientMsg)
+
+    // Detect agency
+    const isAgency = /agency|we manage|our clients|client portfolio|we handle projects|marketing agency/i.test(lastClientMsg)
+
+    // Detect "what are you selling" type questions
+    const isWhatYouSell = /what.*you.*sell|what.*service|what.*do you|what.*offer|tell me about|introduce yourself|your product|your platform/i.test(lastClientMsg)
+
+    // Build context
     const m = lastClientMsg.toLowerCase()
     const intent = /price|cost|how much|rate/.test(m) ? 'pricing' :
-                   /tell me more|what is|explain|how does/.test(m) ? 'educate' :
                    /discount|cheaper|budget/.test(m) ? 'objection-price' :
                    /busy|later|not now|not interested/.test(m) ? 'objection-timing' :
-                   /yes|ok|sure|interested|sounds good|let.s go/.test(m) ? 'positive' :
+                   /yes|ok|sure|interested|sounds good|let.s go|proceed/.test(m) ? 'positive' :
                    /both|bundle|all/.test(m) ? 'bundle' :
-                   /agency|manage|multiple|clients/.test(m) ? 'agency' :
+                   isAgency ? 'agency' :
+                   isWhatYouSell ? 'introduce' :
+                   hasProjectInfo ? 'project_shared' :
                    /tge|launch|listing|raising|investor/.test(m) ? 'milestone' : 'general'
 
-    const stageContext = {
-      'Contacted': 'Early stage — focus on understanding their needs, do not push hard',
-      'Qualified': 'They showed interest — recommend the right service and move toward proposal',
-      'Negotiating': 'Price/terms discussion — stay firm but flexible, push toward closing',
-      'Closed Won': 'Won deal — focus on onboarding and upsell',
-      'Closed Lost': 'Lost deal — try to understand why and leave door open'
-    }[stage] || 'Unknown stage'
+    const stageCtx = {
+      'Contacted':   'Early — understand needs, do not push hard',
+      'Qualified':   'Interested — recommend service, move toward proposal',
+      'Negotiating': 'Price discussion — stay firm, push toward closing',
+      'Closed Won':  'Won — focus on onboarding and upsell',
+      'Closed Lost': 'Lost — understand why, leave door open'
+    }[stage] || 'Unknown'
+
+    // Project research instruction
+    const researchInstruction = hasProjectInfo ? `
+RESEARCH TASK:
+The client shared project info: "${lastClientMsg}"
+Before suggesting a reply, analyze:
+1. What does this project do? (category: DeFi/GameFi/AI/Infra/RWA/Wallet/Exchange/Launchpad/Meme/Security/Payment)
+2. Current stage if detectable: pre-launch/presale/testnet/mainnet/post-TGE/listed/growth
+3. Most likely BD angle: users/community/fundraising/listing/CMC visibility/PR awareness/campaign/partners/credibility
+4. One specific observation to mention naturally in the reply
+If data is limited, say so internally and write a safe personalized reply instead.
+` : ''
+
+    const splitInstruction = `
+OUTPUT FORMAT — MANDATORY:
+Return EXACTLY this JSON (no markdown, no explanation):
+{"messages":[{"text":"message 1"},{"text":"message 2"}],"research":"brief research note or empty string"}
+
+SPLIT RULES:
+- If reply has intro/value + question: split into 2 messages
+- Message 1: observation, context, or value statement (1-2 lines max)
+- Message 2: ONE soft question only
+- Each message max 2 sentences
+- Telegram casual style — short, direct, no greetings
+- Never put 2 ideas or 2 questions in one message
+- If reply is naturally one short message, return only 1 message in array
+`
 
     const userPrompt = [
-      '=== FULL CONVERSATION ===',
-      fullThread || '(no messages yet)',
+      '=== CONVERSATION ===',
+      history.slice(-15).map(m=>(m.fromMe?'Leon':'Client')+': '+m.text).join('\n') || '(no messages yet)',
       '',
       '=== CONTEXT ===',
       'Client: ' + contactName,
-      'CRM Stage: ' + (stage||'Contacted') + ' — ' + stageContext,
-      notes ? 'Internal notes: ' + notes : null,
-      'Detected intent: ' + intent,
+      'CRM Stage: ' + (stage||'Contacted') + ' — ' + stageCtx,
+      notes ? 'Notes: ' + notes : null,
+      'Intent detected: ' + intent,
       '',
-      '=== WHAT LEON ALREADY SAID (never repeat) ===',
-      leonLines.length ? leonLines.map((l,i)=>(i+1)+'. "'+l+'"').join('\n') : '(nothing yet)',
-      '',
-      '=== YOUR TASK ===',
+      researchInstruction,
+      '=== TASK ===',
       'Client just said: "' + lastClientMsg + '"',
       '',
-      'Write EXACTLY 2 different reply options for Leon.',
-      'OPTION_1: [Best reply — direct, addresses their intent]',
-      'OPTION_2: [Alternative — different angle, tone, or approach]',
+      'Leon already said (never repeat):',
+      leonLines.length ? leonLines.map((l,i)=>(i+1)+'. "'+l+'"').join('\n') : '(nothing)',
       '',
-      'Strict rules:',
-      '- Each option max 2 sentences',
-      '- Use ONLY these prices: PR $240, Sponsored $390, Organic $520, Listicle $1650, CMC Boost $1500',
+      '=== REPLY RULES ===',
+      isAgency ? '- Client is an agency. Suggest referral/partnership angle softly.' : null,
+      isWhatYouSell ? '- Client asked what we sell. Introduce Coincu naturally in 2 messages.' : null,
+      hasProjectInfo ? '- Client shared project info. Use research to personalize reply.' : null,
+      '- Never sound generic. Be specific and natural.',
+      '- Prices ONLY if asked: PR $240, Sponsored $390, Organic $520, Listicle $1650, CMC Boost $1500',
       '- Bulk: 15% partner, 25% (10+/mo), 35% (20+/mo), 50% (30+/mo)',
-      '- NEVER use any sentence from "What Leon already said"',
-      '- No greeting (Hi/Hey), no sign-off',
-      '- English, natural Telegram style',
-      '- Intent "' + intent + '" should guide the response direction'
+      '',
+      splitInstruction
     ].filter(Boolean).join('\n')
 
     const r = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
       model: 'llama-3.3-70b-versatile',
       messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'system', content: SYSTEM_PROMPT + '\n\nALWAYS return valid JSON only. No markdown. No explanation outside JSON.' },
         { role: 'user',   content: userPrompt }
       ],
-      max_tokens: 250,
+      max_tokens: 350,
       temperature: 0.55
     }, { headers: { Authorization: 'Bearer ' + GROQ_KEY, 'Content-Type': 'application/json' }})
 
-    const raw = r.data.choices[0].message.content.trim()
+    let raw = r.data.choices[0].message.content.trim()
+    // Strip markdown code fences if present
+    raw = raw.replace(/^```json\s*/i,'').replace(/^```\s*/,'').replace(/```\s*$/,'').trim()
 
-    function cleanReply(t) {
-      return (t||'').trim()
-        .replace(/^["'`]|["'`]$/g,'')
-        .replace(/^(OPTION_\d+:|Option \d+:|Leon:|Reply:)\s*/i,'')
-        .split('\n')[0].trim()
+    let messages = [], researchNote = '', suggestion = '', alternative = null
+
+    try {
+      const parsed = JSON.parse(raw)
+      messages = parsed.messages || []
+      researchNote = parsed.research || ''
+      suggestion   = messages[0]?.text || ''
+      alternative  = messages[1]?.text || null
+    } catch {
+      // Fallback: try old OPTION_1/OPTION_2 format
+      const o1 = raw.match(/OPTION_1:(.+?)(?=OPTION_2:|$)/is)
+      const o2 = raw.match(/OPTION_2:(.+?)$/is)
+      suggestion  = (o1?.[1]||raw.split('\n')[0]).trim().replace(/^["']/,'').replace(/["']$/,'')
+      alternative = o2 ? o2[1].trim().replace(/^["']/,'').replace(/["']$/,'') : null
+      messages = [{ text: suggestion }, ...(alternative ? [{ text: alternative }] : [])]
     }
 
-    const opt1 = raw.match(/OPTION_1:([\s\S]+?)(?=OPTION_2:|$)/i)
-    const opt2 = raw.match(/OPTION_2:([\s\S]+?)$/i)
+    const analysis = (researchNote ? '🔍 ' + researchNote + ' · ' : '') +
+                     'Intent: ' + intent + ' | Stage: ' + (stage||'Contacted')
 
-    const suggestion  = cleanReply(opt1?.[1]) || cleanReply(raw.split('\n')[0])
-    const alternative = cleanReply(opt2?.[1]) || null
-    const analysis    = 'Intent: ' + intent + ' | Stage: ' + (stage||'Contacted')
+    log('AI ['+intent+']: ' + messages.map((m,i)=>`M${i+1}:"${m.text.slice(0,40)}"`).join(' | '))
 
-    log('AI [' + intent + ']: "' + suggestion.slice(0,60) + '"')
-    if(alternative) log('AI alt: "' + alternative.slice(0,60) + '"')
-    res.json({ suggestion, alternative, analysis })
+    res.json({ suggestion, alternative, messages, analysis, hasResearch: !!researchNote })
   } catch(e) {
     log('AI error: ' + e.message)
     res.json({ suggestion: ruleBased() })
