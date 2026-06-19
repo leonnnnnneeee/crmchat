@@ -471,6 +471,8 @@ export default function CRMChat({token}) {
   const [topics,setTopics]=useState({})
   const [selTopic,setSelTopic]=useState(null)
   const [loadingTopics,setLoadingTopics]=useState(false)
+  const [topicSearch,setTopicSearch]=useState("")
+  const [topicCtxMenu,setTopicCtxMenu]=useState(null)
   const [msgs,setMsgs]=useState([])
   const [search,setSearch]=useState("")
   const [input,setInput]=useState("")
@@ -832,8 +834,8 @@ export default function CRMChat({token}) {
 
   const filtered = chats
     .sort((a,b) => {
-      const ap = pinnedChats.has(a.id) ? 1 : 0
-      const bp = pinnedChats.has(b.id) ? 1 : 0
+      const ap = (a.isPinned || pinnedChats.has(a.id)) ? 1 : 0
+      const bp = (b.isPinned || pinnedChats.has(b.id)) ? 1 : 0
       if (ap !== bp) return bp - ap
       return (b.date || 0) - (a.date || 0)
     })
@@ -1265,7 +1267,10 @@ export default function CRMChat({token}) {
                 </div>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:2}}>
-                    <span style={{fontWeight:600,fontSize:14,color:TG.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:130}}>{chat.name}</span>
+                    <span style={{fontWeight:600,fontSize:14,color:TG.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:130}}>
+                      {(chat.isPinned || pinnedChats.has(chat.id)) && <span style={{marginRight:4,fontSize:12}}>📌</span>}
+                      {chat.name}
+                    </span>
                     <span style={{fontSize:10,color:TG.textMuted,flexShrink:0,marginLeft:4}}>{fmtTime(chat.date)}</span>
                   </div>
                   <div style={{fontSize:12,color:TG.textSec,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:4}}>{chat.lastMsg||"No messages"}</div>
@@ -1302,14 +1307,20 @@ export default function CRMChat({token}) {
                 <div style={{fontWeight:700,fontSize:15,color:TG.text}}>{sel.name}</div>
                 <div style={{fontSize:12,color:TG.textSec}}>{sel.memberCount} members · {topics[sel.id].length} topics</div>
               </div>
+              <div style={{position:"relative"}}>
+                <span style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:TG.textMuted,fontSize:12}}>🔍</span>
+                <input placeholder="Search topics..." value={topicSearch} onChange={e=>setTopicSearch(e.target.value)}
+                  style={{padding:"6px 12px 6px 30px",borderRadius:16,border:"none",background:TG.elevated,color:TG.text,fontSize:13,outline:"none",width:150}}/>
+              </div>
             </div>
-            <div style={{flex:1,overflowY:"auto",padding:"8px 0"}}>
+            <div style={{flex:1,overflowY:"auto",padding:"8px 0"}} onClick={()=>setTopicCtxMenu(null)}>
               {loadingTopics&&<div style={{padding:20,textAlign:"center",color:TG.textSec,fontSize:13}}>Loading topics...</div>}
-              {topics[sel.id]?.map(topic=>(
+              {topics[sel.id]?.filter(t=>!topicSearch || t.title?.toLowerCase().includes(topicSearch.toLowerCase())).map(topic=>(
                 <div key={topic.id} onClick={()=>{setSelTopic(topic)}}
-                  style={{display:"flex",gap:12,padding:"12px 16px",cursor:"pointer",borderBottom:"1px solid "+TG.border,transition:"background .1s"}}
-                  onMouseEnter={e=>e.currentTarget.style.background=TG.elevated}
-                  onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                  onContextMenu={e=>{e.preventDefault();setTopicCtxMenu({x:e.clientX,y:e.clientY,topic})}}
+                  style={{display:"flex",gap:12,padding:"12px 16px",cursor:"pointer",borderBottom:"1px solid "+TG.border,transition:"background .1s",background:topicCtxMenu?.topic?.id===topic.id?TG.elevated:"transparent"}}
+                  onMouseEnter={e=>{if(topicCtxMenu?.topic?.id!==topic.id)e.currentTarget.style.background=TG.elevated}}
+                  onMouseLeave={e=>{if(topicCtxMenu?.topic?.id!==topic.id)e.currentTarget.style.background="transparent"}}>
                   <div style={{width:46,height:46,borderRadius:"50%",background:TG.elevated,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0}}>
                     {topic.id===1?"📌":"#"}
                   </div>
@@ -1326,6 +1337,15 @@ export default function CRMChat({token}) {
                 </div>
               ))}
             </div>
+            {topicCtxMenu&&(
+              <div style={{position:"fixed",left:topicCtxMenu.x,top:topicCtxMenu.y,background:"#1e0a3c",border:"1px solid #3d1f6a",borderRadius:8,padding:"4px 0",boxShadow:"0 4px 12px rgba(0,0,0,.5)",zIndex:100,minWidth:160}}>
+                <div className="ctx-item" onClick={()=>{setSelTopic(topicCtxMenu.topic);setTopicCtxMenu(null)}}>Open</div>
+                <div className="ctx-item" onClick={()=>{alert("TODO: Mark as read");setTopicCtxMenu(null)}}>Mark as read</div>
+                <div className="ctx-item" onClick={()=>{alert("TODO: Mute topic");setTopicCtxMenu(null)}}>Mute</div>
+                <div className="ctx-item" onClick={()=>{alert("TODO: Pin topic");setTopicCtxMenu(null)}}>Pin to top</div>
+                <div className="ctx-item" onClick={()=>{alert("TODO: Archive topic");setTopicCtxMenu(null)}}>Archive / Hide</div>
+              </div>
+            )}
           </div>
         ):<>
           {/* Chat header */}
