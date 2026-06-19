@@ -1,4 +1,4 @@
-// v-layout-20260619_031404
+// v-full-20260619_031810
 // v035029
 import { useState, useEffect, useRef, useCallback } from "react"
 
@@ -380,6 +380,8 @@ export default function CRMChat({token}) {
   useEffect(()=>{ msgsRef.current = msgs },[msgs])
   const [showProfile,setShowProfile]=useState(true)
   const [stages,setStages]=useState({})
+  const [tags,setTags]=useState({})
+  const [leadSource,setLeadSource]=useState({})
   const [probs,setProbs]=useState({})
   const [deals,setDeals]=useState({})
   const [fups,setFups]=useState({})
@@ -401,6 +403,7 @@ export default function CRMChat({token}) {
   const [globalSearchOpen,setGlobalSearchOpen]=useState(false)
   const [lightbox,setLightbox]=useState(null)
   const [gifOpen,setGifOpen]=useState(false)
+  const [emojiOpen,setEmojiOpen]=useState(false)
   const [gifs,setGifs]=useState([])
   const [gifQuery,setGifQuery]=useState('')
   const [pinnedMsgs,setPinnedMsgs]=useState({})
@@ -920,6 +923,14 @@ export default function CRMChat({token}) {
                 style={{width:34,height:34,background:chatSearchOpen?TG.blue:TG.elevated,borderRadius:8,border:"none",cursor:"pointer",fontSize:15}}>
                 🔍
               </button>
+              <button onClick={getSummary} title="AI Summarize" disabled={!msgs.length}
+                style={{width:34,height:34,background:TG.elevated,borderRadius:8,border:"none",cursor:"pointer",fontSize:14,color:TG.textSec}}>
+                📝
+              </button>
+              <button onClick={getExtract} title="Extract Lead Info" disabled={!msgs.length}
+                style={{width:34,height:34,background:TG.elevated,borderRadius:8,border:"none",cursor:"pointer",fontSize:14,color:TG.textSec}}>
+                🎯
+              </button>
               <button onClick={()=>loadMessages(sel)} title="Refresh messages"
                 style={{width:34,height:34,background:TG.elevated,borderRadius:8,border:"none",cursor:"pointer",fontSize:15}}>
                 🔄
@@ -1171,19 +1182,41 @@ export default function CRMChat({token}) {
           )}
           {/* Input area */}
           <div className="ia">
-            {/* Emoji quick-insert row */}
-            <div style={{display:"flex",gap:4,padding:"2px 0 4px",overflowX:"auto"}}>
-              {["👍","❤️","😂","🔥","💪","✅","🙏","😎"].map(e=>(
-                <button key={e} style={{background:"none",border:"none",cursor:"pointer",fontSize:20,padding:"2px 5px",borderRadius:6,flexShrink:0}}
-                  onClick={()=>setInput(p=>p+e)}>{e}</button>
-              ))}
-            </div>
+            {/* Emoji popover — only show when open */}
+            {emojiOpen&&(
+              <div style={{display:"flex",gap:4,padding:"4px 2px",overflowX:"auto",flexShrink:0,
+                borderBottom:"1px solid #2d1155",marginBottom:2}}>
+                {["👍","❤️","😂","🔥","💪","✅","🙏","😎","🤔","👀","💯","🎯","🔑","💎","🚀","⭐"].map(e=>(
+                  <button key={e} style={{background:"none",border:"none",cursor:"pointer",fontSize:19,
+                    padding:"2px 4px",borderRadius:6,flexShrink:0,lineHeight:1}}
+                    onClick={()=>{setInput(p=>p+e)}}>
+                    {e}
+                  </button>
+                ))}
+                <button onClick={()=>setEmojiOpen(false)}
+                  style={{marginLeft:"auto",background:"none",border:"none",color:"#6b7280",cursor:"pointer",fontSize:14,flexShrink:0}}>
+                  ✕
+                </button>
+              </div>
+            )}
             {/* Input row */}
             <div className="ir">
-              <button className="ib g" title="Attach file" style={{fontSize:17}}>📎</button>
+              <button className="ib" onClick={()=>setEmojiOpen(p=>!p)} title="Emoji"
+                style={{background:emojiOpen?"#2d1155":"transparent",fontSize:17}}>😊</button>
+              <button className="ib g" title="Attach file"
+                onClick={()=>document.getElementById('fileInput').click()} style={{fontSize:17}}>📎</button>
               <textarea className="message-input" placeholder="Type a message..."
-                value={input} onChange={e=>setInput(e.target.value)} rows={1}
-                onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send()}}}/>
+                value={input} rows={1}
+                onChange={e=>{
+                  setInput(e.target.value)
+                  // Auto-resize
+                  e.target.style.height='auto'
+                  e.target.style.height=Math.min(e.target.scrollHeight,120)+'px'
+                }}
+                onKeyDown={e=>{
+                  if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send()}
+                }}
+                style={{height:"auto"}}/>
               <button className={`ib g${showTmpl?" on":""}`} onClick={()=>setShowTmpl(v=>!v)} title="Templates" style={{fontSize:17}}>
                 📋
               </button>
