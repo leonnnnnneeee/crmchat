@@ -595,13 +595,18 @@ export default function CRMChat({token}) {
   const prevSelId = useRef(null)
   const hasRestoredScroll = useRef(false)
   const isNearBottom = useRef(true)
-  const scrollPositions = useRef({})
+  const scrollPositions = useRef(JSON.parse(localStorage.getItem('crm_scroll_positions') || '{}'))
+  const saveScrollTimeout = useRef(null)
 
   const handleScroll = (e) => {
     const { scrollTop, scrollHeight, clientHeight } = e.target
     isNearBottom.current = scrollHeight - scrollTop - clientHeight < 150
     if (sel?.id) {
       scrollPositions.current[sel.id] = scrollTop
+      clearTimeout(saveScrollTimeout.current)
+      saveScrollTimeout.current = setTimeout(() => {
+        localStorage.setItem('crm_scroll_positions', JSON.stringify(scrollPositions.current))
+      }, 300)
     }
     // Mark as read if user has scrolled past the unread separator or reached bottom
     if (sel?.unread > 0 && !readChats.has(sel.id)) {
@@ -1523,7 +1528,6 @@ export default function CRMChat({token}) {
               const unreadCount = sel?.unread || 0
               const isFirstUnread = !readChats.has(sel?.id) &&
                 unreadCount > 0 &&
-                !msg.fromMe &&
                 i === Math.max(0, msgs.length - unreadCount)
               return(
                 <div key={i} ref={isFirstUnread?firstUnreadRef:null}>
