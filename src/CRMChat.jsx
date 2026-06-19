@@ -1,4 +1,4 @@
-// v-sidebar-073247
+// v-unread-074905
 // v035029
 import { useState, useEffect, useRef, useCallback } from "react"
 
@@ -419,6 +419,7 @@ export default function CRMChat({token}) {
   const [typing,setTyping]=useState(false)
   const [showScrollBtn,setShowScrollBtn]=useState(false)
   const firstUnreadRef=useRef(null)
+  const [readChats,setReadChats]=useState(new Set()) // chatIds marked as read this session
   const [notifPerm,setNotifPerm]=useState(false)
   const [showTmpl,setShowTmpl]=useState(false)
   const [tmplCat,setTmplCat]=useState("all")
@@ -1048,7 +1049,20 @@ export default function CRMChat({token}) {
           {filtered.map(chat=>{
             const isSel=sel?.id===chat.id
             return(
-              <div key={chat.id} className={`ci${isSel?" sel":""}`} onClick={()=>setSel(chat)}>
+              <div key={chat.id} className={`ci${isSel?" sel":""}`} onClick={()=>{
+                setSel(chat)
+                // Mark as read when chat is opened
+                if(chat.unread > 0) {
+                  setReadChats(p => new Set([...p, chat.id]))
+                  setChats(p => p.map(c => c.id===chat.id ? {...c, unread:0} : c))
+                }
+                // Auto-scroll to first unread after messages load
+                setTimeout(()=>{
+                  if(firstUnreadRef.current) {
+                    firstUnreadRef.current.scrollIntoView({behavior:'smooth', block:'center'})
+                  }
+                }, 400)
+              }}>
                 <div style={{position:"relative",flexShrink:0}}>
                   <Avatar name={chat.name} chatId={chat.id} username={chat.username} size={46}/>
                 </div>
@@ -1178,14 +1192,34 @@ export default function CRMChat({token}) {
                   return a.toDateString()!==b.toDateString()
                 }catch{return false}
               })()
-              const isFirstUnread = i>0 && msg.unread && !msgs[i-1]?.unread
+              // Infer first unread: last N msgs where N = chat.unread count
+              const unreadCount = sel?.unread || 0
+              const isFirstUnread = !readChats.has(sel?.id) &&
+                unreadCount > 0 &&
+                !msg.fromMe &&
+                i === Math.max(0, msgs.length - unreadCount)
               return(
                 <div key={i} ref={isFirstUnread?firstUnreadRef:null}>
-                  {isFirstUnread&&<div style={{display:"flex",alignItems:"center",gap:8,margin:"8px 0",padding:"4px 0"}}>
-                    <div style={{flex:1,height:1,background:"rgba(124,58,237,.4)"}}/>
-                    <span style={{fontSize:11,color:"#a78bfa",fontWeight:600,whiteSpace:"nowrap"}}>↑ Unread messages</span>
-                    <div style={{flex:1,height:1,background:"rgba(124,58,237,.4)"}}/>
-                  </div>}
+                  {isFirstUnread&&(
+                    <div ref={firstUnreadRef} style={{
+                      display:"flex",alignItems:"center",gap:10,
+                      margin:"12px 0 8px",
+                    }}>
+                      <div style={{flex:1,height:1,background:"rgba(124,58,237,.35)"}}/>
+                      <div style={{
+                        display:"flex",alignItems:"center",gap:6,
+                        background:"rgba(124,58,237,.18)",
+                        border:"1px solid rgba(124,58,237,.3)",
+                        borderRadius:20,padding:"3px 12px",
+                        fontSize:11,fontWeight:700,color:"#a78bfa",
+                        whiteSpace:"nowrap",
+                      }}>
+                        <span>●</span>
+                        <span>{sel.unread} new message{sel.unread>1?'s':''}</span>
+                      </div>
+                      <div style={{flex:1,height:1,background:"rgba(124,58,237,.35)"}}/>
+                    </div>
+                  )}
                   {showSep&&<div className="dsep"><span>{fmtDateSep(msg.date)}</span></div>}
                   <div className={`msg-row${msg.fromMe?' out':' in'}${isSameGroup?' grouped':''}`}
                     style={{cursor:selectMode?"pointer":"default"}}
