@@ -687,6 +687,17 @@ export default function CRMChat({token}) {
       return
     }
     if(sendingRef.current) return
+    if (editingMsg) {
+      setEditedMsgs(p=>({...p, [editingMsg.id]: text}))
+      setInput("")
+      setEditingMsg(null)
+      try {
+        // TODO: Call backend edit API when ready
+        // await fetch('/api/chat/edit', { method:"POST", body:JSON.stringify({chatId:sel.id, messageId:editingMsg.id, text}) })
+      } catch(e) {}
+      return
+    }
+
     // Clear input immediately so user sees it's been captured
     setInput("")
     sendingRef.current = true
@@ -1063,8 +1074,7 @@ export default function CRMChat({token}) {
       flex-direction: column;
       background: #1a0533;
       border-top: 1px solid #0d0618;
-      padding: 6px 12px 10px;
-      gap: 0;
+      height: auto;
     }
 
     /* Emoji popover row */
@@ -1080,8 +1090,9 @@ export default function CRMChat({token}) {
     .ir {
       display: flex;
       align-items: center;
-      gap: 8px;
-      min-height: 48px;
+      gap: 10px;
+      padding: 8px 14px 12px;
+      min-height: 56px;
     }
 
     /* Icon buttons */
@@ -1676,26 +1687,28 @@ export default function CRMChat({token}) {
                 style={{background:"none",border:"none",color:TG.textSec,cursor:"pointer",fontSize:13}}>Cancel</button>
             </div>
           )}
-          {/* Editing bar */}
-          {editingMsg&&(
-            <div style={{display:'flex',alignItems:'center',gap:8,padding:'6px 14px',
-              background:'rgba(124,58,237,.15)',borderTop:'2px solid #7c3aed',flexShrink:0}}>
-              <span style={{fontSize:16}}>✏️</span>
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{fontSize:11,fontWeight:700,color:'#a78bfa',marginBottom:1}}>Edit message</div>
-                <div style={{fontSize:12,color:'#9b7ec8',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
-                  {editingMsg.text?.slice(0,60)}{editingMsg.text?.length>60?'...':''}
-                </div>
-              </div>
-              <button onClick={()=>{setEditingMsg(null);setInput('')}}
-                style={{background:'none',border:'none',color:'#6b7280',cursor:'pointer',
-                  fontSize:20,lineHeight:1,padding:'0 2px',flexShrink:0}}>
-                ✕
-              </button>
-            </div>
-          )}
           {/* Input area */}
           <div className="ia">
+            {/* Editing bar */}
+            {editingMsg&&(
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,padding:'8px 16px',
+                background:'rgba(124,58,237,.15)',height:52,flexShrink:0}}>
+                <div style={{display:'flex',alignItems:'center',gap:12,flex:1,minWidth:0}}>
+                  <span style={{fontSize:20,color:'#7c3aed'}}>✏️</span>
+                  <div style={{flex:1,minWidth:0,display:'flex',flexDirection:'column',justifyContent:'center'}}>
+                    <div style={{fontSize:13,fontWeight:700,color:'#a78bfa',marginBottom:2}}>Edit message</div>
+                    <div style={{fontSize:13,color:'#9b7ec8',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                      {editingMsg.text}
+                    </div>
+                  </div>
+                </div>
+                <button onClick={()=>{setEditingMsg(null);setInput('')}}
+                  style={{background:'none',border:'none',color:'#a78bfa',cursor:'pointer',
+                    fontSize:20,lineHeight:1,padding:4,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}>
+                  ✕
+                </button>
+              </div>
+            )}
             {/* Emoji popover — only show when open */}
             {emojiOpen&&(
               <div style={{display:"flex",gap:4,padding:"4px 2px",overflowX:"auto",flexShrink:0,
