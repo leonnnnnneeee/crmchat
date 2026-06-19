@@ -466,17 +466,41 @@ export default function CRMChat({token}) {
     document.body.style.color = theme==='light'?'#000':'#f0e6ff'
   },[theme])
   const [chats,setChats]=useState([])
-  const [sel,setSel]=useState(null)
-  const [folder,setFolder]=useState('all') // all | unread | personal | work | bots
+  const [sel,setSel]=useState(() => {
+    try { return JSON.parse(localStorage.getItem('crm_sel')) || null } catch { return null }
+  })
+  const [folder,setFolder]=useState(() => localStorage.getItem('crm_folder') || 'all')
   const [topics,setTopics]=useState({})
-  const [selTopic,setSelTopic]=useState(null)
+  const [selTopic,setSelTopic]=useState(() => {
+    try { return JSON.parse(localStorage.getItem('crm_selTopic')) || null } catch { return null }
+  })
   const [loadingTopics,setLoadingTopics]=useState(false)
   const [topicSearch,setTopicSearch]=useState("")
   const [topicCtxMenu,setTopicCtxMenu]=useState(null)
   const [msgs,setMsgs]=useState([])
-  const [search,setSearch]=useState("")
+  const [search,setSearch]=useState(() => localStorage.getItem('crm_search') || '')
+
+  useEffect(() => {
+    if (sel) localStorage.setItem('crm_sel', JSON.stringify(sel))
+    else localStorage.removeItem('crm_sel')
+  }, [sel])
+
+  useEffect(() => {
+    if (selTopic) localStorage.setItem('crm_selTopic', JSON.stringify(selTopic))
+    else localStorage.removeItem('crm_selTopic')
+  }, [selTopic])
+
+  useEffect(() => {
+    localStorage.setItem('crm_folder', folder)
+  }, [folder])
+
+  useEffect(() => {
+    localStorage.setItem('crm_search', search)
+  }, [search])
   const [input,setInput]=useState("")
   const inputRef = useRef(null)
+  const leftColScrollRef = useRef(null)
+  const hasRestoredSidebarScroll = useRef(false)
   const [sending,setSending]=useState(false)
   const [loadChats,setLoadChats]=useState(true)
   const [loadMsgs,setLoadMsgs]=useState(false)
@@ -592,11 +616,21 @@ export default function CRMChat({token}) {
   useEffect(()=>{ fetchChats() }, [fetchChats])
 
   // Load messages when chat selected
-  const prevSelId = useRef(null)
+  const prevSelId = useRef(sel?.id || null)
   const hasRestoredScroll = useRef(false)
   const isNearBottom = useRef(true)
   const scrollPositions = useRef(JSON.parse(localStorage.getItem('crm_scroll_positions') || '{}'))
   const saveScrollTimeout = useRef(null)
+
+  useEffect(() => {
+    if (chats.length > 0 && !hasRestoredSidebarScroll.current && leftColScrollRef.current) {
+      hasRestoredSidebarScroll.current = true
+      const savedScroll = localStorage.getItem('crm_leftCol_scroll')
+      if (savedScroll) {
+        leftColScrollRef.current.scrollTop = parseInt(savedScroll, 10)
+      }
+    }
+  }, [chats])
 
   const handleScroll = (e) => {
     const { scrollTop, scrollHeight, clientHeight } = e.target
@@ -1338,8 +1372,9 @@ export default function CRMChat({token}) {
           <input className="sinp" placeholder="Search"
             value={search} onChange={e=>setSearch(e.target.value)}/>
         </div>
-        <div style={{flex:1,overflowY:"auto",minHeight:0}} onScroll={(e) => {
+        <div ref={leftColScrollRef} style={{flex:1,overflowY:"auto",minHeight:0}} onScroll={(e) => {
           const { scrollTop, scrollHeight, clientHeight } = e.target
+          localStorage.setItem('crm_leftCol_scroll', scrollTop)
           if (scrollHeight - scrollTop - clientHeight < 100 && hasMoreChats && !loadingChatsRef.current && !search) {
             fetchChats(true)
           }
