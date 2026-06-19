@@ -1,4 +1,4 @@
-// v-unread-074905
+// v-filters-080204
 // v035029
 import { useState, useEffect, useRef, useCallback } from "react"
 
@@ -117,48 +117,73 @@ function fmtDateSep(ts) {
 
 
 // ── Chat List Context Menu ──
-function ChatContextMenu({x,y,chat,onClose,onPin,onMute,onMarkRead,onArchive,isPinned,isMuted,onMoveFolder}) {
+function ChatContextMenu({x,y,chat,onClose,onPin,onMute,onMarkRead,onMarkUnread,onArchive,onUnarchive,isPinned,isMuted,isArchived,isRead}) {
   const ref = useRef(null)
   useEffect(()=>{
-    const h = e => { if(ref.current&&!ref.current.contains(e.target)) onClose() }
+    const h = e => { if(ref.current && !ref.current.contains(e.target)) onClose() }
     const k = e => { if(e.key==='Escape') onClose() }
-    document.addEventListener('mousedown',h)
-    document.addEventListener('keydown',k)
+    document.addEventListener('mousedown', h)
+    document.addEventListener('keydown', k)
     return()=>{ document.removeEventListener('mousedown',h); document.removeEventListener('keydown',k) }
   },[onClose])
 
-  const W=220, H=320
-  const ax = x+W>window.innerWidth  ? x-W : x
-  const ay = y+H>window.innerHeight ? y-H : y
+  const W=230, H=360
+  const ax = x+W > window.innerWidth  ? x-W : x
+  const ay = y+H > window.innerHeight ? y-H : y
 
-  const Item=({icon,label,action,danger,sep,sub})=>sep
+  const Item = ({icon, label, action, danger, sep, sub}) => sep
     ? <div style={{height:1,background:'#2d1155',margin:'3px 8px'}}/>
-    : <div onClick={()=>{action?.();onClose()}}
+    : <div
+        onClick={e=>{e.stopPropagation();action?.();onClose()}}
         style={{padding:'9px 14px',cursor:'pointer',display:'flex',alignItems:'center',
-          gap:10,fontSize:13,color:danger?'#e53935':'#f0e6ff',borderRadius:6,margin:'1px 4px'}}
+          gap:10,fontSize:13,color:danger?'#e53935':'#f0e6ff',
+          borderRadius:6,margin:'1px 4px',userSelect:'none'}}
         onMouseEnter={e=>e.currentTarget.style.background='#2d1155'}
         onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-        <span style={{fontSize:16,width:20,textAlign:'center'}}>{icon}</span>
-        {label}
-        {sub&&<span style={{marginLeft:'auto',fontSize:11,color:'#6b7280'}}>›</span>}
+        <span style={{fontSize:16,width:20,textAlign:'center',flexShrink:0}}>{icon}</span>
+        <span style={{flex:1}}>{label}</span>
+        {sub&&<span style={{fontSize:11,color:'#6b7280'}}>›</span>}
       </div>
 
   return (
     <div ref={ref} style={{
       position:'fixed',left:ax,top:ay,zIndex:9999,
       background:'#1a0533',border:'1px solid #3d1f6a',borderRadius:12,
-      padding:'4px 0',minWidth:220,
-      boxShadow:'0 8px 32px rgba(0,0,0,.7)',
-    }}>
-      <Item icon={isPinned?'📌':'📌'} label={isPinned?'Unpin':'Pin'}          action={onPin}/>
-      <Item icon={isMuted?'🔔':'🔕'}  label={isMuted?'Unmute':'Mute'}         action={onMute}/>
-      <Item icon='✅'                  label='Mark as read'                     action={onMarkRead}/>
+      padding:'4px 0',minWidth:230,
+      boxShadow:'0 8px 32px rgba(0,0,0,.75)',
+    }} onClick={e=>e.stopPropagation()}>
+      {/* Chat name header */}
+      <div style={{padding:'8px 14px 6px',borderBottom:'1px solid #2d1155',marginBottom:2}}>
+        <div style={{fontSize:12,fontWeight:700,color:'#f0e6ff',overflow:'hidden',
+          textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+          {chat?.name || 'Chat'}
+        </div>
+        <div style={{fontSize:11,color:'#6b4d94',marginTop:2}}>
+          {chat?.isUser ? 'Private' : chat?.isChannel ? 'Channel' : 'Group'}
+          {chat?.memberCount ? ` · ${chat.memberCount} members` : ''}
+        </div>
+      </div>
+
+      <Item icon='🪟' label='Open in new tab'
+        action={()=>window.open(window.location.href,'_blank')}/>
       <Item sep/>
-      <Item icon='📁'                  label='Archive'                          action={onArchive}/>
-      <Item icon='🗂️'                 label='Move to folder'                   action={onMoveFolder} sub/>
+      <Item icon={isPinned?'📌':'📌'} label={isPinned?'Unpin':'Pin to top'}
+        action={onPin}/>
+      <Item icon={isMuted?'🔔':'🔕'} label={isMuted?'Unmute':'Mute'}
+        action={onMute}/>
       <Item sep/>
-      <Item icon='🚪'                  label={chat?.isUser?'Leave chat':'Leave group'}
-        action={()=>alert('TODO: leave chat')} danger/>
+      {isRead
+        ? <Item icon='✉️' label='Mark as unread'  action={onMarkUnread}/>
+        : <Item icon='✅' label='Mark as read'    action={onMarkRead}/>
+      }
+      {isArchived
+        ? <Item icon='📤' label='Unarchive'        action={onUnarchive}/>
+        : <Item icon='📁' label='Archive'          action={onArchive}/>
+      }
+      <Item icon='🗂️' label='Add to folder' action={()=>alert('TODO: folders coming soon')} sub/>
+      <Item sep/>
+      <Item icon='🚪' label={chat?.isUser?'Delete chat':'Leave group'}
+        action={()=>alert('TODO: leave/delete via Telegram API')} danger/>
     </div>
   )
 }
@@ -1790,10 +1815,31 @@ export default function CRMChat({token}) {
           x={chatCtxMenu.x} y={chatCtxMenu.y} chat={chatCtxMenu.chat}
           isPinned={pinnedChats.has(chatCtxMenu.chat?.id)}
           isMuted={mutedChats.has(chatCtxMenu.chat?.id)}
-          onPin={()=>setPinnedChats(p=>{const s=new Set(p);s.has(chatCtxMenu.chat.id)?s.delete(chatCtxMenu.chat.id):s.add(chatCtxMenu.chat.id);return s})}
-          onMute={()=>setMutedChats(p=>{const s=new Set(p);s.has(chatCtxMenu.chat.id)?s.delete(chatCtxMenu.chat.id):s.add(chatCtxMenu.chat.id);return s})}
-          onMarkRead={()=>setChats(p=>p.map(c=>c.id===chatCtxMenu.chat.id?{...c,unread:0}:c))}
-          onArchive={()=>setArchivedChats(p=>{const s=new Set(p);s.add(chatCtxMenu.chat.id);return s})}
+          isArchived={archivedChats.has(chatCtxMenu.chat?.id)}
+          isRead={readChats.has(chatCtxMenu.chat?.id) || !chatCtxMenu.chat?.unread}
+          onPin={()=>setPinnedChats(p=>{
+            const s=new Set(p)
+            s.has(chatCtxMenu.chat.id)?s.delete(chatCtxMenu.chat.id):s.add(chatCtxMenu.chat.id)
+            return s
+          })}
+          onMute={()=>setMutedChats(p=>{
+            const s=new Set(p)
+            s.has(chatCtxMenu.chat.id)?s.delete(chatCtxMenu.chat.id):s.add(chatCtxMenu.chat.id)
+            return s
+          })}
+          onMarkRead={()=>{
+            setChats(p=>p.map(c=>c.id===chatCtxMenu.chat.id?{...c,unread:0}:c))
+            setReadChats(p=>new Set([...p,chatCtxMenu.chat.id]))
+          }}
+          onMarkUnread={()=>{
+            setReadChats(p=>{const s=new Set(p);s.delete(chatCtxMenu.chat.id);return s})
+            setChats(p=>p.map(c=>c.id===chatCtxMenu.chat.id?{...c,unread:c.unread||1}:c))
+          }}
+          onArchive={()=>{
+            setArchivedChats(p=>{const s=new Set(p);s.add(chatCtxMenu.chat.id);return s})
+            if(sel?.id===chatCtxMenu.chat.id) setSel(null)
+          }}
+          onUnarchive={()=>setArchivedChats(p=>{const s=new Set(p);s.delete(chatCtxMenu.chat.id);return s})}
           onClose={()=>setChatCtxMenu(null)}
         />
       )}
