@@ -959,7 +959,7 @@ export default function CRMChat({token}) {
     /* ── ROOT GRID ── */
     .crm-root {
       display: grid;
-      grid-template-columns: 56px 270px 1fr 295px;
+      grid-template-columns: 56px 270px minmax(350px, 1fr) 280px;
       height: 100vh;
       max-height: 100vh;
       overflow: hidden;
@@ -1048,11 +1048,11 @@ export default function CRMChat({token}) {
     .msg-row {
       display: flex;
       width: 100%;
-      margin-bottom: 8px;
+      margin-bottom: 12px;
     }
     .msg-row.out { justify-content: flex-end; }
     .msg-row.in  { justify-content: flex-start; align-items: flex-end; }
-    .msg-row.grouped { margin-bottom: 2px; }
+    .msg-row.grouped { margin-bottom: 3px; }
 
     /* ── AVATAR ── */
     .msg-avatar {
@@ -1068,7 +1068,7 @@ export default function CRMChat({token}) {
     .msg-content {
       display: flex;
       flex-direction: column;
-      max-width: min(72%, 520px);
+      max-width: min(68%, 520px);
       min-width: 0;
     }
     .msg-row.out .msg-content { align-items: flex-end; }
@@ -1080,35 +1080,29 @@ export default function CRMChat({token}) {
       max-width: 100%;
       min-width: 60px;
       width: fit-content;
-      padding: 7px 12px 4px;
-      border-radius: 18px;
+      padding: 6px 12px 8px;
+      border-radius: 16px;
       font-size: 14px;
-      line-height: 1.5;
+      line-height: 1.45;
       cursor: pointer;
-      word-break: normal;
+      word-break: break-word;
       overflow-wrap: break-word;
       white-space: pre-wrap;
     }
-    .bbl.out {
-      background: #7c3aed; color: #fff;
-      border-radius: 18px 18px 4px 18px;
-    }
-    .bbl.in {
-      background: #1e0a3c; color: #f0e6ff;
-      border-radius: 18px 18px 18px 4px;
-    }
+    .bbl.out { background: #7c3aed; color: #fff; }
+    .bbl.in { background: #1e0a3c; color: #f0e6ff; }
     .bbl.del { opacity: .5; font-style: italic; }
     .bbl.rpl { border-left: 3px solid rgba(124,58,237,.5); padding-left: 10px; border-radius: 8px; margin-bottom: 4px; font-size: 13px; }
 
     /* grouped radius */
-    .bbl.out.top    { border-radius: 18px 18px 4px 18px; }
-    .bbl.out.mid    { border-radius: 18px 4px 4px 18px; }
-    .bbl.out.bottom { border-radius: 18px 4px 18px 18px; }
-    .bbl.out.single { border-radius: 18px; }
-    .bbl.in.top     { border-radius: 18px 18px 18px 4px; }
-    .bbl.in.mid     { border-radius: 4px 18px 18px 4px; }
-    .bbl.in.bottom  { border-radius: 4px 18px 18px 18px; }
-    .bbl.in.single  { border-radius: 18px; }
+    .bbl.out.single { border-radius: 16px 16px 4px 16px; }
+    .bbl.out.top    { border-radius: 16px 16px 4px 16px; }
+    .bbl.out.mid    { border-radius: 16px 4px 4px 16px; }
+    .bbl.out.bottom { border-radius: 16px 4px 4px 16px; }
+    .bbl.in.single  { border-radius: 16px 16px 16px 4px; }
+    .bbl.in.top     { border-radius: 16px 16px 16px 4px; }
+    .bbl.in.mid     { border-radius: 4px 16px 16px 4px; }
+    .bbl.in.bottom  { border-radius: 4px 16px 16px 4px; }
 
     /* ── BUBBLE FOOTER (timestamp + tick) ── */
     .bfoot {
@@ -1116,12 +1110,13 @@ export default function CRMChat({token}) {
       justify-content: flex-end;
       align-items: center;
       gap: 3px;
-      margin-top: 2px;
+      margin-top: 4px;
+      margin-left: 14px;
+      margin-bottom: -4px;
       white-space: nowrap;
       font-size: 11px;
-      opacity: .7;
+      opacity: .65;
       float: right;
-      clear: both;
     }
 
     /* ── DATE SEPARATOR ── */
@@ -1171,8 +1166,8 @@ export default function CRMChat({token}) {
       display: flex;
       align-items: flex-end;
       gap: 10px;
-      padding: 8px 14px 12px;
-      min-height: 56px;
+      padding: 8px 14px 20px;
+      min-height: 64px;
     }
 
     /* Icon buttons */
