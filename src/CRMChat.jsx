@@ -1086,7 +1086,7 @@ export default function CRMChat({token}) {
       min-height: 0;
       overflow-y: auto;
       overflow-x: hidden;
-      padding: 16px 20px 24px;
+      padding: 16px 20px 48px;
       display: flex;
       flex-direction: column;
       gap: 0;
@@ -1162,7 +1162,6 @@ export default function CRMChat({token}) {
       gap: 3px;
       margin-top: 4px;
       margin-left: 14px;
-      margin-bottom: -4px;
       white-space: nowrap;
       font-size: 11px;
       opacity: .65;
