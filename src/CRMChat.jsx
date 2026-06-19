@@ -477,6 +477,8 @@ export default function CRMChat({token}) {
   const [sending,setSending]=useState(false)
   const [loadChats,setLoadChats]=useState(true)
   const [loadMsgs,setLoadMsgs]=useState(false)
+  const [loadingMore,setLoadingMore]=useState(false)
+  const [hasMore,setHasMore]=useState(true)
   const [onlineStatus,setOnlineStatus]=useState('')
   const [typing,setTyping]=useState(false)
   const [showScrollBtn,setShowScrollBtn]=useState(false)
@@ -563,17 +565,37 @@ export default function CRMChat({token}) {
   },[sel?.id, selTopic?.id, token])
 
 
-  useEffect(()=>{endRef.current?.scrollIntoView({behavior:"smooth"})},[msgs])
+  useEffect(()=>{
+    if(!loadingMore) endRef.current?.scrollIntoView({behavior:"smooth"})
+  },[msgs, loadingMore])
 
   // Send message — send then reload (no polling = no duplicates)
   const loadingRef = useRef(false)
-  async function loadMessages(chat, topicId=null) {
+  const loadingMoreRef = useRef(false)
+  async function loadMessages(chat, topicId=null, append=false) {
     if(!chat) return
-    if(loadingRef.current) return
-    loadingRef.current = true
-    setLoadMsgs(true)
+    if(!append && loadingRef.current) return
+    if(append && loadingMoreRef.current) return
+    
+    if(append) {
+      loadingMoreRef.current = true
+      setLoadingMore(true)
+    } else {
+      loadingRef.current = true
+      setLoadMsgs(true)
+      setHasMore(true)
+    }
+    
     try {
       let url, qs = chat.username ? '?username='+encodeURIComponent(chat.username) : ''
+      
+      let maxId = 0
+      if(append && msgsRef.current.length > 0) {
+        const validMsgs = msgsRef.current.filter(m => m.id > 0)
+        if(validMsgs.length > 0) maxId = validMsgs[0].id
+        if(maxId > 0) qs += (qs ? '&' : '?') + 'maxId=' + maxId
+      }
+
       if(topicId) {
         url = '/api/chat/topics/'+chat.id+'/'+topicId+'/messages'+qs
       } else {
@@ -582,14 +604,28 @@ export default function CRMChat({token}) {
       const r = await fetch(url, {headers:{"x-auth-token":token}})
       const d = await r.json()
       if(Array.isArray(d)) {
+        if(d.length < 40) setHasMore(false)
+        else if(!append) setHasMore(true)
+
         setMsgs(prev => {
-          const stillPending = prev.filter(m => m.pending && m.id < 0 && !d.some(s=>s.text===m.text&&s.fromMe))
-          return [...d, ...stillPending]
+          if(append) {
+            const newMsgs = d.filter(m1 => !prev.some(m2 => m2.id === m1.id))
+            return [...newMsgs, ...prev]
+          } else {
+            const stillPending = prev.filter(m => m.pending && m.id < 0 && !d.some(s=>s.text===m.text&&s.fromMe))
+            return [...d, ...stillPending]
+          }
         })
       }
     } catch(e) { console.error("loadMsgs:",e) }
-    loadingRef.current = false
-    setLoadMsgs(false)
+    
+    if(append) {
+      loadingMoreRef.current = false
+      setLoadingMore(false)
+    } else {
+      loadingRef.current = false
+      setLoadMsgs(false)
+    }
   }
 
   const sendingRef = useRef(false)
@@ -1275,6 +1311,14 @@ export default function CRMChat({token}) {
 
           {/* Messages */}
           <div className="msgs">
+            {hasMore && msgs.length > 0 && !loadMsgs && (
+              <div style={{textAlign:'center', margin:'10px 0'}}>
+                <button onClick={() => loadMessages(sel, selTopic?.id || null, true)} disabled={loadingMore}
+                  style={{padding:'6px 14px', borderRadius:20, background:TG.elevated, border:'none', color:TG.textSec, cursor:'pointer', fontSize:12}}>
+                  {loadingMore ? 'Loading...' : 'Load older messages'}
+                </button>
+              </div>
+            )}
             {loadMsgs&&<div style={{textAlign:"center",color:TG.textMuted,fontSize:13,marginTop:40}}>Loading messages...</div>}
             {!loadMsgs&&msgs.length===0&&(
               <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8,color:TG.textSec,marginTop:60}}>

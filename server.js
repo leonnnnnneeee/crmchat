@@ -268,7 +268,10 @@ app.get('/api/chat/messages/:id', requireAuth, async (req,res) => {
   try {
     const client = await withTimeout(getClient(), 10000, 'getClient')
     const entity = await withTimeout(resolveEntity(client, req.params.id, req.query.username), 8000, 'resolveEntity')
-    const msgs = await withTimeout(client.getMessages(entity, { limit: 40 }), 12000, 'getMessages')
+    const maxId = parseInt(req.query.maxId) || 0
+    const opts = { limit: 40 }
+    if (maxId > 0) opts.maxId = maxId
+    const msgs = await withTimeout(client.getMessages(entity, opts), 12000, 'getMessages')
     const results = msgs.reverse()
       .map(m => {
         const isPhoto = m.media?.className === 'MessageMediaPhoto'
@@ -775,6 +778,7 @@ app.get('/api/chat/topics/:id/:topicId/messages', requireAuth, async (req, res) 
     const client = await getClient()
     const entity = await resolveEntity(client, req.params.id, req.query.username)
     const { Api } = require('telegram/tl')
+    const maxId = parseInt(req.query.maxId) || 0
     const result = await client.invoke(new Api.messages.GetReplies({
       peer: entity,
       msgId: parseInt(req.params.topicId),
@@ -782,7 +786,7 @@ app.get('/api/chat/topics/:id/:topicId/messages', requireAuth, async (req, res) 
       offsetDate: 0,
       addOffset: 0,
       limit: 80,
-      maxId: 0,
+      maxId: maxId,
       minId: 0,
       hash: BigInt(0)
     }))
