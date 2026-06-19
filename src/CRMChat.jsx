@@ -1097,7 +1097,7 @@ export default function CRMChat({token}) {
     /* Composer row */
     .ir {
       display: flex;
-      align-items: center;
+      align-items: flex-end;
       gap: 10px;
       padding: 8px 14px 12px;
       min-height: 56px;
@@ -1109,6 +1109,7 @@ export default function CRMChat({token}) {
       background: transparent; border: none; border-radius: 8px;
       cursor: pointer; display: flex; align-items: center; justify-content: center;
       color: #9b7ec8; font-size: 17px; transition: background .1s;
+      margin-bottom: 3px;
     }
     .ib:hover, .ib.on { background: #2d1155; color: #f0e6ff; }
     .ib.g { font-size: 13px; font-weight: 700; }
@@ -1116,7 +1117,7 @@ export default function CRMChat({token}) {
     /* Textarea */
     .message-input {
       flex: 1; min-width: 0;
-      min-height: 40px; max-height: 120px;
+      min-height: 40px; max-height: 250px;
       padding: 9px 14px;
       background: #2d1155; border: none; border-radius: 20px;
       color: #f0e6ff; font-size: 14px; font-family: inherit;
@@ -1757,8 +1758,8 @@ export default function CRMChat({token}) {
                 {aiLoading?"⏳":"✨"}
               </button>
               <button className="ib s" onClick={send} disabled={!input.trim()||sending}
-                style={{opacity:input.trim()&&!sending?1:.4,fontSize:17}} title="Send">
-                ➤
+                style={{opacity:input.trim()&&!sending?1:.4,fontSize:17,background:editingMsg?'#4caf50':'',color:editingMsg?'#fff':''}} title={editingMsg?"Save Edit":"Send"}>
+                {editingMsg?"✓":"➤"}
               </button>
             </div>
           </div>
