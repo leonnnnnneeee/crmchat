@@ -1255,7 +1255,6 @@ export default function CRMChat({token}) {
     /* ── RIGHT COL ── */
     .rc {
       display: flex; flex-direction: column;
-      height: 100vh; max-height: 100vh;
       overflow-y: auto;
       background: #1a0533; border-left: 1px solid #0d0618;
       padding: 20px 14px; gap: 14px;
