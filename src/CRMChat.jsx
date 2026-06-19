@@ -994,8 +994,8 @@ export default function CRMChat({token}) {
     .crm-root {
       display: grid;
       grid-template-columns: 56px 270px minmax(350px, 1fr) 280px;
-      height: 100vh;
-      max-height: 100vh;
+      height: 100%;
+      max-height: 100%;
       overflow: hidden;
       background: #120929;
       font-family: 'Inter', system-ui, sans-serif;
@@ -1008,7 +1008,7 @@ export default function CRMChat({token}) {
       padding: 8px 0; gap: 4px;
       background: #0d0618;
       overflow: hidden;
-      height: 100vh;
+      height: 100%;
     }
     .si {
       width: 40px; height: 40px; border-radius: 10px;
@@ -1021,7 +1021,7 @@ export default function CRMChat({token}) {
     /* ── LEFT COL ── */
     .lc {
       display: flex; flex-direction: column;
-      height: 100vh; max-height: 100vh;
+      height: 100%; max-height: 100%;
       min-height: 0;
       background: #1a0533;
       border-right: 1px solid #0d0618;
@@ -1054,8 +1054,8 @@ export default function CRMChat({token}) {
     .mc {
       display: flex;
       flex-direction: column;
-      height: 100vh;
-      max-height: 100vh;
+      height: 100%;
+      max-height: 100%;
       min-height: 0;
       overflow: hidden;
       background: #120929;
