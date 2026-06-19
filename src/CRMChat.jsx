@@ -593,6 +593,22 @@ export default function CRMChat({token}) {
 
   // Load messages when chat selected
   const prevSelId = useRef(null)
+  const hasRestoredScroll = useRef(false)
+  const isNearBottom = useRef(true)
+
+  const handleScroll = (e) => {
+    const { scrollTop, scrollHeight, clientHeight } = e.target
+    isNearBottom.current = scrollHeight - scrollTop - clientHeight < 150
+  }
+
+  useEffect(()=>{
+    if(sel && sel.isForum && selTopic) {
+      setMsgs([]); setAiText(""); setAiAnalysis(""); setAiAlt(""); setReplyTo(null)
+      hasRestoredScroll.current = false
+      loadMessages(sel, selTopic.id)
+    }
+  },[selTopic, token])
+
   useEffect(()=>{
     if(!sel) return
     let currentTopic = selTopic
@@ -603,6 +619,7 @@ export default function CRMChat({token}) {
     }
 
     setMsgs([]); setAiText(""); setAiAnalysis(""); setAiAlt(""); setReplyTo(null)
+    hasRestoredScroll.current = false
     
     if (sel.isForum && !currentTopic) {
       setLoadingTopics(true)
@@ -618,8 +635,18 @@ export default function CRMChat({token}) {
 
 
   useEffect(()=>{
-    if(!loadingMore) endRef.current?.scrollIntoView({behavior:"smooth"})
-  },[msgs, loadingMore])
+    if(!msgs.length) return
+    if(!hasRestoredScroll.current) {
+      hasRestoredScroll.current = true
+      if(firstUnreadRef.current && sel?.unread > 0) {
+        firstUnreadRef.current.scrollIntoView({behavior:"auto", block:"center"})
+      } else {
+        endRef.current?.scrollIntoView({behavior:"auto"})
+      }
+    } else if(!loadingMore && isNearBottom.current) {
+      endRef.current?.scrollIntoView({behavior:"smooth"})
+    }
+  },[msgs, loadingMore, sel?.unread])
 
   useEffect(()=>{
     if (inputRef.current) {
@@ -1430,7 +1457,7 @@ export default function CRMChat({token}) {
           </div>
 
           {/* Messages */}
-          <div className="msgs">
+          <div className="msgs" onScroll={handleScroll}>
             {hasMore && msgs.length > 0 && !loadMsgs && (
               <div style={{textAlign:'center', margin:'10px 0'}}>
                 <button onClick={() => loadMessages(sel, selTopic?.id || null, true)} disabled={loadingMore}
