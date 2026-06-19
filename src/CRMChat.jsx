@@ -1,4 +1,4 @@
-// v-filters-080204
+// v-filter2-080630
 // v035029
 import { useState, useEffect, useRef, useCallback } from "react"
 
@@ -701,7 +701,25 @@ export default function CRMChat({token}) {
     setNoteInp("");setAddNote(false)
   }
 
-  const filtered=chats.filter(c=>!search||c.name?.toLowerCase().includes(search.toLowerCase()))
+  const filtered = chats
+    .sort((a,b) => {
+      const ap = pinnedChats.has(a.id) ? 1 : 0
+      const bp = pinnedChats.has(b.id) ? 1 : 0
+      return bp - ap
+    })
+    .filter(c => {
+      if(!c.name) return false
+      // Archive folder: show only archived
+      if(folder === 'archived') return archivedChats.has(c.id)
+      // All other folders: hide archived
+      if(archivedChats.has(c.id)) return false
+      // Folder filters
+      if(folder === 'unread')   return (c.unread > 0) && !readChats.has(c.id)
+      if(folder === 'groups')   return !!(c.isGroup || c.isChannel)
+      if(folder === 'personal') return c.isUser === true
+      return true
+    })
+    .filter(c => !search || c.name?.toLowerCase().includes(search.toLowerCase()))
   const cStage=sel?stages[sel.id]||"Contacted":"New"
   const cProb=sel?probs[sel.id]??50:50
   const cDeal=sel?deals[sel.id]??0:0
