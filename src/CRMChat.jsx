@@ -1,4 +1,4 @@
-// v-fix-072623
+// v-fix-072923
 // v035029
 import { useState, useEffect, useRef, useCallback } from "react"
 
@@ -316,6 +316,47 @@ function AISuggestPanel({text,analysis,alternative,messages,loading,onUse,onUseA
         </div>
       )}
     </div>
+  )
+}
+
+
+// ── Link Preview ──
+function LinkPreview({url}) {
+  const [meta,setMeta] = useState(null)
+  const [failed,setFailed] = useState(false)
+  useEffect(()=>{
+    if(meta||failed||!url) return
+    if(linkCache[url]) { setMeta(linkCache[url]); return }
+    fetch('https://api.allorigins.win/get?url='+encodeURIComponent(url))
+      .then(r=>r.json())
+      .then(d=>{
+        const h = d.contents||''
+        const title = h.match(/<meta[^>]*property="og:title"[^>]*content="([^"]+)"/)?.[1]
+                   || h.match(/<title>([^<]+)<\/title>/)?.[1] || ''
+        const desc  = h.match(/<meta[^>]*property="og:description"[^>]*content="([^"]+)"/)?.[1] || ''
+        const img   = h.match(/<meta[^>]*property="og:image"[^>]*content="([^"]+)"/)?.[1] || ''
+        const domain = (() => { try { return new URL(url).hostname.replace('www.','') } catch { return url } })()
+        const result = {title,desc,img,domain}
+        linkCache[url] = result
+        setMeta(result)
+      })
+      .catch(()=>setFailed(true))
+  },[url])
+  if(!meta||failed) return null
+  return (
+    <a href={url} target="_blank" rel="noreferrer"
+      style={{display:"block",textDecoration:"none",marginTop:6}}>
+      <div style={{background:"rgba(0,0,0,.2)",borderRadius:8,overflow:"hidden",
+        border:"1px solid rgba(255,255,255,.08)"}}>
+        {meta.img&&<img src={meta.img} alt="" style={{width:"100%",maxHeight:120,objectFit:"cover",display:"block"}}
+          onError={e=>e.target.style.display="none"}/>}
+        <div style={{padding:"6px 10px"}}>
+          <div style={{fontSize:11,color:"#a78bfa",marginBottom:2}}>{meta.domain}</div>
+          {meta.title&&<div style={{fontSize:13,fontWeight:600,color:"#fff",marginBottom:2,lineHeight:1.3}}>{meta.title.slice(0,80)}</div>}
+          {meta.desc&&<div style={{fontSize:12,color:"rgba(255,255,255,.6)",lineHeight:1.4}}>{meta.desc.slice(0,100)}</div>}
+        </div>
+      </div>
+    </a>
   )
 }
 
