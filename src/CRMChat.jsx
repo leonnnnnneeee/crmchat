@@ -1,4 +1,4 @@
-// v-fix2-032220
+// v-ui-20260619_040010
 // v035029
 import { useState, useEffect, useRef, useCallback } from "react"
 
@@ -634,7 +634,9 @@ export default function CRMChat({token}) {
   const STYLES = `
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-    /* ROOT */
+    body { overflow: hidden; }
+
+    /* ── ROOT GRID ── */
     .crm-root {
       display: grid;
       grid-template-columns: 56px 270px 1fr 295px;
@@ -646,22 +648,45 @@ export default function CRMChat({token}) {
       color: #f0e6ff;
     }
 
-    /* SIDEBAR */
-    .sidebar { display:flex; flex-direction:column; align-items:center; padding:8px 0; gap:4px; background:#0d0618; overflow:hidden; }
-    .si { width:40px; height:40px; border-radius:10px; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:18px; color:#6b4d94; transition:background .15s; flex-shrink:0; }
-    .si:hover, .si.on { background:#1e0a3c; color:#f0e6ff; }
+    /* ── SIDEBAR ── */
+    .sidebar {
+      display: flex; flex-direction: column; align-items: center;
+      padding: 8px 0; gap: 4px;
+      background: #0d0618;
+      overflow: hidden;
+      height: 100vh;
+    }
+    .si {
+      width: 40px; height: 40px; border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; font-size: 18px; color: #6b4d94;
+      transition: background .15s; flex-shrink: 0; border: none; background: transparent;
+    }
+    .si:hover, .si.on { background: #1e0a3c; color: #f0e6ff; }
 
-    /* LEFT COL */
-    .lc { display:flex; flex-direction:column; height:100%; max-height:100vh; overflow:hidden; background:#1a0533; border-right:1px solid #0d0618; }
-    .ci { display:flex; gap:12px; padding:10px 16px; cursor:pointer; align-items:center; transition:background .1s; border-bottom:1px solid #0d0618; }
-    .ci:hover { background:#1e0a3c; }
-    .ci.sel { background:#2d1155; }
+    /* ── LEFT COL ── */
+    .lc {
+      display: flex; flex-direction: column;
+      height: 100vh; max-height: 100vh;
+      overflow: hidden;
+      background: #1a0533;
+      border-right: 1px solid #0d0618;
+    }
+    .ci {
+      display: flex; gap: 10px; padding: 9px 14px;
+      cursor: pointer; align-items: center;
+      transition: background .1s;
+      border-bottom: 1px solid #0d0618;
+      flex-shrink: 0;
+    }
+    .ci:hover { background: #1e0a3c; }
+    .ci.sel  { background: #2d1155; }
 
-    /* MIDDLE COL — must be flex column with height 100% */
+    /* ── MIDDLE COL — THE KEY LAYOUT ── */
     .mc {
       display: flex;
       flex-direction: column;
-      height: 100%;
+      height: 100vh;
       max-height: 100vh;
       min-height: 0;
       overflow: hidden;
@@ -669,172 +694,210 @@ export default function CRMChat({token}) {
       position: relative;
     }
 
-    /* CHAT HEADER */
+    /* ── CHAT HEADER ── */
     .chdr {
-      height: 58px;
-      min-height: 58px;
-      flex-shrink: 0;
-      display: flex;
-      align-items: center;
-      padding: 0 16px;
-      gap: 12px;
+      height: 58px; min-height: 58px; flex-shrink: 0;
+      display: flex; align-items: center;
+      padding: 0 14px; gap: 10px;
       background: #1a0533;
       border-bottom: 1px solid #0d0618;
     }
-    .hb { width:34px; height:34px; flex-shrink:0; background:transparent; border:none; border-radius:8px; cursor:pointer; display:flex; align-items:center; justify-content:center; color:#9b7ec8; font-size:16px; transition:background .1s; }
-    .hb:hover { background:#2d1155; }
+    .hb {
+      width: 34px; height: 34px; flex-shrink: 0;
+      background: transparent; border: none; border-radius: 8px;
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      color: #9b7ec8; font-size: 16px; transition: background .1s;
+    }
+    .hb:hover { background: #2d1155; }
 
-    /* MESSAGE LIST — flex:1 + min-height:0 is critical */
+    /* ── MESSAGE LIST ── */
     .msgs {
       flex: 1;
       min-height: 0;
       overflow-y: auto;
-      padding: 8px 16px 16px;
+      overflow-x: hidden;
+      padding: 8px 14px 20px;
       display: flex;
       flex-direction: column;
-      gap: 2px;
+      gap: 0;
     }
-    .msgs::-webkit-scrollbar { width:4px; }
-    .msgs::-webkit-scrollbar-thumb { background:#2d1155; border-radius:2px; }
+    .msgs::-webkit-scrollbar { width: 4px; }
+    .msgs::-webkit-scrollbar-thumb { background: #2d1155; border-radius: 2px; }
 
-    /* MESSAGE BUBBLES */
+    /* ── MESSAGE ROW ── */
+    .msg-row {
+      display: flex;
+      width: 100%;
+      margin-bottom: 2px;
+    }
+    .msg-row.out { justify-content: flex-end; }
+    .msg-row.in  { justify-content: flex-start; align-items: flex-end; gap: 6px; }
+    .msg-row.grouped { margin-bottom: 1px; }
+
+    /* ── AVATAR ── */
+    .msg-avatar {
+      width: 28px; height: 28px; flex-shrink: 0;
+      border-radius: 50%; overflow: hidden;
+      align-self: flex-end;
+      margin-bottom: 2px;
+    }
+    .msg-avatar-gap { width: 28px; flex-shrink: 0; }
+
+    /* ── BUBBLE ── */
     .bbl {
-      width: fit-content;
-      max-width: 68%;
+      position: relative;
+      max-width: min(68%, 520px);
       min-width: 60px;
+      width: fit-content;
       padding: 7px 12px 4px;
-      line-height: 1.55;
-      font-size: 14px;
-      cursor: pointer;
       border-radius: 18px;
-      word-break: break-word;
-      overflow-wrap: anywhere;
-      white-space: normal;
+      font-size: 14px;
+      line-height: 1.5;
+      cursor: pointer;
+      word-break: normal;
+      overflow-wrap: break-word;
+      white-space: pre-wrap;
     }
-    .bbl.out { background:#7c3aed; color:#fff; border-radius:18px 18px 4px 18px; }
-    .bbl.in  { background:#1e0a3c; color:#f0e6ff; border-radius:18px 18px 18px 4px; }
-    .bbl.del { opacity:.5; font-style:italic; }
-    .bbl.rpl { border-left:3px solid rgba(124,58,237,.6); padding-left:10px; }
-    .bfoot { display:flex; justify-content:flex-end; align-items:center; gap:3px; margin-top:3px; white-space:nowrap; }
+    .bbl.out {
+      background: #7c3aed; color: #fff;
+      border-radius: 18px 18px 4px 18px;
+    }
+    .bbl.in {
+      background: #1e0a3c; color: #f0e6ff;
+      border-radius: 18px 18px 18px 4px;
+    }
+    .bbl.del { opacity: .5; font-style: italic; }
+    .bbl.rpl { border-left: 3px solid rgba(124,58,237,.5); padding-left: 10px; }
 
-    /* REPLY BAR */
-    .rpl-bar { background:#1e0a3c; border-left:3px solid #7c3aed; padding:6px 10px; margin:0 0 4px; border-radius:0 8px 8px 0; display:flex; justify-content:space-between; align-items:center; font-size:12px; flex-shrink:0; }
+    /* grouped radius */
+    .bbl.out.top    { border-top-right-radius: 18px; }
+    .bbl.out.mid    { border-radius: 18px 4px 4px 18px; }
+    .bbl.out.bottom { border-bottom-right-radius: 4px; }
+    .bbl.in.top     { border-top-left-radius: 18px; }
+    .bbl.in.mid     { border-radius: 4px 18px 18px 4px; }
+    .bbl.in.bottom  { border-bottom-left-radius: 4px; }
 
-    /* INPUT AREA — flex-shrink:0 so it never gets squished */
+    /* ── BUBBLE FOOTER (timestamp + tick) ── */
+    .bfoot {
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      gap: 3px;
+      margin-top: 2px;
+      white-space: nowrap;
+      font-size: 11px;
+      opacity: .7;
+    }
+
+    /* ── DATE SEPARATOR ── */
+    .dsep {
+      display: flex; align-items: center; gap: 10px;
+      margin: 14px 0 10px;
+      color: #6b4d94; font-size: 11px; font-weight: 600;
+    }
+    .dsep::before, .dsep::after {
+      content: ''; flex: 1; height: 1px; background: #1e0a3c;
+    }
+
+    /* ── REPLY BAR ── */
+    .rpl-bar {
+      background: #1e0a3c; border-left: 3px solid #7c3aed;
+      padding: 6px 10px; margin: 0 14px 4px;
+      border-radius: 0 8px 8px 0;
+      display: flex; justify-content: space-between; align-items: center;
+      font-size: 12px; flex-shrink: 0;
+    }
+
+    /* ── INPUT AREA (FOOTER) — NEVER GETS SQUISHED ── */
     .ia {
       flex-shrink: 0;
       display: flex;
       flex-direction: column;
-      padding: 6px 12px 10px;
-      gap: 4px;
       background: #1a0533;
       border-top: 1px solid #0d0618;
+      padding: 6px 12px 10px;
+      gap: 0;
     }
 
-    /* EMOJI ROW */
-    .reacts {
-      display: flex;
-      align-items: center;
-      gap: 2px;
-      height: 32px;
-      flex-shrink: 0;
-      overflow-x: auto;
-      padding: 0 2px;
+    /* Emoji popover row */
+    .emoji-row {
+      display: flex; gap: 2px; align-items: center;
+      height: 36px; flex-shrink: 0;
+      overflow-x: auto; padding: 2px 0;
+      border-bottom: 1px solid #2d1155;
+      margin-bottom: 4px;
     }
-    .re { background:none; border:none; cursor:pointer; font-size:19px; padding:2px 4px; border-radius:6px; line-height:1; flex-shrink:0; transition:background .1s; }
-    .re:hover { background:#2d1155; }
 
-    /* COMPOSER ROW */
+    /* Composer row */
     .ir {
       display: flex;
       align-items: center;
       gap: 8px;
-      min-height: 44px;
+      min-height: 48px;
     }
 
-    /* ICON BUTTONS */
+    /* Icon buttons */
     .ib {
-      width: 34px;
-      height: 34px;
-      flex-shrink: 0;
-      background: transparent;
-      border: none;
-      border-radius: 8px;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: #9b7ec8;
-      font-size: 17px;
-      transition: background .1s;
+      width: 34px; height: 34px; flex-shrink: 0;
+      background: transparent; border: none; border-radius: 8px;
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      color: #9b7ec8; font-size: 17px; transition: background .1s;
     }
-    .ib:hover, .ib.on { background:#2d1155; color:#f0e6ff; }
-    .ib.g { font-size:13px; font-weight:700; }
+    .ib:hover, .ib.on { background: #2d1155; color: #f0e6ff; }
+    .ib.g { font-size: 13px; font-weight: 700; }
 
-    /* TEXTAREA */
+    /* Textarea */
     .message-input {
-      flex: 1;
-      min-width: 0;
-      min-height: 40px;
-      max-height: 120px;
+      flex: 1; min-width: 0;
+      min-height: 40px; max-height: 120px;
       padding: 9px 14px;
-      background: #2d1155;
-      border: none;
-      border-radius: 20px;
-      color: #f0e6ff;
-      font-size: 14px;
-      font-family: inherit;
-      line-height: 1.4;
-      resize: none;
-      outline: none;
-      overflow-y: auto;
-      box-sizing: border-box;
+      background: #2d1155; border: none; border-radius: 20px;
+      color: #f0e6ff; font-size: 14px; font-family: inherit;
+      line-height: 1.45; resize: none; outline: none;
+      overflow-y: auto; box-sizing: border-box;
     }
+    .message-input::placeholder { color: #6b4d94; }
 
-    /* SEND BUTTON */
+    /* Send button */
     .sb {
-      width: 38px;
-      height: 38px;
-      flex-shrink: 0;
-      border-radius: 50%;
-      background: #7c3aed;
-      border: none;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 17px;
-      color: #fff;
+      width: 38px; height: 38px; flex-shrink: 0;
+      border-radius: 50%; background: #7c3aed; border: none;
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      font-size: 17px; color: #fff;
       transition: background .15s, opacity .15s;
     }
-    .sb:hover { background:#6d2ed5; }
-    .sb:disabled { opacity:.35; cursor:default; }
+    .sb:hover { background: #6d2ed5; }
+    .sb:disabled { opacity: .35; cursor: default; }
 
-    /* RIGHT COL */
-    .rc { display:flex; flex-direction:column; height:100%; max-height:100vh; overflow-y:auto; background:#1a0533; border-left:1px solid #0d0618; padding:20px 16px; gap:16px; }
-    .rr { background:#2d1155; border-radius:10px; padding:12px; }
-    .ri { display:flex; align-items:center; gap:8px; cursor:pointer; padding:8px 10px; border-radius:8px; font-size:13px; font-weight:600; transition:background .1s; }
-    .ri:hover { background:#3d1f6a; }
-    .rl { border-bottom:1px solid #0d0618; margin:4px 0; }
-    .qb { display:flex; align-items:center; gap:8px; padding:8px 12px; border-radius:8px; cursor:pointer; font-size:13px; font-weight:600; border:none; text-align:left; transition:background .15s; width:100%; }
-    .dsep { display:flex; align-items:center; gap:8px; margin:10px 0; color:#6b4d94; font-size:11px; font-weight:600; }
-    .dsep::before, .dsep::after { content:''; flex:1; height:1px; background:#1e0a3c; }
-    .mi { padding:8px 12px; cursor:pointer; display:flex; align-items:center; gap:10px; font-size:13px; transition:background .1s; }
-    .mi:hover { background:#2d1155; }
-    .ti { padding:8px 12px; cursor:pointer; border-radius:8px; font-size:13px; transition:background .1s; color:#f0e6ff; border-bottom:1px solid #2d1155; }
-    .ti:hover { background:#2d1155; }
-    .tmpl-panel { position:absolute; bottom:100%; right:0; background:#1a0533; border:1px solid #3d1f6a; border-radius:12px; padding:8px 0; min-width:300px; max-height:300px; overflow-y:auto; box-shadow:0 8px 24px rgba(0,0,0,.5); z-index:100; }
-
-    @keyframes spin { to { transform: rotate(360deg); } }
-    @keyframes pulse { 0%,100% { opacity:.4; } 50% { opacity:.8; } }
-
-    @media(max-width:900px) {
-      .crm-root { grid-template-columns: 44px 1fr; }
-      .rc { display:none; }
+    /* ── RIGHT COL ── */
+    .rc {
+      display: flex; flex-direction: column;
+      height: 100vh; max-height: 100vh;
+      overflow-y: auto;
+      background: #1a0533; border-left: 1px solid #0d0618;
+      padding: 20px 14px; gap: 14px;
     }
-    @media(max-width:600px) {
+    .rr  { background: #2d1155; border-radius: 10px; padding: 12px; }
+    .ri  { display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 8px 10px; border-radius: 8px; font-size: 13px; font-weight: 600; transition: background .1s; }
+    .ri:hover { background: #3d1f6a; }
+    .rl  { border-bottom: 1px solid #0d0618; margin: 4px 0; }
+    .qb  { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; border: none; text-align: left; transition: background .15s; width: 100%; }
+    .ti  { padding: 8px 12px; cursor: pointer; border-radius: 8px; font-size: 13px; transition: background .1s; color: #f0e6ff; border-bottom: 1px solid #2d1155; }
+    .ti:hover { background: #2d1155; }
+    .tmpl-panel { position: absolute; bottom: 100%; right: 0; background: #1a0533; border: 1px solid #3d1f6a; border-radius: 12px; padding: 8px 0; min-width: 300px; max-height: 300px; overflow-y: auto; box-shadow: 0 8px 24px rgba(0,0,0,.5); z-index: 100; }
+    .mi  { padding: 8px 12px; cursor: pointer; display: flex; align-items: center; gap: 10px; font-size: 13px; transition: background .1s; }
+    .mi:hover { background: #2d1155; }
+
+    @keyframes spin    { to { transform: rotate(360deg); } }
+    @keyframes pulse   { 0%,100% { opacity:.4; } 50% { opacity:.8; } }
+
+    @media (max-width: 900px) {
+      .crm-root { grid-template-columns: 44px 1fr; }
+      .rc { display: none; }
+    }
+    @media (max-width: 600px) {
       .crm-root { grid-template-columns: 1fr; }
-      .lc { display:none; }
+      .lc { display: none; }
     }
   `
 
@@ -1011,14 +1074,15 @@ export default function CRMChat({token}) {
                     <div style={{flex:1,height:1,background:"rgba(124,58,237,.4)"}}/>
                   </div>}
                   {showSep&&<div className="dsep"><span>{fmtDateSep(msg.date)}</span></div>}
-                  <div style={{display:"flex",flexDirection:msg.fromMe?"row-reverse":"row",alignItems:"flex-end",gap:8,marginBottom:isSameGroup?1:6,cursor:selectMode?"pointer":"default"}}
+                  <div className={`msg-row${msg.fromMe?' out':' in'}${isSameGroup?' grouped':''}`}
+                    style={{cursor:selectMode?"pointer":"default"}}
                     onClick={selectMode?()=>setSelectedMsgs(prev=>{const s=new Set(prev);s.has(i)?s.delete(i):s.add(i);return s}):undefined}>
                   {selectMode&&<div style={{width:20,height:20,borderRadius:"50%",border:"2px solid #7c3aed",background:selectedMsgs.has(i)?"#7c3aed":"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,alignSelf:"center",fontSize:12,color:"#fff",cursor:"pointer"}}>
                     {selectedMsgs.has(i)?"✓":""}
                   </div>}
                     {!msg.fromMe&&(isLastInGroup
-                      ? <Avatar name={msg.senderName||sel.name} chatId={msg.senderId||sel.id} username={null} size={26}/>
-                      : <div style={{width:26,flexShrink:0}}/>
+                      ? <div className="msg-avatar"><Avatar name={msg.senderName||sel.name} chatId={msg.senderId||sel.id} username={null} size={28}/></div>
+                      : <div className="msg-avatar-gap"/>
                     )}
                     <div onContextMenu={e=>handleCtx(e,msg,i)}>
                       {msg.replyTo&&(
