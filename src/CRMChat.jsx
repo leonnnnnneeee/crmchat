@@ -608,7 +608,7 @@ export default function CRMChat({token}) {
     .bbl.in{background:#1e0a3c;color:#f0e6ff;border-radius:18px 18px 18px 4px}
     .bbl.del{opacity:.4;font-style:italic} .bbl.rpl{border-left:3px solid rgba(124,58,237,.6);padding-left:10px}
     .bfoot{display:flex;justify-content:flex-end;align-items:center;gap:3px;margin-top:3px;white-space:nowrap}
-    .ia{display:flex;flex-direction:column;padding:6px 12px 8px;gap:4px;background:#1a0533;border-top:1px solid #0d0618;flex-shrink:0}
+    .ia{display:flex;flex-direction:column;padding:4px 12px 8px;background:#1a0533;border-top:1px solid #0d0618;flex-shrink:0}
     .ib{flex:1;background:#2d1155;border:none;border-radius:20px;padding:9px 14px;color:#f0e6ff;font-size:14px;resize:none;outline:none;max-height:120px;line-height:1.4;font-family:inherit}
     .sb{width:36px;height:36px;border-radius:50%;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
     .rc{display:flex;flex-direction:column;height:100%;overflow-y:auto;background:#1a0533;border-left:1px solid #0d0618;padding:20px 16px;gap:16px}
@@ -1012,12 +1012,15 @@ export default function CRMChat({token}) {
           )}
           {/* Input area */}
           <div className="ia">
-            <div className="reacts">
+            {/* Emoji quick-insert row */}
+            <div style={{display:"flex",gap:4,padding:"2px 0 4px",overflowX:"auto"}}>
               {["👍","❤️","😂","🔥","💪","✅","🙏","😎"].map(e=>(
-                <button key={e} className="re" onClick={()=>setInput(p=>p+e)}>{e}</button>
+                <button key={e} style={{background:"none",border:"none",cursor:"pointer",fontSize:20,padding:"2px 5px",borderRadius:6,flexShrink:0}}
+                  onClick={()=>setInput(p=>p+e)}>{e}</button>
               ))}
             </div>
-            <div className="ir">
+            {/* Input row */}
+            <div style={{display:"flex",alignItems:"flex-end",gap:8}}>
               <button className="ib g" title="Attach file" style={{fontSize:17}}>📎</button>
               <textarea className="mi" placeholder="Type a message..."
                 value={input} onChange={e=>setInput(e.target.value)} rows={1}
