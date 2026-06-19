@@ -587,6 +587,44 @@ export default function CRMChat({token}) {
   const cNotes=sel?notes[sel.id]||[]:[]
   const tmplCats=["all",...new Set(TEMPLATES.map(t=>t.cat))]
 
+
+  const STYLES = `
+    *{box-sizing:border-box;margin:0;padding:0}
+    .crm-root{display:grid;grid-template-columns:56px 270px 1fr 295px;height:100vh;background:#120929;font-family:'Inter',system-ui,sans-serif;overflow:hidden;color:#f0e6ff}
+    .sidebar{display:flex;flex-direction:column;align-items:center;padding:8px 0;gap:4px;background:#0d0618;border-right:1px solid #0d0618}
+    .si{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:18px;transition:background .15s;color:#6b4d94}
+    .si:hover,.si.on{background:#1e0a3c;color:#f0e6ff}
+    .lc{display:flex;flex-direction:column;height:100%;overflow:hidden;background:#1a0533;border-right:1px solid #0d0618}
+    .ci{display:flex;gap:12px;padding:10px 16px;cursor:pointer;align-items:center;transition:background .1s;border-bottom:1px solid #0d0618;position:relative}
+    .ci:hover{background:#1e0a3c} .ci.sel{background:#2d1155}
+    .mc{flex:1;display:flex;flex-direction:column;height:100%;overflow:hidden;background:#120929;position:relative}
+    .chdr{height:58px;background:#1a0533;border-bottom:1px solid #0d0618;display:flex;align-items:center;padding:0 16px;gap:12px;flex-shrink:0}
+    .hb{width:34px;height:34px;background:transparent;border:none;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#9b7ec8;transition:background .1s;font-size:16px}
+    .hb:hover{background:#2d1155}
+    .msgs{flex:1;overflow-y:auto;padding:8px 16px;display:flex;flex-direction:column;gap:1px}
+    .bbl{display:inline-block;max-width:68%;padding:7px 12px 4px;line-height:1.55;font-size:14px;cursor:pointer;border-radius:18px;word-break:normal;overflow-wrap:break-word;white-space:normal;min-width:60px}
+    .bbl.out{background:#7c3aed;color:#fff;border-radius:18px 18px 4px 18px}
+    .bbl.in{background:#1e0a3c;color:#f0e6ff;border-radius:18px 18px 18px 4px}
+    .bbl.del{opacity:.4;font-style:italic} .bbl.rpl{border-left:3px solid rgba(124,58,237,.6);padding-left:10px}
+    .bfoot{display:flex;justify-content:flex-end;align-items:center;gap:3px;margin-top:3px;white-space:nowrap}
+    .ia{display:flex;align-items:flex-end;padding:8px 12px;gap:8px;background:#1a0533;border-top:1px solid #0d0618;flex-shrink:0}
+    .ib{flex:1;background:#2d1155;border:none;border-radius:20px;padding:9px 14px;color:#f0e6ff;font-size:14px;resize:none;outline:none;max-height:120px;line-height:1.4;font-family:inherit}
+    .sb{width:36px;height:36px;border-radius:50%;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
+    .rc{display:flex;flex-direction:column;height:100%;overflow-y:auto;background:#1a0533;border-left:1px solid #0d0618;padding:20px 16px;gap:16px}
+    .rr{background:#2d1155;border-radius:10px;padding:12px}
+    .ri{display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 10px;border-radius:8px;font-size:13px;font-weight:600;transition:background .1s}
+    .ri:hover{background:#3d1f6a} .rl{border-bottom:1px solid #0d0618;margin:4px 0}
+    .qb{display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;border:none;text-align:left;transition:background .15s;width:100%}
+    .re{display:flex;gap:6px;flex-wrap:wrap;padding:6px 0}
+    .rpl-bar{background:#1e0a3c;border-left:3px solid #7c3aed;padding:6px 10px;margin:4px 16px;border-radius:0 8px 8px 0;display:flex;justify-content:space-between;align-items:center;font-size:12px}
+    .dsep{display:flex;align-items:center;gap:8px;margin:12px 0;color:#6b4d94;font-size:11px;font-weight:600}
+    .dsep::before,.dsep::after{content:'';flex:1;height:1px;background:#1e0a3c}
+    .mi{padding:8px 12px;cursor:pointer;display:flex;align-items:center;gap:10px;font-size:13px;transition:background .1s}
+    .mi:hover{background:#2d1155}
+    .msgs::-webkit-scrollbar{width:4px} .msgs::-webkit-scrollbar-thumb{background:#2d1155;border-radius:2px}
+    @keyframes spin{to{transform:rotate(360deg)}} @keyframes pulse{0%,100%{opacity:.4}50%{opacity:.8}}
+  `
+
   return (<>
     <style>{STYLES}</style>
     <div className="crm-root">
