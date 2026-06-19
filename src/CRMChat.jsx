@@ -515,6 +515,8 @@ export default function CRMChat({token}) {
   const [chatFolders,setChatFolders]=useState({})   // {chatId: folderName}
   const [confirmLeave,setConfirmLeave]=useState(null) // chat to confirm leave
   const [previewChat,setPreviewChat]=useState(null)   // chat preview modal // chatIds marked as read this session
+  const [showMembers,setShowMembers]=useState(false)
+  const [memberSearch,setMemberSearch]=useState("")
   const [notifPerm,setNotifPerm]=useState(false)
   const [showTmpl,setShowTmpl]=useState(false)
   const [tmplCat,setTmplCat]=useState("all")
@@ -1502,9 +1504,17 @@ export default function CRMChat({token}) {
                 {selTopic ? selTopic.title : sel.name}
               </div>
               <div style={{fontSize:12,color:TG.textSec}}>
-                {selTopic ? sel.name : sel?.memberCount ? sel.memberCount+' members' :
-                sel?.isUser ? (onlineStatus==='online' ? '● online' : onlineStatus ? '○ '+onlineStatus : '○ offline') :
-                'Group'}
+                {selTopic ? sel.name : 
+                 (sel?.isGroup || sel?.isChannel) ? (
+                   <span style={{cursor:"pointer",color:TG.blueLight,transition:"color .15s"}} 
+                         onMouseEnter={e=>e.currentTarget.style.color="#fff"}
+                         onMouseLeave={e=>e.currentTarget.style.color=TG.blueLight}
+                         onClick={()=>setShowMembers(true)}>
+                     {sel.memberCount ? `${sel.memberCount} members` : "View members"}
+                   </span>
+                 ) :
+                 sel?.isUser ? (onlineStatus==='online' ? '● online' : onlineStatus ? '○ '+onlineStatus : '○ offline') :
+                 'Group'}
               </div>
             </div>
             <StageBadge stage={cStage}/>
@@ -2228,6 +2238,47 @@ export default function CRMChat({token}) {
       )}
 
       {/* Leave/Delete Confirmation */}
+      {showMembers && sel && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.6)',zIndex:9998,
+          display:'flex',alignItems:'center',justifyContent:'center'}}
+          onClick={()=>{setShowMembers(false);setMemberSearch("")}}>
+          <div style={{background:'#1a0533',borderRadius:16,width:360,maxHeight:'80vh',
+            display:'flex',flexDirection:'column',boxShadow:'0 8px 32px rgba(0,0,0,.7)'}} onClick={e=>e.stopPropagation()}>
+            <div style={{padding:'16px 20px',borderBottom:'1px solid #2d1155',display:'flex',alignItems:'center',justifyContent:'space-between',flexShrink:0}}>
+              <div style={{fontWeight:700,fontSize:16,color:'#f0e6ff'}}>{sel.memberCount ? `${sel.memberCount} Members` : 'Members'}</div>
+              <button onClick={()=>{setShowMembers(false);setMemberSearch("")}} style={{background:'transparent',border:'none',color:'#9b7ec8',cursor:'pointer',fontSize:18}}>✕</button>
+            </div>
+            <div style={{padding:'12px 16px',borderBottom:'1px solid #2d1155',flexShrink:0}}>
+              <input placeholder="Search members..." value={memberSearch} onChange={e=>setMemberSearch(e.target.value)}
+                style={{width:'100%',padding:'8px 12px',borderRadius:8,background:'#120929',border:'1px solid #2d1155',color:'#f0e6ff',outline:'none',fontSize:13}}/>
+            </div>
+            <div style={{flex:1,overflowY:'auto',padding:'8px 0'}}>
+              {(sel.members || sel.participants || sel.users || []).length === 0 ? (
+                <div style={{padding:32,textAlign:'center',color:'#9b7ec8',fontSize:13}}>
+                  <div style={{fontSize:32,marginBottom:12}}>👥</div>
+                  Members data not connected yet.
+                  <div style={{fontSize:11,color:'#6b4d94',marginTop:6}}>⚠️ TODO: Connect Telegram getParticipants API</div>
+                </div>
+              ) : (
+                (sel.members || sel.participants || sel.users || [])
+                  .filter(m => !memberSearch || m.name?.toLowerCase().includes(memberSearch.toLowerCase()) || m.username?.toLowerCase().includes(memberSearch.toLowerCase()))
+                  .map(m => (
+                  <div key={m.id} style={{display:'flex',alignItems:'center',gap:12,padding:'10px 20px',cursor:'pointer'}}
+                    onMouseEnter={e=>e.currentTarget.style.background='#2d1155'}
+                    onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+                    <Avatar name={m.name} chatId={m.id} username={m.username} size={42}/>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontWeight:600,fontSize:14,color:'#f0e6ff',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{m.name}</div>
+                      <div style={{fontSize:12,color:'#9b7ec8',marginTop:2}}>{m.status || m.role || (m.username ? '@'+m.username : 'Member')}</div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {confirmLeave&&(
         <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.6)',zIndex:9998,
           display:'flex',alignItems:'center',justifyContent:'center'}}
