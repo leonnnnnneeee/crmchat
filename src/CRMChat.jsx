@@ -1,4 +1,4 @@
-// v-interact-20260619_071928
+// v-interact-20260619_072421
 // v035029
 import { useState, useEffect, useRef, useCallback } from "react"
 
@@ -308,8 +308,8 @@ export default function CRMChat({token}) {
   const [archivedChats,setArchivedChats]=useState(new Set())
   const [selectedMsgs,setSelectedMsgs]=useState(new Set())
   const [selectMode,setSelectMode]=useState(false)
-  const [editingMsg,setEditingMsg]=useState(null)   // {id, text}
-  const [editedMsgs,setEditedMsgs]=useState({})     // {msgId: newText}
+  const [editingMsg,setEditingMsg]=useState(null)
+  const [editedMsgs,setEditedMsgs]=useState({})
   const [forwardMsg,setForwardMsg]=useState(null)
   const [reactions,setReactions]=useState({})
   const [chatSearch,setChatSearch]=useState('')
@@ -840,6 +840,22 @@ export default function CRMChat({token}) {
           <button onClick={fetchChats} disabled={loadChats} style={{background:"none",border:"none",color:TG.textMuted,cursor:"pointer",fontSize:16}} title="Refresh">
             🔄
           </button>
+        </div>
+        {/* Folder tabs */}
+        <div style={{display:'flex',borderBottom:'1px solid #0d0618',overflowX:'auto',flexShrink:0}}>
+          {[['all','All'],['unread','Unread'],['groups','Groups'],['personal','DMs'],['archived','Archive']].map(([fid,flbl])=>(
+            <div key={fid} onClick={()=>setFolder(fid)}
+              style={{padding:'6px 10px',cursor:'pointer',fontSize:12,fontWeight:600,flexShrink:0,
+                color:folder===fid?'#a78bfa':'#6b4d94',whiteSpace:'nowrap',
+                borderBottom:folder===fid?'2px solid #7c3aed':'2px solid transparent'}}>
+              {flbl}
+              {fid==='unread'&&chats.filter(c=>c.unread>0).length>0&&(
+                <span style={{marginLeft:3,background:'#7c3aed',color:'#fff',borderRadius:99,padding:'0 4px',fontSize:10}}>
+                  {chats.filter(c=>c.unread>0).length}
+                </span>
+              )}
+            </div>
+          ))}
         </div>
         <div style={{padding:"0 12px 8px",position:"relative"}}>
           <i className="ti ti-search" aria-hidden="true" style={{position:"absolute",left:22,top:"50%",transform:"translateY(-50%)",color:TG.textMuted,fontSize:14,pointerEvents:"none"}}/>
@@ -1576,6 +1592,7 @@ export default function CRMChat({token}) {
           onForward={()=>setForwardMsg(ctxMenu.msg)}
           onPin={()=>setPinnedMsgs(p=>({...p,[sel.id]:p[sel.id]?.id===ctxMenu.msg.id?null:ctxMenu.msg}))}
           onInfo={()=>setMsgInfoOpen(ctxMenu.msg)}
+          onEdit={()=>{ if(ctxMenu.msg?.fromMe) setEditingMsg({id:ctxMenu.msg.id,text:editedMsgs[ctxMenu.msg.id]||ctxMenu.msg.text||''}) }}
           onEdit={()=>{ if(ctxMenu.msg?.fromMe) setEditingMsg({id:ctxMenu.msg.id,text:ctxMenu.msg.text||''}) }}
           onReact={emoji=>{
             setReactions(p=>{
