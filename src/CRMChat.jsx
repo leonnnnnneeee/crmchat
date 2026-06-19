@@ -595,10 +595,21 @@ export default function CRMChat({token}) {
   const prevSelId = useRef(null)
   const hasRestoredScroll = useRef(false)
   const isNearBottom = useRef(true)
+  const scrollPositions = useRef({})
 
   const handleScroll = (e) => {
     const { scrollTop, scrollHeight, clientHeight } = e.target
     isNearBottom.current = scrollHeight - scrollTop - clientHeight < 150
+    if (sel?.id) {
+      scrollPositions.current[sel.id] = scrollTop
+    }
+    // Mark as read if user has scrolled past the unread separator or reached bottom
+    if (sel?.unread > 0 && !readChats.has(sel.id)) {
+      if (isNearBottom.current) {
+        setReadChats(p => new Set([...p, sel.id]))
+        setChats(p => p.map(c => c.id===sel.id ? {...c, unread:0} : c))
+      }
+    }
   }
 
   useEffect(()=>{
@@ -645,12 +656,18 @@ export default function CRMChat({token}) {
       if(firstUnreadRef.current && sel?.unread > 0) {
         firstUnreadRef.current.scrollIntoView({behavior:"auto", block:"center"})
       } else {
-        endRef.current?.scrollIntoView({behavior:"auto"})
+        const savedScroll = scrollPositions.current[sel?.id]
+        if (savedScroll !== undefined) {
+          const container = document.querySelector('.msgs')
+          if (container) container.scrollTop = savedScroll
+        } else {
+          endRef.current?.scrollIntoView({behavior:"auto"})
+        }
       }
     } else if(!loadingMore && isNearBottom.current) {
       endRef.current?.scrollIntoView({behavior:"smooth"})
     }
-  },[msgs, loadingMore, sel?.unread])
+  },[msgs, loadingMore, sel?.unread, sel?.id])
 
   useEffect(()=>{
     if (inputRef.current) {
@@ -1320,17 +1337,8 @@ export default function CRMChat({token}) {
             return(
               <div key={chat.id} className={`ci${isSel?" sel":""}`} onContextMenu={e=>{e.preventDefault();setChatCtxMenu({x:e.clientX,y:e.clientY,chat})}} onClick={()=>{
                 setSel(chat)
-                // Mark as read when chat is opened
-                if(chat.unread > 0) {
-                  setReadChats(p => new Set([...p, chat.id]))
-                  setChats(p => p.map(c => c.id===chat.id ? {...c, unread:0} : c))
-                }
-                // Auto-scroll to first unread after messages load
-                setTimeout(()=>{
-                  if(firstUnreadRef.current) {
-                    firstUnreadRef.current.scrollIntoView({behavior:'smooth', block:'center'})
-                  }
-                }, 400)
+                // Do not mark as read immediately. Wait until messages become visible in handleScroll.
+                // TODO: Sync read status to backend if needed
               }}>
                 <div style={{position:"relative",flexShrink:0}}>
                   <Avatar name={chat.name} chatId={chat.id} username={chat.username} size={46}/>
