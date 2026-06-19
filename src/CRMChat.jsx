@@ -478,6 +478,7 @@ export default function CRMChat({token}) {
   const [loadChats,setLoadChats]=useState(true)
   const [loadMsgs,setLoadMsgs]=useState(false)
   const [loadingMore,setLoadingMore]=useState(false)
+  const [hasMoreChats,setHasMoreChats]=useState(true)
   const [hasMore,setHasMore]=useState(true)
   const [onlineStatus,setOnlineStatus]=useState('')
   const [typing,setTyping]=useState(false)
@@ -542,18 +543,50 @@ export default function CRMChat({token}) {
   const [replyTo,setReplyTo]=useState(null)
   const endRef=useRef(null)
 
-  // Load chats
-  const fetchChats=useCallback(async()=>{
-    setLoadChats(true)
-    try {
-      const r=await fetch("/api/chat/list",{headers:{"x-auth-token":token}})
-      const d=await r.json()
-      if(Array.isArray(d)){setChats(d);if(!sel&&d.length>0)setSel(d[0])}
-    }catch(e){console.error("chats:",e)}
-    setLoadChats(false)
-  },[token])
+  const loadingChatsRef = useRef(false)
+  const chatsRef = useRef([])
+  useEffect(() => { chatsRef.current = chats }, [chats])
 
-  useEffect(()=>{fetchChats()},[fetchChats])
+  // Load chats
+  const fetchChats = useCallback(async (append=false) => {
+    if (loadingChatsRef.current) return
+    loadingChatsRef.current = true
+    if (!append) setLoadChats(true)
+    
+    try {
+      let url = "/api/chat/list?limit=50"
+      if (append && chatsRef.current.length > 0) {
+        const lastChat = chatsRef.current[chatsRef.current.length - 1]
+        if (lastChat && lastChat.date) {
+           url += "&offsetDate=" + lastChat.date
+        }
+      }
+      const r = await fetch(url,{headers:{"x-auth-token":token}})
+      const d = await r.json()
+      if (Array.isArray(d)) {
+        if (d.length < 50) setHasMoreChats(false)
+        else if (!append) setHasMoreChats(true)
+        
+        setChats(prev => {
+          if (append) {
+             const newChats = d.filter(c1 => !prev.some(c2 => c2.id === c1.id))
+             return [...prev, ...newChats]
+          }
+          return d
+        })
+        
+        setSel(prevSel => {
+           if (!prevSel && !append && d.length > 0) return d[0]
+           return prevSel
+        })
+      }
+    } catch(e) { console.error("chats:",e) }
+    
+    if (!append) setLoadChats(false)
+    loadingChatsRef.current = false
+  }, [token])
+
+  useEffect(()=>{ fetchChats() }, [fetchChats])
 
   // Load messages when chat selected
   const initialLoadRef = useRef(false)
@@ -801,7 +834,8 @@ export default function CRMChat({token}) {
     .sort((a,b) => {
       const ap = pinnedChats.has(a.id) ? 1 : 0
       const bp = pinnedChats.has(b.id) ? 1 : 0
-      return bp - ap
+      if (ap !== bp) return bp - ap
+      return (b.date || 0) - (a.date || 0)
     })
     .filter(c => {
       if(!c.name) return false
@@ -861,7 +895,7 @@ export default function CRMChat({token}) {
     .lc {
       display: flex; flex-direction: column;
       height: 100vh; max-height: 100vh;
-      overflow: hidden;
+      min-height: 0;
       background: #1a0533;
       border-right: 1px solid #0d0618;
     }
@@ -1183,7 +1217,12 @@ export default function CRMChat({token}) {
             value={search} onChange={e=>setSearch(e.target.value)}
             style={{paddingLeft:32}}/>
         </div>
-        <div style={{flex:1,overflowY:"auto"}}>
+        <div style={{flex:1,overflowY:"auto",minHeight:0}} onScroll={(e) => {
+          const { scrollTop, scrollHeight, clientHeight } = e.target
+          if (scrollHeight - scrollTop - clientHeight < 100 && hasMoreChats && !loadingChatsRef.current && !search) {
+            fetchChats(true)
+          }
+        }}>
           {loadChats&&<div style={{padding:20,textAlign:"center",color:TG.textMuted,fontSize:13}}>Loading Telegram...</div>}
           {filtered.map(chat=>{
             const isSel=sel?.id===chat.id
@@ -1217,6 +1256,9 @@ export default function CRMChat({token}) {
             )
           })}
           {!loadChats&&filtered.length===0&&<div style={{padding:32,textAlign:"center",color:TG.textMuted,fontSize:13}}>No chats found</div>}
+          {hasMoreChats && chats.length > 0 && !search && (
+            <div style={{padding:12,textAlign:"center",color:TG.textMuted,fontSize:12}}>Loading more chats...</div>
+          )}
         </div>
         <div style={{padding:"10px 12px",borderTop:`1px solid ${TG.border}`,display:"flex",gap:8}}>
           <button style={{flex:1,padding:"8px",background:TG.blue,border:"none",borderRadius:8,color:"#fff",fontSize:12,cursor:"pointer",fontWeight:600,fontFamily:"inherit"}}>+ Meeting</button>
@@ -2078,7 +2120,6 @@ export default function CRMChat({token}) {
               setInput(editText)
             }
           }}
-          onEdit={()=>{ if(ctxMenu.msg?.fromMe) setEditingMsg({id:ctxMenu.msg.id,text:ctxMenu.msg.text||''}) }}
           onReact={emoji=>{
             setReactions(p=>{
               const prev = p[ctxMenu.msg.id] || {}

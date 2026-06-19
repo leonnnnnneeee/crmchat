@@ -243,7 +243,11 @@ app.get('/api/chat/list', requireAuth, async (req,res) => {
   if (!_session) return res.json([])
   try {
     const client = await getClient()
-    const dialogs = await withTimeout(client.getDialogs({ limit: 40 }), 15000, 'getDialogs')
+    const limit = parseInt(req.query.limit) || 40
+    const offsetDate = parseInt(req.query.offsetDate) || 0
+    const opts = { limit }
+    if (offsetDate > 0) opts.offsetDate = offsetDate
+    const dialogs = await withTimeout(client.getDialogs(opts), 15000, 'getDialogs')
     const chats = dialogs.map(d => ({
       id: d.id.toString(),
       name: d.title || d.name || 'Unknown',
