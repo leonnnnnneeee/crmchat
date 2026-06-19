@@ -1,4 +1,4 @@
-// v-fix-032159
+// v-fix2-032220
 // v035029
 import { useState, useEffect, useRef, useCallback } from "react"
 
@@ -506,6 +506,45 @@ export default function CRMChat({token}) {
     }
     sendingRef.current = false
     setSending(false)
+  }
+
+  // AI Summarize
+  async function getSummary() {
+    if(!sel||!msgs.length) return
+    setAiLoading(true); setAiMode('summarize'); setAiText(''); setAiAlt(''); setAiAnalysis('')
+    try {
+      const r = await fetch('/api/ai/summarize',{
+        method:'POST',
+        headers:{'Content-Type':'application/json','x-auth-token':token},
+        body:JSON.stringify({messages:msgs.slice(-30),contactName:sel.name})
+      })
+      const d = await r.json()
+      setAiText(d.summary||'No summary available')
+      setAiAnalysis('📝 Conversation Summary')
+    } catch(e) { setAiText('Summary error: '+e.message) }
+    setAiLoading(false)
+  }
+
+  // AI Extract Lead Info
+  async function getExtract() {
+    if(!sel||!msgs.length) return
+    setAiLoading(true); setAiMode('extract'); setAiText(''); setAiAlt(''); setAiAnalysis('')
+    try {
+      const r = await fetch('/api/ai/extract',{
+        method:'POST',
+        headers:{'Content-Type':'application/json','x-auth-token':token},
+        body:JSON.stringify({messages:msgs.slice(-40),contactName:sel.name})
+      })
+      const d = await r.json()
+      const info = d.info||{}
+      const text = Object.entries(info)
+        .filter(([,v])=>v&&v!=='unknown'&&v!=='N/A')
+        .map(([k,v])=>`• ${k.replace(/_/g,' ')}: ${Array.isArray(v)?v.join(', '):v}`)
+        .join('\n')
+      setAiText(text||'No lead info extracted')
+      setAiAnalysis('🎯 Lead Intelligence')
+    } catch(e) { setAiText('Extract error: '+e.message) }
+    setAiLoading(false)
   }
 
   // AI Suggest — always reads latest msgs from ref
