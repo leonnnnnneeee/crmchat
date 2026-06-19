@@ -943,7 +943,7 @@ export default function CRMChat({token}) {
       min-height: 0;
       overflow-y: auto;
       overflow-x: hidden;
-      padding: 8px 14px 20px;
+      padding: 16px 20px 24px;
       display: flex;
       flex-direction: column;
       gap: 0;
@@ -955,25 +955,36 @@ export default function CRMChat({token}) {
     .msg-row {
       display: flex;
       width: 100%;
-      margin-bottom: 2px;
+      margin-bottom: 8px;
     }
     .msg-row.out { justify-content: flex-end; }
-    .msg-row.in  { justify-content: flex-start; align-items: flex-end; gap: 6px; }
-    .msg-row.grouped { margin-bottom: 1px; }
+    .msg-row.in  { justify-content: flex-start; align-items: flex-end; }
+    .msg-row.grouped { margin-bottom: 2px; }
 
     /* ── AVATAR ── */
     .msg-avatar {
-      width: 28px; height: 28px; flex-shrink: 0;
+      width: 32px; height: 32px; flex-shrink: 0;
       border-radius: 50%; overflow: hidden;
       align-self: flex-end;
       margin-bottom: 2px;
+      margin-right: 10px;
     }
-    .msg-avatar-gap { width: 28px; flex-shrink: 0; }
+    .msg-avatar-gap { width: 42px; flex-shrink: 0; }
+
+    /* ── MESSAGE CONTENT WRAPPER ── */
+    .msg-content {
+      display: flex;
+      flex-direction: column;
+      max-width: min(72%, 520px);
+      min-width: 0;
+    }
+    .msg-row.out .msg-content { align-items: flex-end; }
+    .msg-row.in .msg-content { align-items: flex-start; }
 
     /* ── BUBBLE ── */
     .bbl {
       position: relative;
-      max-width: min(68%, 520px);
+      max-width: 100%;
       min-width: 60px;
       width: fit-content;
       padding: 7px 12px 4px;
@@ -994,15 +1005,17 @@ export default function CRMChat({token}) {
       border-radius: 18px 18px 18px 4px;
     }
     .bbl.del { opacity: .5; font-style: italic; }
-    .bbl.rpl { border-left: 3px solid rgba(124,58,237,.5); padding-left: 10px; }
+    .bbl.rpl { border-left: 3px solid rgba(124,58,237,.5); padding-left: 10px; border-radius: 8px; margin-bottom: 4px; font-size: 13px; }
 
     /* grouped radius */
-    .bbl.out.top    { border-top-right-radius: 18px; }
+    .bbl.out.top    { border-radius: 18px 18px 4px 18px; }
     .bbl.out.mid    { border-radius: 18px 4px 4px 18px; }
-    .bbl.out.bottom { border-bottom-right-radius: 4px; }
-    .bbl.in.top     { border-top-left-radius: 18px; }
+    .bbl.out.bottom { border-radius: 18px 4px 18px 18px; }
+    .bbl.out.single { border-radius: 18px; }
+    .bbl.in.top     { border-radius: 18px 18px 18px 4px; }
     .bbl.in.mid     { border-radius: 4px 18px 18px 4px; }
-    .bbl.in.bottom  { border-bottom-left-radius: 4px; }
+    .bbl.in.bottom  { border-radius: 4px 18px 18px 18px; }
+    .bbl.in.single  { border-radius: 18px; }
 
     /* ── BUBBLE FOOTER (timestamp + tick) ── */
     .bfoot {
@@ -1014,16 +1027,22 @@ export default function CRMChat({token}) {
       white-space: nowrap;
       font-size: 11px;
       opacity: .7;
+      float: right;
+      clear: both;
     }
 
     /* ── DATE SEPARATOR ── */
     .dsep {
-      display: flex; align-items: center; gap: 10px;
-      margin: 14px 0 10px;
-      color: #6b4d94; font-size: 11px; font-weight: 600;
+      display: flex; align-items: center; justify-content: center;
+      margin: 20px 0 16px;
     }
-    .dsep::before, .dsep::after {
-      content: ''; flex: 1; height: 1px; background: #1e0a3c;
+    .dsep span {
+      background: rgba(124,58,237,.15);
+      padding: 4px 12px;
+      border-radius: 12px;
+      color: #a78bfa;
+      font-size: 12px;
+      font-weight: 600;
     }
 
     /* ── REPLY BAR ── */
@@ -1372,8 +1391,6 @@ export default function CRMChat({token}) {
             {msgs.map((msg,i)=>{
               const prev=msgs[i-1]
               const next=msgs[i+1]
-              const isSameGroup = !!(prev && prev.fromMe===msg.fromMe && (msg.date-prev.date)<120)
-              const isLastInGroup = !next || next.fromMe!==msg.fromMe || (next.date-msg.date)>=120
               const showSep=i===0||(()=>{
                 try{
                   const a=typeof msg.date==="number"?new Date(msg.date*1000):new Date(msg.date)
@@ -1381,6 +1398,26 @@ export default function CRMChat({token}) {
                   return a.toDateString()!==b.toDateString()
                 }catch{return false}
               })()
+              let nextShowSep = false;
+              if (next) {
+                try {
+                  const a=typeof next.date==="number"?new Date(next.date*1000):new Date(next.date)
+                  const b=typeof msg.date==="number"?new Date(msg.date*1000):new Date(msg.date)
+                  nextShowSep = a.toDateString()!==b.toDateString()
+                } catch {}
+              }
+              const isSameSenderAsPrev = prev && prev.fromMe === msg.fromMe && prev.senderId === msg.senderId
+              const isSameSenderAsNext = next && next.fromMe === msg.fromMe && next.senderId === msg.senderId
+
+              const isSameGroup = !!(isSameSenderAsPrev && (msg.date - prev.date) < 300 && !showSep)
+              const isLastInGroup = !(isSameSenderAsNext && (next.date - msg.date) < 300 && !nextShowSep)
+              const isFirstInGroup = !isSameGroup
+
+              let groupClass = ''
+              if (isFirstInGroup && isLastInGroup) groupClass = ' single'
+              else if (isFirstInGroup) groupClass = ' top'
+              else if (isLastInGroup) groupClass = ' bottom'
+              else groupClass = ' mid'
               // Infer first unread: last N msgs where N = chat.unread count
               const unreadCount = sel?.unread || 0
               const isFirstUnread = !readChats.has(sel?.id) &&
@@ -1417,22 +1454,16 @@ export default function CRMChat({token}) {
                     {selectedMsgs.has(i)?"✓":""}
                   </div>}
                     {!msg.fromMe&&(isLastInGroup
-                      ? <div className="msg-avatar"><Avatar name={msg.senderName||sel.name} chatId={msg.senderId||sel.id} username={null} size={28}/></div>
+                      ? <div className="msg-avatar"><Avatar name={msg.senderName||sel.name} chatId={msg.senderId||sel.id} username={null} size={32}/></div>
                       : <div className="msg-avatar-gap"/>
                     )}
-                    <div onContextMenu={e=>handleCtx(e,msg,i)}>
+                    <div className="msg-content" onContextMenu={e=>handleCtx(e,msg,i)}>
                       {msg.replyTo&&(
-                        <div style={{background:"rgba(124,58,237,.15)",borderLeft:`3px solid ${TG.blue}`,padding:"4px 8px",borderRadius:"0 6px 6px 0",marginBottom:4,fontSize:11,color:TG.textSec,maxWidth:"100%",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                        <div className="bbl rpl" onClick={()=>{/* scroll to reply */}} style={{background:"rgba(124,58,237,.15)",borderLeft:`3px solid ${TG.blue}`,padding:"4px 8px",borderRadius:"0 6px 6px 0",marginBottom:4,fontSize:11,color:TG.textSec,maxWidth:"100%",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",cursor:"pointer"}}>
                           ↩ {msg.replyTo.fromMe?"You":sel.name}: {msg.replyTo.text}
                         </div>
                       )}
-                      <div className={`bbl msg-bubble ${msg.fromMe?"out":"in"}${msg.deleted?" del":""}${msg.replyTo?" rpl":""}`}
-                        style={{
-                          borderBottomRightRadius: msg.fromMe && isLastInGroup ? 4 : undefined,
-                          borderBottomLeftRadius: !msg.fromMe && isLastInGroup ? 4 : undefined,
-                          borderTopRightRadius: msg.fromMe && isSameGroup ? 4 : undefined,
-                          borderTopLeftRadius: !msg.fromMe && isSameGroup ? 4 : undefined,
-                        }}>
+                      <div className={`bbl msg-bubble ${msg.fromMe?"out":"in"}${msg.deleted?" del":""}${groupClass}`}>
                         {!msg.fromMe && !sel?.isUser && msg.senderName && !isSameGroup && (
                           <div style={{fontSize:11,fontWeight:700,color:"#7c8ae8",marginBottom:3,whiteSpace:"nowrap"}}>{msg.senderName}</div>
                         )}
