@@ -1,4 +1,4 @@
-// v-ctx-081844
+// v-edit-082343
 // v035029
 import { useState, useEffect, useRef, useCallback } from "react"
 
@@ -595,6 +595,15 @@ export default function CRMChat({token}) {
   const sendingRef = useRef(false)
   async function send(){
     const text=input.trim(); if(!text||!sel||!text.length) return
+    // Handle edit mode
+    if(editingMsg) {
+      setEditedMsgs(p=>({...p,[editingMsg.id]:text}))
+      setMsgs(p=>p.map(m=>m.id===editingMsg.id?{...m,text,edited:true}:m))
+      setEditingMsg(null)
+      setInput('')
+      // TODO: call TG edit API when available
+      return
+    }
     if(sendingRef.current) return
     // Clear input immediately so user sees it's been captured
     setInput("")
@@ -1383,6 +1392,9 @@ export default function CRMChat({token}) {
                           </div>
                         )}
                         <div className="bfoot">
+                          {(msg.edited||editedMsgs[msg.id])&&(
+                            <span style={{fontSize:10,fontStyle:'italic',color:msg.fromMe?'rgba(255,255,255,.5)':'#6b4d94'}}>edited</span>
+                          )}
                           <span className={`bt${msg.fromMe?"":" in"}`}>{fmtMsgTime(msg.date)}</span>
                           {msg.fromMe&&<span style={{fontSize:10,color:msg.pending?"rgba(255,255,255,.3)":"rgba(255,255,255,.6)"}}>{msg.pending?"⏳":"✓✓"}</span>}
                         </div>
@@ -1514,6 +1526,24 @@ export default function CRMChat({token}) {
               <span style={{fontSize:12,color:TG.textSec,flex:1}}>Release 🎤 to send, or swipe away to cancel</span>
               <button onClick={()=>{mediaRecRef.current?.stop();clearInterval(recordTimerRef.current);setRecording(false);setRecordSecs(0)}}
                 style={{background:"none",border:"none",color:TG.textSec,cursor:"pointer",fontSize:13}}>Cancel</button>
+            </div>
+          )}
+          {/* Editing bar */}
+          {editingMsg&&(
+            <div style={{display:'flex',alignItems:'center',gap:8,padding:'6px 14px',
+              background:'rgba(124,58,237,.15)',borderTop:'2px solid #7c3aed',flexShrink:0}}>
+              <span style={{fontSize:16}}>✏️</span>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:11,fontWeight:700,color:'#a78bfa',marginBottom:1}}>Edit message</div>
+                <div style={{fontSize:12,color:'#9b7ec8',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                  {editingMsg.text?.slice(0,60)}{editingMsg.text?.length>60?'...':''}
+                </div>
+              </div>
+              <button onClick={()=>{setEditingMsg(null);setInput('')}}
+                style={{background:'none',border:'none',color:'#6b7280',cursor:'pointer',
+                  fontSize:20,lineHeight:1,padding:'0 2px',flexShrink:0}}>
+                ✕
+              </button>
             </div>
           )}
           {/* Input area */}
