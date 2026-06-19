@@ -1,4 +1,4 @@
-// v-fix-072923
+// v-sidebar-073247
 // v035029
 import { useState, useEffect, useRef, useCallback } from "react"
 
@@ -941,6 +941,19 @@ export default function CRMChat({token}) {
     .mi  { padding: 8px 12px; cursor: pointer; display: flex; align-items: center; gap: 10px; font-size: 13px; transition: background .1s; }
     .mi:hover { background: #2d1155; }
 
+    .sinp {
+      width: 100%;
+      background: #2d1155;
+      border: none;
+      border-radius: 20px;
+      padding: 8px 12px 8px 32px;
+      color: #f0e6ff;
+      font-size: 13px;
+      outline: none;
+      box-sizing: border-box;
+      font-family: inherit;
+    }
+    .sinp::placeholder { color: #6b4d94; }
     @keyframes spin    { to { transform: rotate(360deg); } }
     @keyframes pulse   { 0%,100% { opacity:.4; } 50% { opacity:.8; } }
 
@@ -973,31 +986,62 @@ export default function CRMChat({token}) {
 
       {/* LEFT COL */}
       <div className="lc">
-        <div style={{padding:"14px 14px 6px",fontSize:15,fontWeight:700,color:TG.text,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-          <span>Messages</span>
-          <button onClick={fetchChats} disabled={loadChats} style={{background:"none",border:"none",color:TG.textMuted,cursor:"pointer",fontSize:16}} title="Refresh">
+        <div style={{height:54,minHeight:54,flexShrink:0,padding:"0 14px",
+          display:"flex",alignItems:"center",justifyContent:"space-between",
+          borderBottom:"1px solid #0d0618"}}>
+          <span style={{fontSize:15,fontWeight:700,color:TG.text}}>Messages</span>
+          <button onClick={fetchChats} disabled={loadChats}
+            style={{background:"none",border:"none",color:TG.textMuted,
+              cursor:"pointer",fontSize:16,width:32,height:32,
+              display:"flex",alignItems:"center",justifyContent:"center",
+              borderRadius:8,transition:"background .1s"}}
+            title="Refresh" onMouseEnter={e=>e.currentTarget.style.background="#2d1155"}
+            onMouseLeave={e=>e.currentTarget.style.background="none"}>
             🔄
           </button>
         </div>
         {/* Folder tabs */}
-        <div style={{display:'flex',borderBottom:'1px solid #0d0618',overflowX:'auto',flexShrink:0}}>
+        <div style={{
+          display:'flex',flexShrink:0,
+          height:38,minHeight:38,
+          borderBottom:'1px solid #0d0618',
+          overflowX:'auto',overflowY:'hidden',
+          scrollbarWidth:'none',
+        }}>
           {[['all','All'],['unread','Unread'],['groups','Groups'],['personal','DMs'],['archived','Archive']].map(([fid,flbl])=>(
             <div key={fid} onClick={()=>setFolder(fid)}
-              style={{padding:'6px 10px',cursor:'pointer',fontSize:12,fontWeight:600,flexShrink:0,
-                color:folder===fid?'#a78bfa':'#6b4d94',whiteSpace:'nowrap',
-                borderBottom:folder===fid?'2px solid #7c3aed':'2px solid transparent'}}>
+              style={{
+                display:'flex',alignItems:'center',gap:4,
+                padding:'0 10px',
+                height:'100%',
+                cursor:'pointer',
+                fontSize:12,fontWeight:600,
+                flexShrink:0,whiteSpace:'nowrap',
+                color:folder===fid?'#a78bfa':'#6b4d94',
+                borderBottom:folder===fid?'2px solid #7c3aed':'2px solid transparent',
+                boxSizing:'border-box',
+                transition:'color .15s',
+              }}>
               {flbl}
               {fid==='unread'&&chats.filter(c=>c.unread>0).length>0&&(
-                <span style={{marginLeft:3,background:'#7c3aed',color:'#fff',borderRadius:99,padding:'0 4px',fontSize:10}}>
+                <span style={{
+                  background:'#7c3aed',color:'#fff',
+                  borderRadius:99,padding:'1px 5px',
+                  fontSize:10,fontWeight:700,
+                  lineHeight:'14px',display:'inline-block',
+                }}>
                   {chats.filter(c=>c.unread>0).length}
                 </span>
               )}
             </div>
           ))}
         </div>
-        <div style={{padding:"0 12px 8px",position:"relative"}}>
-          <i className="ti ti-search" aria-hidden="true" style={{position:"absolute",left:22,top:"50%",transform:"translateY(-50%)",color:TG.textMuted,fontSize:14,pointerEvents:"none"}}/>
-          <input className="sinp" placeholder="Search..." value={search} onChange={e=>setSearch(e.target.value)}/>
+        <div style={{padding:"8px 12px",flexShrink:0,position:"relative"}}>
+          <span style={{position:"absolute",left:22,top:"50%",transform:"translateY(-50%)",
+            color:TG.textMuted,fontSize:13,pointerEvents:"none"}}>🔍</span>
+          <input className="sinp" placeholder="Search..."
+            value={search} onChange={e=>setSearch(e.target.value)}
+            style={{paddingLeft:32}}/>
         </div>
         <div style={{flex:1,overflowY:"auto"}}>
           {loadChats&&<div style={{padding:20,textAlign:"center",color:TG.textMuted,fontSize:13}}>Loading Telegram...</div>}
