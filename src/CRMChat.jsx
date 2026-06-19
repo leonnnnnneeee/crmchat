@@ -36,6 +36,7 @@ const TEMPLATES = [
 
 // ── Avatar — loads real TG photo, falls back to colored initials ──
 const photoCache = {}
+const linkCache = {}
 let _authToken = ''
 
 function Avatar({name, chatId, username, size=40}) {
