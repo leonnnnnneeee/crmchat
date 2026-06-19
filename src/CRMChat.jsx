@@ -1,4 +1,4 @@
-// v-ui-20260619_040010
+// v-ai-20260619_071242
 // v035029
 import { useState, useEffect, useRef, useCallback } from "react"
 
@@ -219,60 +219,114 @@ function ContextMenu({x,y,msg,onDelete,onCopy,onReply,onClose,onDeleteAll,onSele
 }
 
 // ── AI Suggest floating panel ──
-function AISuggestPanel({text,analysis,alternative,loading,onUse,onUseAlt,onRegenerate,onClose}) {
-  if(!text&&!loading) return null
+function AISuggestPanel({text,analysis,alternative,messages,loading,onUse,onUseAlt,onUseAll,onRegenerate,onClose,hasResearch}) {
+  const [editIdx,setEditIdx] = useState(null)
+  const [edited,setEdited]   = useState({})
+
+  if(!text && !loading) return null
+
+  const msgs = messages && messages.length > 0 ? messages : [
+    ...(text ? [{text}] : []),
+    ...(alternative ? [{text:alternative}] : [])
+  ]
+
+  const getMsg = i => edited[i] !== undefined ? edited[i] : (msgs[i]?.text||'')
+
   return (
-    <div style={{margin:"0 16px 8px",background:"rgba(124,58,237,.1)",border:"1px solid rgba(124,58,237,.3)",borderRadius:12,flexShrink:0,overflow:"hidden"}}>
+    <div style={{margin:"0 16px 8px",background:"rgba(124,58,237,.08)",
+      border:"1px solid rgba(124,58,237,.25)",borderRadius:12,overflow:"hidden",flexShrink:0}}>
+
       {/* Header */}
-      <div style={{padding:"7px 14px",borderBottom:"1px solid rgba(124,58,237,.2)",display:"flex",alignItems:"center",gap:6}}>
+      <div style={{padding:"7px 12px",background:"rgba(124,58,237,.12)",
+        display:"flex",alignItems:"center",gap:8,borderBottom:"1px solid rgba(124,58,237,.15)"}}>
         <span style={{fontSize:13}}>✨</span>
-        <span style={{fontSize:12,fontWeight:700,color:"#c4a8e8"}}>AI Suggest</span>
-        {analysis&&<span style={{fontSize:11,color:"#9b7ec8",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginLeft:4}}>· {analysis}</span>}
-        <button onClick={onClose} style={{background:"none",border:"none",color:"#6b7280",cursor:"pointer",fontSize:14,padding:"0 2px",flexShrink:0}}>✕</button>
+        <span style={{fontSize:12,fontWeight:700,color:"#c4a8e8"}}>AI Reply</span>
+        {hasResearch&&<span style={{fontSize:10,background:"#3d1f6a",color:"#a78bfa",
+          padding:"1px 7px",borderRadius:20,fontWeight:600}}>🔍 Based on project research</span>}
+        {analysis&&<span style={{fontSize:11,color:"#7c6a9a",flex:1,
+          overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{analysis}</span>}
+        <button onClick={onClose}
+          style={{background:"none",border:"none",color:"#6b7280",cursor:"pointer",fontSize:14}}>✕</button>
       </div>
-      {loading?(
-        <div style={{padding:"12px 14px",display:"flex",gap:8,alignItems:"center",color:"#9b7ec8",fontSize:13}}>
+
+      {loading ? (
+        <div style={{padding:"12px 14px",display:"flex",gap:8,alignItems:"center",
+          color:"#9b7ec8",fontSize:13}}>
           <span style={{animation:"spin 1s linear infinite",display:"inline-block"}}>⏳</span>
-          Analyzing conversation...
+          Analyzing conversation{hasResearch?' & researching project':''}...
         </div>
-      ):(
-        <div style={{padding:"8px 12px",display:"flex",flexDirection:"column",gap:6}}>
-          {/* Option 1 */}
-          <div>
-            <div style={{fontSize:10,color:"#7c3aed",fontWeight:700,marginBottom:3,letterSpacing:.5}}>OPTION 1</div>
-            <div style={{fontSize:13,color:"#f0e6ff",lineHeight:1.55,marginBottom:5,padding:"7px 10px",
-              background:"rgba(124,58,237,.1)",borderRadius:8,borderLeft:"3px solid #7c3aed"}}>
-              {text}
+      ) : (
+        <div style={{padding:"8px 10px",display:"flex",flexDirection:"column",gap:6}}>
+
+          {/* Split message bubbles */}
+          {msgs.map((msg,i) => (
+            <div key={i} style={{background:"rgba(124,58,237,.1)",borderRadius:10,
+              border:"1px solid rgba(124,58,237,.2)",overflow:"hidden"}}>
+              <div style={{padding:"2px 10px 0",display:"flex",alignItems:"center",
+                justifyContent:"space-between",gap:6}}>
+                <span style={{fontSize:10,color:"#7c3aed",fontWeight:700,letterSpacing:.5}}>
+                  MSG {i+1}
+                </span>
+                <button onClick={()=>setEditIdx(editIdx===i?null:i)}
+                  style={{background:"none",border:"none",color:"#6b7280",
+                    cursor:"pointer",fontSize:11,padding:"2px 4px"}}>
+                  {editIdx===i?'done':'edit'}
+                </button>
+              </div>
+
+              {editIdx===i ? (
+                <textarea
+                  value={getMsg(i)}
+                  onChange={e=>setEdited(p=>({...p,[i]:e.target.value}))}
+                  style={{width:"100%",background:"transparent",border:"none",
+                    padding:"4px 10px 8px",color:"#f0e6ff",fontSize:13,
+                    lineHeight:1.5,resize:"none",outline:"none",
+                    fontFamily:"inherit",boxSizing:"border-box",minHeight:60}}
+                  autoFocus/>
+              ) : (
+                <div style={{padding:"4px 10px 8px",fontSize:13,color:"#f0e6ff",
+                  lineHeight:1.5,whiteSpace:"pre-wrap"}}>
+                  {getMsg(i)}
+                </div>
+              )}
+
+              <div style={{padding:"0 8px 6px",display:"flex",gap:6}}>
+                <button onClick={()=>onUse(getMsg(i))}
+                  style={{flex:1,padding:"5px",background:"#7c3aed",color:"#fff",
+                    border:"none",borderRadius:7,cursor:"pointer",fontSize:12,fontWeight:600}}>
+                  Send ↑
+                </button>
+                <button onClick={()=>navigator.clipboard.writeText(getMsg(i))}
+                  style={{padding:"5px 10px",background:"transparent",color:"#9b7ec8",
+                    border:"1px solid rgba(124,58,237,.3)",borderRadius:7,cursor:"pointer",fontSize:12}}>
+                  Copy
+                </button>
+              </div>
             </div>
-            <button onClick={onUse} style={{width:"100%",padding:"6px",background:"#3b82f6",color:"#fff",
-              border:"none",borderRadius:7,cursor:"pointer",fontWeight:600,fontSize:12}}>
-              Use ↑
+          ))}
+
+          {/* Send all + Regenerate */}
+          <div style={{display:"flex",gap:6,marginTop:2}}>
+            {msgs.length > 1 && (
+              <button onClick={()=>onUseAll(msgs.map((m,i)=>getMsg(i)))}
+                style={{flex:1,padding:"6px",background:"rgba(124,58,237,.25)",
+                  color:"#c4a8e8",border:"1px solid rgba(124,58,237,.4)",
+                  borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600}}>
+                📨 Send all as sequence
+              </button>
+            )}
+            <button onClick={onRegenerate}
+              style={{padding:"6px 12px",background:"transparent",color:"#6b7280",
+                border:"1px solid #374151",borderRadius:8,cursor:"pointer",fontSize:11}}>
+              ↻ Retry
             </button>
           </div>
-          {/* Option 2 */}
-          {alternative&&(
-            <div>
-              <div style={{fontSize:10,color:"#6b7280",fontWeight:700,marginBottom:3,letterSpacing:.5}}>OPTION 2</div>
-              <div style={{fontSize:13,color:"#d1d5db",lineHeight:1.55,marginBottom:5,padding:"7px 10px",
-                background:"rgba(255,255,255,.04)",borderRadius:8,borderLeft:"3px solid #4b5563"}}>
-                {alternative}
-              </div>
-              <button onClick={onUseAlt} style={{width:"100%",padding:"6px",background:"transparent",
-                color:"#a78bfa",border:"1px solid rgba(124,58,237,.4)",borderRadius:7,cursor:"pointer",fontSize:12}}>
-                Use ↑
-              </button>
-            </div>
-          )}
-          {/* Regenerate */}
-          <button onClick={onRegenerate} style={{padding:"5px",background:"transparent",
-            color:"#6b7280",border:"1px solid #374151",borderRadius:7,cursor:"pointer",fontSize:11}}>
-            ↻ Regenerate
-          </button>
         </div>
       )}
     </div>
   )
 }
+
 
 function LinkPreview({url}) {
   const [meta, setMeta] = useState(linkCache[url] || null)
