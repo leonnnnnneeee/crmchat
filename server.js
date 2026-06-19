@@ -270,7 +270,7 @@ app.get('/api/chat/messages/:id', requireAuth, async (req,res) => {
     const entity = await withTimeout(resolveEntity(client, req.params.id, req.query.username), 8000, 'resolveEntity')
     const maxId = parseInt(req.query.maxId) || 0
     const opts = { limit: 40 }
-    if (maxId > 0) opts.maxId = maxId
+    if (maxId > 0) opts.offsetId = maxId
     const msgs = await withTimeout(client.getMessages(entity, opts), 12000, 'getMessages')
     const results = msgs.reverse()
       .map(m => {
@@ -782,11 +782,11 @@ app.get('/api/chat/topics/:id/:topicId/messages', requireAuth, async (req, res) 
     const result = await client.invoke(new Api.messages.GetReplies({
       peer: entity,
       msgId: parseInt(req.params.topicId),
-      offsetId: 0,
+      offsetId: maxId,
       offsetDate: 0,
       addOffset: 0,
       limit: 80,
-      maxId: maxId,
+      maxId: 0,
       minId: 0,
       hash: BigInt(0)
     }))
