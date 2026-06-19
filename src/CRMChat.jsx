@@ -1,4 +1,4 @@
-// v-edit-20260619_082915
+// v-edit2-083448
 // v035029
 import { useState, useEffect, useRef, useCallback } from "react"
 
@@ -2027,7 +2027,13 @@ export default function CRMChat({token}) {
           onForward={()=>setForwardMsg(ctxMenu.msg)}
           onPin={()=>setPinnedMsgs(p=>({...p,[sel.id]:p[sel.id]?.id===ctxMenu.msg.id?null:ctxMenu.msg}))}
           onInfo={()=>setMsgInfoOpen(ctxMenu.msg)}
-          onEdit={()=>{ if(ctxMenu.msg?.fromMe) setEditingMsg({id:ctxMenu.msg.id,text:editedMsgs[ctxMenu.msg.id]||ctxMenu.msg.text||''}) }}
+          onEdit={()=>{
+            if(ctxMenu.msg?.fromMe) {
+              const editText = editedMsgs[ctxMenu.msg.id] || ctxMenu.msg.text || ''
+              setEditingMsg({id:ctxMenu.msg.id, text:editText})
+              setInput(editText)
+            }
+          }}
           onEdit={()=>{ if(ctxMenu.msg?.fromMe) setEditingMsg({id:ctxMenu.msg.id,text:ctxMenu.msg.text||''}) }}
           onReact={emoji=>{
             setReactions(p=>{
