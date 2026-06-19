@@ -1,4 +1,4 @@
-// v-edit-082343
+// v-edit-20260619_082915
 // v035029
 import { useState, useEffect, useRef, useCallback } from "react"
 
@@ -595,13 +595,24 @@ export default function CRMChat({token}) {
   const sendingRef = useRef(false)
   async function send(){
     const text=input.trim(); if(!text||!sel||!text.length) return
-    // Handle edit mode
+    // Handle edit mode — call Telegram API
     if(editingMsg) {
-      setEditedMsgs(p=>({...p,[editingMsg.id]:text}))
-      setMsgs(p=>p.map(m=>m.id===editingMsg.id?{...m,text,edited:true}:m))
+      const origId = editingMsg.id
+      // Update locally first (optimistic)
+      setEditedMsgs(p=>({...p,[origId]:text}))
+      setMsgs(p=>p.map(m=>m.id===origId?{...m,text,edited:true}:m))
       setEditingMsg(null)
       setInput('')
-      // TODO: call TG edit API when available
+      // Call TG edit API
+      try {
+        const r = await fetch('/api/chat/edit',{
+          method:'POST',
+          headers:{'Content-Type':'application/json','x-auth-token':token},
+          body:JSON.stringify({chatId:sel.id,msgId:origId,text,username:sel.username||undefined})
+        })
+        const d = await r.json()
+        if(!d.ok) console.error('Edit failed:', d.error)
+      } catch(e) { console.error('Edit error:', e) }
       return
     }
     if(sendingRef.current) return
