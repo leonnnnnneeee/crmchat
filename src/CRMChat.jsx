@@ -993,14 +993,28 @@ export default function CRMChat({token}) {
       border-right: 1px solid #0d0618;
     }
     .ci {
-      display: flex; gap: 10px; padding: 9px 14px;
+      display: flex; gap: 10px; padding: 10px 12px;
+      height: 72px;
       cursor: pointer; align-items: center;
       transition: background .1s;
-      border-bottom: 1px solid #0d0618;
       flex-shrink: 0;
+      box-sizing: border-box;
     }
     .ci:hover { background: #1e0a3c; }
     .ci.sel  { background: #2d1155; }
+    
+    .sinp {
+      width: 100%;
+      background: #120929;
+      border: none;
+      border-radius: 20px;
+      padding: 7px 12px 7px 34px;
+      color: #f0e6ff;
+      outline: none;
+      font-size: 14px;
+      box-sizing: border-box;
+    }
+    .sinp::placeholder { color: #6b4d94; }
 
     /* ── MIDDLE COL — THE KEY LAYOUT ── */
     .mc {
@@ -1318,12 +1332,11 @@ export default function CRMChat({token}) {
             </div>
           ))}
         </div>
-        <div style={{padding:"8px 12px",flexShrink:0,position:"relative"}}>
+        <div style={{padding:"8px 12px",flexShrink:0,position:"relative",background:"#1a0533"}}>
           <span style={{position:"absolute",left:22,top:"50%",transform:"translateY(-50%)",
-            color:TG.textMuted,fontSize:13,pointerEvents:"none"}}>🔍</span>
-          <input className="sinp" placeholder="Search..."
-            value={search} onChange={e=>setSearch(e.target.value)}
-            style={{paddingLeft:32}}/>
+            color:"#6b4d94",fontSize:14,pointerEvents:"none"}}>🔍</span>
+          <input className="sinp" placeholder="Search"
+            value={search} onChange={e=>setSearch(e.target.value)}/>
         </div>
         <div style={{flex:1,overflowY:"auto",minHeight:0}} onScroll={(e) => {
           const { scrollTop, scrollHeight, clientHeight } = e.target
@@ -1341,18 +1354,33 @@ export default function CRMChat({token}) {
                 // TODO: Sync read status to backend if needed
               }}>
                 <div style={{position:"relative",flexShrink:0}}>
-                  <Avatar name={chat.name} chatId={chat.id} username={chat.username} size={46}/>
+                  <Avatar name={chat.name} chatId={chat.id} username={chat.username} size={52}/>
                 </div>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:2}}>
-                    <span style={{fontWeight:600,fontSize:14,color:TG.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:130}}>
-                      {(chat.isPinned || pinnedChats.has(chat.id)) && <span style={{marginRight:4,fontSize:12}}>📌</span>}
+                <div style={{flex:1,minWidth:0,display:"flex",flexDirection:"column",justifyContent:"center",gap:4}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <div style={{fontWeight:600,fontSize:15,color:isSel?"#fff":TG.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:4}}>
+                      {chat.isGroup ? <span style={{fontSize:13}}>👥</span> : chat.isChannel ? <span style={{fontSize:13}}>📢</span> : null}
                       {chat.name}
-                    </span>
-                    <span style={{fontSize:10,color:TG.textMuted,flexShrink:0,marginLeft:4}}>{fmtTime(chat.date)}</span>
+                    </div>
+                    <div style={{display:"flex",alignItems:"center",gap:4,flexShrink:0}}>
+                      {chat.isPinned || pinnedChats.has(chat.id) ? (
+                        <span style={{color:TG.textMuted,fontSize:12,opacity:isSel?0.8:0.5}}>📌</span>
+                      ) : null}
+                      <span style={{fontSize:12,color:isSel?"rgba(255,255,255,.7)":TG.textMuted,marginLeft:4}}>{fmtTime(chat.date)}</span>
+                    </div>
                   </div>
-                  <div style={{fontSize:12,color:TG.textSec,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:4}}>{chat.lastMsg||"No messages"}</div>
-                  <StageBadge stage={stages[chat.id]||"Contacted"}/>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <div style={{fontSize:14,color:isSel?"rgba(255,255,255,.8)":TG.textSec,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,minWidth:0}}>
+                      {chat.lastMsg||"No messages"}
+                    </div>
+                    <div style={{display:"flex",alignItems:"center",gap:4,flexShrink:0,marginLeft:6}}>
+                      {chat.unread>0 && !readChats.has(chat.id) && (
+                        <div style={{background:isSel?"#fff":TG.blue,color:isSel?"#7c3aed":"#fff",fontSize:11,fontWeight:700,padding:"2px 7px",borderRadius:10,minWidth:22,textAlign:"center"}}>
+                          {chat.unread}
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
             )
