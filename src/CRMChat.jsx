@@ -625,7 +625,11 @@ export default function CRMChat({token}) {
       setLoadingTopics(true)
       fetch(`/api/chat/topics/${sel.id}`, { headers: {"x-auth-token": token} })
         .then(r=>r.json())
-        .then(d=>{ setTopics(p=>({...p, [sel.id]: d})); setLoadingTopics(false) })
+        .then(d=>{
+          const tList = Array.isArray(d) ? d : []
+          setTopics(p=>({...p, [sel.id]: tList}))
+          setLoadingTopics(false)
+        })
         .catch(e=>{ setLoadingTopics(false) })
       return
     }
@@ -1384,7 +1388,7 @@ export default function CRMChat({token}) {
               {!loadingTopics && topics[sel.id] && topics[sel.id].length === 0 && (
                 <div style={{padding:20,textAlign:"center",color:TG.textSec,fontSize:13}}>No topics found.</div>
               )}
-              {topics[sel.id]?.filter(t=>!topicSearch || t.title?.toLowerCase().includes(topicSearch.toLowerCase())).map(topic=>(
+              {(Array.isArray(topics[sel.id]) ? topics[sel.id] : []).filter(t=>!topicSearch || t.title?.toLowerCase().includes(topicSearch.toLowerCase())).map(topic=>(
                 <div key={topic.id} onClick={()=>{setSelTopic(topic)}}
                   onContextMenu={e=>{e.preventDefault();setTopicCtxMenu({x:e.clientX,y:e.clientY,topic})}}
                   style={{display:"flex",gap:12,padding:"12px 16px",cursor:"pointer",borderBottom:"1px solid "+TG.border,transition:"background .1s",background:topicCtxMenu?.topic?.id===topic.id?TG.elevated:"transparent"}}
