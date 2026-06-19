@@ -592,13 +592,29 @@ export default function CRMChat({token}) {
   useEffect(()=>{ fetchChats() }, [fetchChats])
 
   // Load messages when chat selected
-  const initialLoadRef = useRef(false)
+  const prevSelId = useRef(null)
   useEffect(()=>{
     if(!sel) return
-    initialLoadRef.current = false
+    let currentTopic = selTopic
+    if (prevSelId.current !== sel.id) {
+       currentTopic = null
+       setSelTopic(null)
+       prevSelId.current = sel.id
+    }
+
     setMsgs([]); setAiText(""); setAiAnalysis(""); setAiAlt(""); setReplyTo(null)
-    loadMessages(sel, selTopic?.id || null)
-  },[sel?.id, selTopic?.id, token])
+    
+    if (sel.isForum && !currentTopic) {
+      setLoadingTopics(true)
+      fetch(`/api/chat/topics/${sel.id}`, { headers: {"x-auth-token": token} })
+        .then(r=>r.json())
+        .then(d=>{ setTopics(p=>({...p, [sel.id]: d})); setLoadingTopics(false) })
+        .catch(e=>{ setLoadingTopics(false) })
+      return
+    }
+
+    loadMessages(sel, currentTopic?.id || null)
+  },[sel, selTopic, token])
 
 
   useEffect(()=>{
@@ -1318,7 +1334,7 @@ export default function CRMChat({token}) {
             <div style={{fontSize:16,fontWeight:500,color:TG.text}}>Select a conversation</div>
             <div style={{fontSize:13}}>Pick a chat from your Telegram on the left</div>
           </div>
-        ): sel && topics[sel.id]?.length > 0 && !selTopic ? (
+        ): sel && sel.isForum && !selTopic ? (
           // ── FORUM TOPICS VIEW ──
           <div style={{display:"flex",flexDirection:"column",height:"100%",background:TG.bg}}>
             <div style={{height:58,background:TG.panel,borderBottom:"1px solid "+TG.border,display:"flex",alignItems:"center",padding:"0 16px",gap:12,flexShrink:0}}>
@@ -1335,6 +1351,9 @@ export default function CRMChat({token}) {
             </div>
             <div style={{flex:1,overflowY:"auto",padding:"8px 0"}} onClick={()=>setTopicCtxMenu(null)}>
               {loadingTopics&&<div style={{padding:20,textAlign:"center",color:TG.textSec,fontSize:13}}>Loading topics...</div>}
+              {!loadingTopics && topics[sel.id] && topics[sel.id].length === 0 && (
+                <div style={{padding:20,textAlign:"center",color:TG.textSec,fontSize:13}}>No topics found.</div>
+              )}
               {topics[sel.id]?.filter(t=>!topicSearch || t.title?.toLowerCase().includes(topicSearch.toLowerCase())).map(topic=>(
                 <div key={topic.id} onClick={()=>{setSelTopic(topic)}}
                   onContextMenu={e=>{e.preventDefault();setTopicCtxMenu({x:e.clientX,y:e.clientY,topic})}}
