@@ -2241,18 +2241,18 @@ export default function CRMChat({token}) {
                         {!msg.fromMe && !sel?.isUser && msg.senderName && !isSameGroup && (
                           <div style={{fontSize:11,fontWeight:700,color:"#7c8ae8",marginBottom:3,whiteSpace:"nowrap",cursor:'pointer'}} onClick={() => setProfilePreview({ id: msg.senderId||sel.id, name: msg.senderName||sel.name, chatId: sel.id })}>{msg.senderName}</div>
                         )}
-                        {msg.isPhoto && <ChatPhoto msg={msg} chatId={sel.id} authToken={token} onImageClick={(src)=>setLightbox(src)}/>}
-                        {msg.isVideo && (
-                          <video controls style={{maxWidth:'100%',maxHeight:200,borderRadius:8,display:'block'}}>
+                        {isPhotoMsg(msg) && <ChatPhoto msg={msg} chatId={sel.id} authToken={token} onImageClick={(src)=>setLightbox(src)}/>}
+                        {isVideoMsg(msg) && (
+                          <video controls style={{maxWidth:'100%',maxHeight:320,borderRadius:8,display:'block',marginBottom:4}}>
                             <source src={`/api/chat/media/${sel.id}/${msg.id}?t=${token}`}/>
                           </video>
                         )}
-                        {msg.isAudio && (
+                        {(msg.isAudio || msg.audio || msg.voice || msg.media?.type === 'audio') && (
                           <audio controls style={{width:'100%',marginBottom:4}}>
                             <source src={`/api/chat/media/${sel.id}/${msg.id}?t=${token}`}/>
                           </audio>
                         )}
-                        {msg.isDoc && <div style={{padding:'4px 0',color:TG.textSec,fontSize:13}}>📎 Document</div>}
+                        {isDocMsg(msg) && <div style={{padding:'4px 0',color:TG.textSec,fontSize:13}}>📎 Document</div>}
                         {/* Render poll messages nicely */}
                         {msg.text?.startsWith('📊 ') && (
                           <div style={{minWidth:200}}>
