@@ -278,7 +278,7 @@ export default function App() {
           </button>
         </div>
       </div>
-      <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column"}}>
+      <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column",minWidth:0,minHeight:0}}>
         <CRMChat token={token}/>
       </div>
     </div>

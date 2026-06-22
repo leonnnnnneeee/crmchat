@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react"
 
 const TG = {
   bg:"#120929", panel:"#1a0533", surface:"#1e0a3c", elevated:"#2d1155",
-  border:"#0d0618", blue:"#7c3aed", blueHover:"#6d2ed5", blueDim:"rgba(124,58,237,.15)",
+  border:"#0d0618", blue:"#7c3aed", blueHover:"#6d2ed5", blueDim:"rgba(124,58,237,.15)", blueLight:"#5288c1",
   text:"#f0e6ff", textSec:"#9b7ec8", textMuted:"#6b4d94",
   green:"#4fae4e", red:"#e53935", msgOut:"#7c3aed", msgIn:"#1e0a3c",
 }
@@ -79,7 +79,7 @@ function Avatar({name, chatId, username, size=40}) {
 
 function StageBadge({stage}) {
   const s=STAGES[stage]||STAGES["New"]
-  return <span style={{background:s.bg,color:s.color,padding:"2px 8px",borderRadius:4,fontSize:11,fontWeight:600,whiteSpace:"nowrap",border:`1px solid ${s.color}33`}}>{stage}</span>
+  return <span style={{background:s.bg,color:s.color,padding:"2px 8px",borderRadius:4,fontSize:11,fontWeight:600,whiteSpace:"nowrap",border:`1px solid ${s.color}33`,flexShrink:0}}>{stage}</span>
 }
 
 function fmtTime(ts) {
@@ -580,6 +580,34 @@ export default function CRMChat({token}) {
   const [hasMoreChats,setHasMoreChats]=useState(true)
   const [hasMore,setHasMore]=useState(true)
   const [onlineStatus,setOnlineStatus]=useState('')
+
+  // Fetch online status
+  useEffect(() => {
+    if (!sel || sel.isGroup || sel.isChannel) {
+      setOnlineStatus('')
+      return
+    }
+    
+    let isMounted = true
+    const fetchStatus = async () => {
+      try {
+        const res = await fetch(`/api/chat/status/${sel.id}`, {headers:{"x-auth-token":token}})
+        const data = await res.json()
+        if (isMounted && data.status) {
+          setOnlineStatus(data.status)
+        }
+      } catch (e) {
+        console.error("status fetch error:", e)
+      }
+    }
+    
+    fetchStatus()
+    const interval = setInterval(fetchStatus, 30000)
+    return () => {
+      isMounted = false
+      clearInterval(interval)
+    }
+  }, [sel?.id, token])
   const [typing,setTyping]=useState(false)
   const [showScrollBtn,setShowScrollBtn]=useState(false)
   const firstUnreadRef=useRef(null)
@@ -1066,8 +1094,7 @@ export default function CRMChat({token}) {
 
     /* ── ROOT GRID ── */
     .crm-root {
-      display: grid;
-      grid-template-columns: 56px 270px minmax(350px, 1fr) 280px;
+      display: flex;
       height: 100%;
       max-height: 100%;
       overflow: hidden;
@@ -1083,6 +1110,9 @@ export default function CRMChat({token}) {
       background: #0d0618;
       overflow: hidden;
       height: 100%;
+      width: 56px;
+      min-width: 56px;
+      flex-shrink: 0;
     }
     .si {
       width: 40px; height: 40px; border-radius: 10px;
@@ -1097,6 +1127,9 @@ export default function CRMChat({token}) {
       display: flex; flex-direction: column;
       height: 100%; max-height: 100%;
       min-height: 0;
+      width: 270px;
+      min-width: 270px;
+      flex-shrink: 0;
       background: #1a0533;
       border-right: 1px solid #0d0618;
     }
@@ -1126,10 +1159,12 @@ export default function CRMChat({token}) {
 
     /* ── MIDDLE COL — THE KEY LAYOUT ── */
     .mc {
+      flex: 1;
       display: flex;
       flex-direction: column;
       height: 100%;
       max-height: 100%;
+      min-width: 0;
       min-height: 0;
       overflow: hidden;
       background: #120929;
@@ -1332,6 +1367,9 @@ export default function CRMChat({token}) {
     .rc {
       display: flex; flex-direction: column;
       overflow-y: auto;
+      width: 280px;
+      min-width: 280px;
+      flex-shrink: 0;
       background: #1a0533; border-left: 1px solid #0d0618;
       padding: 20px 14px; gap: 14px;
     }
@@ -1363,11 +1401,11 @@ export default function CRMChat({token}) {
     @keyframes pulse   { 0%,100% { opacity:.4; } 50% { opacity:.8; } }
 
     @media (max-width: 900px) {
-      .crm-root { grid-template-columns: 44px 1fr; }
+      .sidebar { width: 44px; min-width: 44px; }
       .rc { display: none; }
     }
     @media (max-width: 600px) {
-      .crm-root { grid-template-columns: 1fr; }
+      .sidebar { display: none; }
       .lc { display: none; }
     }
   `
@@ -1468,11 +1506,11 @@ export default function CRMChat({token}) {
                 </div>
                 <div style={{flex:1,minWidth:0,display:"flex",flexDirection:"column",justifyContent:"center",gap:4}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                    <div style={{fontWeight:600,fontSize:15,color:isSel?"#fff":TG.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:4}}>
-                      {chat.isGroup ? <span style={{fontSize:13}}>👥</span> : chat.isChannel ? <span style={{fontSize:13}}>📢</span> : null}
+                    <div style={{fontWeight:600,fontSize:15,color:isSel?"#fff":TG.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,minWidth:0}}>
+                      {chat.isGroup ? <span style={{fontSize:13,marginRight:4}}>👥</span> : chat.isChannel ? <span style={{fontSize:13,marginRight:4}}>📢</span> : null}
                       {chat.name}
                     </div>
-                    <div style={{display:"flex",alignItems:"center",gap:4,flexShrink:0}}>
+                    <div style={{display:"flex",alignItems:"center",gap:4,flexShrink:0,marginLeft:8}}>
                       {chat.isPinned || pinnedChats.has(chat.id) ? (
                         <span style={{color:TG.textMuted,fontSize:12,opacity:isSel?0.8:0.5}}>📌</span>
                       ) : null}
@@ -1573,11 +1611,11 @@ export default function CRMChat({token}) {
               <button onClick={()=>setSelTopic(null)} style={{background:"none",border:"none",color:TG.textSec,cursor:"pointer",fontSize:20,padding:"0 4px",flexShrink:0}}>←</button>
             )}
             <Avatar name={sel.name} chatId={sel.id} username={sel.username} size={38}/>
-            <div style={{flex:1}}>
-              <div style={{fontWeight:700,fontSize:15,color:TG.text,lineHeight:1.2}}>
+            <div style={{flex:1,minWidth:0,display:"flex",flexDirection:"column"}}>
+              <div style={{fontWeight:700,fontSize:15,color:TG.text,lineHeight:1.2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
                 {selTopic ? selTopic.title : sel.name}
               </div>
-              <div style={{fontSize:12,color:TG.textSec}}>
+              <div style={{fontSize:12,color:TG.textSec,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
                 {selTopic ? sel.name : 
                  (sel?.isGroup || sel?.isChannel) ? (
                    <span style={{cursor:"pointer",color:TG.blueLight,transition:"color .15s"}} 
@@ -1587,12 +1625,17 @@ export default function CRMChat({token}) {
                      {sel.memberCount ? `${sel.memberCount} members` : "View members"}
                    </span>
                  ) :
-                 sel?.isUser ? (onlineStatus==='online' ? '● online' : onlineStatus ? '○ '+onlineStatus : '○ offline') :
+                 sel?.isUser ? (
+                   onlineStatus === 'online' ? <span style={{color: TG.blueLight}}>● online</span> :
+                   onlineStatus === 'unknown' ? '○ status unavailable' :
+                   onlineStatus ? '○ ' + onlineStatus :
+                   '○ last seen recently'
+                 ) :
                  'Group'}
               </div>
             </div>
-            <StageBadge stage={cStage}/>
-            <div style={{display:"flex",gap:6,marginLeft:8}}>
+            <div style={{flexShrink:0}}><StageBadge stage={cStage}/></div>
+            <div style={{display:"flex",gap:6,marginLeft:8,flexShrink:0}}>
               <button className="hb" title="Call" style={{fontSize:16}}>📞</button>
               <button className="hb" title="Search in chat" style={{fontSize:16}}>🔍</button>
               <button onClick={()=>setChatSearchOpen(p=>!p)} title="Search in chat"
@@ -1975,9 +2018,12 @@ export default function CRMChat({token}) {
             <>
               <div style={{padding:"22px 16px 16px",textAlign:"center",borderBottom:`1px solid ${TG.border}`}}>
                 <Avatar name={sel.name} chatId={sel.id} username={sel.username} size={70}/>
-                <div style={{fontWeight:700,fontSize:18,color:TG.text,marginTop:12}}>{sel.name}</div>
-                <div style={{fontSize:12,color:TG.textSec,marginTop:3}}>Telegram · {sel.isUser?"Contact":"Group"}</div>
-                <div style={{marginTop:10}}><StageBadge stage={cStage}/></div>
+                <div style={{fontWeight:700,fontSize:18,color:TG.text,marginTop:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sel.name}</div>
+                <div style={{fontSize:12,color:TG.textSec,marginTop:3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                  {sel.isGroup || sel.isChannel ? `Telegram · ${sel.memberCount ? sel.memberCount + ' members' : 'Group'}` :
+                   sel.isUser ? `Telegram · Contact · ${onlineStatus === 'online' ? 'Online' : onlineStatus === 'unknown' ? 'Status unavailable' : onlineStatus || 'Last seen recently'}` : 'Telegram'}
+                </div>
+                <div style={{marginTop:10,flexShrink:0}}><StageBadge stage={cStage}/></div>
                 <div style={{display:"flex",justifyContent:"center",gap:8,marginTop:12}}>
                   {[["📱","Open in TG",null],["📧","Email",null],["🌐","Website",null],["📋","Copy ID",()=>navigator.clipboard?.writeText(sel.id)]].map(([icon,ttl,action])=>(
                     <button key={ttl} title={ttl} onClick={action||undefined} style={{width:34,height:34,borderRadius:"50%",background:TG.elevated,border:"none",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:16}}>
