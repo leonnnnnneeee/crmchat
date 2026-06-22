@@ -506,6 +506,80 @@ function ChatPhoto({msg, chatId, authToken, onImageClick}) {
   )
 }
 
+function UserProfileModal({ data, onClose, token }) {
+  const [status, setStatus] = useState(null)
+  
+  useEffect(() => {
+    if (!data?.id) return
+    let isMounted = true
+    fetch(`/api/chat/status/${data.id}`, { headers: {'x-auth-token': token} })
+      .then(r => r.json())
+      .then(d => { if(isMounted) setStatus(d.status) })
+      .catch(e => { if(isMounted) setStatus('User info not available') })
+    return () => { isMounted = false }
+  }, [data?.id, token])
+
+  useEffect(() => {
+    const handleEsc = (e) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', handleEsc)
+    return () => window.removeEventListener('keydown', handleEsc)
+  }, [onClose])
+
+  if (!data) return null
+
+  return (
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.6)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center'}}
+         onClick={(e) => { if(e.target===e.currentTarget) onClose() }}>
+      <div style={{background:'#1a103c',width:360,borderRadius:16,overflow:'hidden',boxShadow:'0 10px 40px rgba(0,0,0,.5)',border:'1px solid rgba(124,58,237,.3)',color:'#fff'}}>
+        {/* Header with X */}
+        <div style={{display:'flex',justifyContent:'flex-end',padding:'12px 12px 0'}}>
+          <button onClick={onClose} style={{background:'transparent',border:'none',color:'#9b7ec8',cursor:'pointer',fontSize:20}}>&times;</button>
+        </div>
+        
+        {/* Body */}
+        <div style={{padding:'0 24px 24px',display:'flex',flexDirection:'column',alignItems:'center'}}>
+          <div style={{marginBottom:16}}>
+            <Avatar name={data.name||'User'} chatId={data.id} username={data.username} size={80}/>
+          </div>
+          <div style={{fontSize:20,fontWeight:700,marginBottom:4,textAlign:'center'}}>{data.name||'Unknown User'}</div>
+          
+          <div style={{fontSize:13,color:status==='online'?'#4caf50':'#9b7ec8',marginBottom:16}}>
+            {status ? status : 'Loading status...'}
+          </div>
+
+          <div style={{width:'100%',background:'rgba(0,0,0,.2)',borderRadius:8,padding:12,marginBottom:16}}>
+            <div style={{display:'flex',justifyContent:'space-between',marginBottom:8,fontSize:13}}>
+              <span style={{color:'#9b7ec8'}}>User ID</span>
+              <span style={{color:'#e0d4f5',cursor:'pointer'}} onClick={()=>{navigator.clipboard.writeText(data.id);alert('ID Copied')}}>{data.id} 📋</span>
+            </div>
+            {data.username && (
+              <div style={{display:'flex',justifyContent:'space-between',marginBottom:8,fontSize:13}}>
+                <span style={{color:'#9b7ec8'}}>Username</span>
+                <span style={{color:'#e0d4f5',cursor:'pointer'}} onClick={()=>{navigator.clipboard.writeText('@'+data.username);alert('Username Copied')}}>@{data.username} 📋</span>
+              </div>
+            )}
+            <div style={{display:'flex',justifyContent:'space-between',fontSize:13}}>
+              <span style={{color:'#9b7ec8'}}>Phone</span>
+              <span style={{color:'#e0d4f5'}}>{data.phone||'Hidden'}</span>
+            </div>
+          </div>
+
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,width:'100%'}}>
+            <button style={{background:'#7c3aed',color:'#fff',border:'none',padding:'10px',borderRadius:8,cursor:'pointer',fontWeight:600}}
+                    onClick={()=>alert('Send message to non-contact is under development')}>
+              💬 Send Message
+            </button>
+            <button style={{background:'rgba(124,58,237,.2)',color:'#e0d4f5',border:'1px solid rgba(124,58,237,.3)',padding:'10px',borderRadius:8,cursor:'pointer',fontWeight:600}}
+                    onClick={()=>alert('CRM Note feature under development')}>
+              📝 Add Note
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 const URL_REGEX = /(https?:\/\/[^\s]+|www\.[^\s]+|[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(?:\/[^\s]*)?)/gi;
 
 function renderMessageText(text, searchStr) {
@@ -721,6 +795,7 @@ export default function CRMChat({token}) {
   const [pollQuestion,setPollQuestion]=useState('')
   const [pollOptions,setPollOptions]=useState(['',''])
   const [msgInfoOpen,setMsgInfoOpen]=useState(null)
+  const [profilePreview,setProfilePreview]=useState(null)
   const [recording,setRecording]=useState(false)
   const [recordSecs,setRecordSecs]=useState(0)
   const mediaRecRef=useRef(null)
@@ -1666,9 +1741,17 @@ export default function CRMChat({token}) {
             {selTopic&&(
               <button onClick={()=>setSelTopic(null)} style={{background:"none",border:"none",color:TG.textSec,cursor:"pointer",fontSize:20,padding:"0 4px",flexShrink:0}}>←</button>
             )}
-            <Avatar name={sel.name} chatId={sel.id} username={sel.username} size={38}/>
+            <div 
+              style={{cursor: sel.isUser ? 'pointer' : 'default'}}
+              onClick={() => sel.isUser && setProfilePreview({ id: sel.id, name: sel.name, username: sel.username, chatId: sel.id })}
+            >
+              <Avatar name={sel.name} chatId={sel.id} username={sel.username} size={38}/>
+            </div>
             <div style={{flex:1,minWidth:0,display:"flex",flexDirection:"column"}}>
-              <div style={{fontWeight:700,fontSize:15,color:TG.text,lineHeight:1.2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+              <div 
+                style={{fontWeight:700,fontSize:15,color:TG.text,lineHeight:1.2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap", cursor: sel.isUser ? 'pointer' : 'default'}}
+                onClick={() => sel.isUser && setProfilePreview({ id: sel.id, name: sel.name, username: sel.username, chatId: sel.id })}
+              >
                 {selTopic ? selTopic.title : sel.name}
               </div>
               <div style={{fontSize:12,color:TG.textSec,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
@@ -1798,8 +1881,9 @@ export default function CRMChat({token}) {
                   {selectMode&&<div style={{width:20,height:20,borderRadius:"50%",border:"2px solid #7c3aed",background:selectedMsgs.has(i)?"#7c3aed":"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,alignSelf:"center",fontSize:12,color:"#fff",cursor:"pointer"}}>
                     {selectedMsgs.has(i)?"✓":""}
                   </div>}
-                    {!msg.fromMe&&(isLastInGroup
-                      ? <div className="msg-avatar"><Avatar name={msg.senderName||sel.name} chatId={msg.senderId||sel.id} username={null} size={32}/></div>
+                    {!msg.fromMe && (
+                      isLastInGroup
+                      ? <div className="msg-avatar" style={{cursor:'pointer'}} onClick={() => setProfilePreview({ id: msg.senderId||sel.id, name: msg.senderName||sel.name, chatId: sel.id })}><Avatar name={msg.senderName||sel.name} chatId={msg.senderId||sel.id} username={null} size={32}/></div>
                       : <div className="msg-avatar-gap"/>
                     )}
                     <div className="msg-content" onContextMenu={e=>handleCtx(e,msg,i)}>
@@ -1810,7 +1894,7 @@ export default function CRMChat({token}) {
                       )}
                       <div className={`bbl msg-bubble ${msg.fromMe?"out":"in"}${msg.deleted?" del":""}${groupClass}`}>
                         {!msg.fromMe && !sel?.isUser && msg.senderName && !isSameGroup && (
-                          <div style={{fontSize:11,fontWeight:700,color:"#7c8ae8",marginBottom:3,whiteSpace:"nowrap"}}>{msg.senderName}</div>
+                          <div style={{fontSize:11,fontWeight:700,color:"#7c8ae8",marginBottom:3,whiteSpace:"nowrap",cursor:'pointer'}} onClick={() => setProfilePreview({ id: msg.senderId||sel.id, name: msg.senderName||sel.name, chatId: sel.id })}>{msg.senderName}</div>
                         )}
                         {msg.isPhoto && <ChatPhoto msg={msg} chatId={sel.id} authToken={token} onImageClick={(src)=>setLightbox(src)}/>}
                         {msg.isVideo && (
@@ -2367,6 +2451,9 @@ export default function CRMChat({token}) {
           </div>
         </div>
       )}
+
+      {/* User Profile Preview Modal */}
+      <UserProfileModal data={profilePreview} onClose={() => setProfilePreview(null)} token={token} />
 
       {/* Chat Preview Modal */}
       {previewChat&&(
