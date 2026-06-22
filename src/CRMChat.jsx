@@ -1048,6 +1048,19 @@ export default function CRMChat({token}) {
   const [scheduleOpen,setScheduleOpen]=useState(false)
   const [scheduleTime,setScheduleTime]=useState('')
   const [scheduledMsgs,setScheduledMsgs]=useState([])
+
+  const searchGifs = async (query) => {
+    // Dummy function since searchGifs was missing
+    if (!query) return setGifs([])
+    setGifs([])
+  }
+
+  const sendScheduled = async () => {
+    // Dummy function since sendScheduled was missing
+    alert('Scheduled send is not yet implemented.')
+    setScheduleOpen(false)
+    setScheduleTime('')
+  }
   const [pollOpen,setPollOpen]=useState(false)
   const [pollQuestion,setPollQuestion]=useState('')
   const [pollOptions,setPollOptions]=useState(['',''])
@@ -1356,7 +1369,7 @@ export default function CRMChat({token}) {
   // AI Summarize
   async function getSummary() {
     if(!sel||!msgs.length) return
-    setAiLoading(true); setAiMode('summarize'); setAiText(''); setAiAlt(''); setAiAnalysis('')
+    setAiLoading(true); setAiText(''); setAiAlt(''); setAiAnalysis('')
     try {
       const r = await fetch('/api/ai/summarize',{
         method:'POST',
@@ -1373,7 +1386,7 @@ export default function CRMChat({token}) {
   // AI Extract Lead Info
   async function getExtract() {
     if(!sel||!msgs.length) return
-    setAiLoading(true); setAiMode('extract'); setAiText(''); setAiAlt(''); setAiAnalysis('')
+    setAiLoading(true); setAiText(''); setAiAlt(''); setAiAnalysis('')
     try {
       const r = await fetch('/api/ai/extract',{
         method:'POST',
@@ -2046,10 +2059,16 @@ export default function CRMChat({token}) {
               <button onClick={()=>setSelTopic(null)} style={{background:"none",border:"none",color:TG.textSec,cursor:"pointer",fontSize:20,padding:"0 4px",flexShrink:0}}>←</button>
             )}
             <div 
-              style={{cursor: 'pointer'}}
+              style={{cursor: 'pointer', display: 'flex', alignItems: 'center'}}
               onClick={() => setProfilePreview({ id: sel.id, name: sel.name, username: sel.username, chatId: sel.id, isGroup: sel.isGroup || sel.isChannel })}
             >
-              <Avatar name={sel.name} chatId={sel.id} username={sel.username} size={38}/>
+              {selTopic ? (
+                <div style={{width: 38, height: 38, borderRadius: '50%', background: '#2b5278', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 18, fontWeight: 600}}>
+                  #
+                </div>
+              ) : (
+                <Avatar name={sel.name} chatId={sel.id} username={sel.username} size={38}/>
+              )}
             </div>
             <div style={{flex:1,minWidth:0,display:"flex",flexDirection:"column"}}>
               <div 
@@ -2058,8 +2077,15 @@ export default function CRMChat({token}) {
               >
                 {selTopic ? selTopic.title : sel.name}
               </div>
-              <div style={{fontSize:12,color:TG.textSec,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                {selTopic ? sel.name : 
+              <div style={{fontSize:13,color:TG.textSec,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                {selTopic ? (
+                   <span style={{cursor:"pointer",color:TG.blueLight,transition:"color .15s"}} 
+                         onMouseEnter={e=>e.currentTarget.style.color="#fff"}
+                         onMouseLeave={e=>e.currentTarget.style.color=TG.blueLight}
+                         onClick={()=>setSelTopic(null)}>
+                     in {sel.name}
+                   </span>
+                 ) : 
                  (sel?.isGroup || sel?.isChannel) ? (
                    <span style={{cursor:"pointer",color:TG.blueLight,transition:"color .15s"}} 
                          onMouseEnter={e=>e.currentTarget.style.color="#fff"}
@@ -2077,28 +2103,12 @@ export default function CRMChat({token}) {
                  'Group'}
               </div>
             </div>
-            <div style={{flexShrink:0}}><StageBadge stage={cStage}/></div>
-            <div style={{display:"flex",gap:6,marginLeft:8,flexShrink:0}}>
-              <button className="hb" title="Call" style={{fontSize:16}}>📞</button>
-              <button className="hb" title="Search in chat" style={{fontSize:16}}>🔍</button>
-              <button onClick={()=>setChatSearchOpen(p=>!p)} title="Search in chat"
-                style={{width:34,height:34,background:chatSearchOpen?TG.blue:TG.elevated,borderRadius:8,border:"none",cursor:"pointer",fontSize:15}}>
+            <div style={{display:"flex",gap:12,marginLeft:16,flexShrink:0}}>
+              <button onClick={()=>setChatSearchOpen(p=>!p)} title="Search in chat" style={{background: 'none', border: 'none', color: TG.textSec, cursor: 'pointer', fontSize: 18}}>
                 🔍
               </button>
-              <button onClick={getSummary} title="AI Summarize" disabled={!msgs.length}
-                style={{width:34,height:34,background:TG.elevated,borderRadius:8,border:"none",cursor:"pointer",fontSize:14,color:TG.textSec}}>
-                📝
-              </button>
-              <button onClick={getExtract} title="Extract Lead Info" disabled={!msgs.length}
-                style={{width:34,height:34,background:TG.elevated,borderRadius:8,border:"none",cursor:"pointer",fontSize:14,color:TG.textSec}}>
-                🎯
-              </button>
-              <button onClick={()=>loadMessages(sel)} title="Refresh messages"
-                style={{width:34,height:34,background:TG.elevated,borderRadius:8,border:"none",cursor:"pointer",fontSize:15}}>
-                🔄
-              </button>
-              <button className={`hb${showProfile?" on":""}`} onClick={()=>setShowProfile(v=>!v)} title="Toggle info" style={{fontSize:16}}>
-                ℹ️
+              <button title="More Actions" style={{background: 'none', border: 'none', color: TG.textSec, cursor: 'pointer', fontSize: 18}}>
+                ⋮
               </button>
             </div>
           </div>
