@@ -506,70 +506,103 @@ function ChatPhoto({msg, chatId, authToken, onImageClick}) {
   )
 }
 
-function SharedMediaModal({ type, msgs, data, onClose, token, setLightbox }) {
+function SharedMediaModal({ initialTab, msgs, data, onClose, token, setLightbox, jumpToMessage }) {
+  const [activeTab, setActiveTab] = useState(initialTab || 'photos');
   const isSelfProfile = data?.id?.toString() === data?.chatId?.toString();
+
+  const tabs = [
+    { id: 'photos', label: 'Photos' },
+    { id: 'videos', label: 'Videos' },
+    { id: 'files', label: 'Files' },
+    { id: 'links', label: 'Links' },
+    { id: 'gifs', label: 'GIFs' },
+    { id: 'groups', label: 'Groups' }
+  ];
 
   const filtered = useMemo(() => {
     if (!msgs || !Array.isArray(msgs)) return [];
     return msgs.filter(m => {
       if (!isSelfProfile && m.senderId && m.senderId.toString() !== data?.id?.toString()) return false;
-      if (type === 'photos' && m.isPhoto) return true;
-      if (type === 'videos' && m.isVideo) return true;
-      if (type === 'files' && m.isDoc) return true;
-      if (type === 'links' && m.text && /(https?:\/\/[^\s]+)/.test(m.text)) return true;
+      if (activeTab === 'photos' && m.isPhoto) return true;
+      if (activeTab === 'videos' && m.isVideo) return true;
+      if (activeTab === 'files' && m.isDoc) return true;
+      if (activeTab === 'links' && m.text && /(https?:\/\/[^\s]+)/.test(m.text)) return true;
       return false;
     });
-  }, [msgs, type, isSelfProfile, data?.id]);
+  }, [msgs, activeTab, isSelfProfile, data?.id]);
 
   return (
     <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.8)',zIndex:10000,display:'flex',flexDirection:'column'}}
          onClick={(e) => { if(e.target===e.currentTarget) onClose() }}>
       
-      {/* Header */}
-      <div style={{background:'#1a103c',padding:'16px 24px',display:'flex',alignItems:'center',gap:16,borderBottom:'1px solid rgba(124,58,237,.3)'}}>
-        <button onClick={onClose} style={{background:'transparent',border:'none',color:'#9b7ec8',cursor:'pointer',fontSize:24}}>←</button>
-        <div style={{fontSize:18,fontWeight:600,color:'#fff',textTransform:'capitalize'}}>Shared {type}</div>
-        <div style={{marginLeft:'auto',color:'#9b7ec8',fontSize:14}}>{filtered.length} items</div>
+      {/* Header with Tabs */}
+      <div style={{background:'#1a103c',display:'flex',flexDirection:'column',borderBottom:'1px solid rgba(124,58,237,.3)'}}>
+        <div style={{padding:'16px 24px',display:'flex',alignItems:'center',gap:16}}>
+          <button onClick={onClose} style={{background:'transparent',border:'none',color:'#9b7ec8',cursor:'pointer',fontSize:24}}>←</button>
+          <div style={{fontSize:18,fontWeight:600,color:'#fff'}}>Shared Media</div>
+          <div style={{marginLeft:'auto',color:'#9b7ec8',fontSize:14}}>{filtered.length > 0 ? `${filtered.length} items` : ''}</div>
+        </div>
+        <div style={{display:'flex',overflowX:'auto',padding:'0 16px',gap:24,scrollbarWidth:'none'}}>
+          {tabs.map(t => (
+            <div key={t.id} onClick={() => setActiveTab(t.id)} style={{padding:'12px 0',color:activeTab===t.id?'#fff':'#9b7ec8',fontWeight:activeTab===t.id?600:400,borderBottom:activeTab===t.id?'2px solid #7c3aed':'2px solid transparent',cursor:'pointer',textTransform:'capitalize',whiteSpace:'nowrap'}}>
+              {t.label}
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* Body */}
-      <div style={{flex:1,overflowY:'auto',padding:24,display:type==='photos'||type==='videos'?'grid':'flex',flexDirection:'column',gridTemplateColumns:'repeat(auto-fill, minmax(100px, 1fr))',gap:8}}>
-        {filtered.length === 0 && (
-          <div style={{color:'#9b7ec8',textAlign:'center',marginTop:40}}>No {type} found.</div>
+      <div style={{flex:1,overflowY:'auto',padding:24,display:(activeTab==='photos'||activeTab==='videos')?'grid':'flex',flexDirection:'column',gridTemplateColumns:'repeat(auto-fill, minmax(100px, 1fr))',gap:8}}>
+        
+        {(activeTab === 'gifs' || activeTab === 'groups') && (
+          <div style={{color:'#9b7ec8',textAlign:'center',marginTop:40}}>Not loaded. Full history API pending.</div>
+        )}
+
+        {filtered.length === 0 && activeTab !== 'gifs' && activeTab !== 'groups' && (
+          <div style={{color:'#9b7ec8',textAlign:'center',marginTop:40}}>No {activeTab} found in loaded history.</div>
         )}
         
         {filtered.map(m => {
-          if (type === 'photos') {
-            return <div key={m.id} style={{aspectRatio:'1/1',background:'rgba(124,58,237,.1)',borderRadius:8,overflow:'hidden',cursor:'pointer'}}>
-              <ChatPhoto msg={m} chatId={data.chatId} authToken={token} onImageClick={(src)=>setLightbox(src)}/>
-            </div>
-          }
-          if (type === 'videos') {
-            return <div key={m.id} style={{aspectRatio:'1/1',background:'rgba(124,58,237,.1)',borderRadius:8,overflow:'hidden',display:'flex',alignItems:'center',justifyContent:'center',position:'relative'}}>
-              <video style={{width:'100%',height:'100%',objectFit:'cover'}} src={`/api/chat/media/${data.chatId}/${m.id}?t=${token}`}/>
-              <div style={{position:'absolute',fontSize:24,color:'white',pointerEvents:'none'}}>▶</div>
-            </div>
-          }
-          if (type === 'files') {
-            return <div key={m.id} style={{background:'rgba(124,58,237,.1)',padding:12,borderRadius:8,display:'flex',alignItems:'center',gap:12,cursor:'pointer'}}>
-              <div style={{fontSize:24}}>📄</div>
-              <div style={{flex:1}}>
-                <div style={{color:'#fff',fontSize:14,fontWeight:600}}>Document</div>
-                <div style={{color:'#9b7ec8',fontSize:12}}>{new Date(m.date*1000).toLocaleString()}</div>
+          if (activeTab === 'photos') {
+            return (
+              <div key={m.id} style={{aspectRatio:'1/1',background:'rgba(124,58,237,.1)',borderRadius:8,overflow:'hidden',position:'relative'}}>
+                <ChatPhoto msg={m} chatId={data.chatId} authToken={token} onImageClick={(src)=>setLightbox(src)}/>
+                <div onClick={() => jumpToMessage(m.id)} style={{position:'absolute',top:4,right:4,background:'rgba(0,0,0,.5)',color:'#fff',padding:'2px 6px',borderRadius:4,fontSize:10,cursor:'pointer'}}>Show msg</div>
               </div>
-              <a href={`/api/chat/media/${data.chatId}/${m.id}?t=${token}`} download target="_blank" style={{color:'#7c3aed',textDecoration:'none',fontSize:14}}>Download</a>
-            </div>
+            )
           }
-          if (type === 'links') {
+          if (activeTab === 'videos') {
+            return (
+              <div key={m.id} style={{aspectRatio:'1/1',background:'rgba(124,58,237,.1)',borderRadius:8,overflow:'hidden',display:'flex',alignItems:'center',justifyContent:'center',position:'relative'}}>
+                <video style={{width:'100%',height:'100%',objectFit:'cover'}} src={`/api/chat/media/${data.chatId}/${m.id}?t=${token}`}/>
+                <div style={{position:'absolute',fontSize:24,color:'white',pointerEvents:'none'}}>▶</div>
+                <div onClick={() => jumpToMessage(m.id)} style={{position:'absolute',top:4,right:4,background:'rgba(0,0,0,.5)',color:'#fff',padding:'2px 6px',borderRadius:4,fontSize:10,cursor:'pointer',pointerEvents:'auto'}}>Show msg</div>
+              </div>
+            )
+          }
+          if (activeTab === 'files') {
+            return (
+              <div key={m.id} style={{background:'rgba(124,58,237,.1)',padding:12,borderRadius:8,display:'flex',alignItems:'center',gap:12}}>
+                <div style={{fontSize:24,cursor:'pointer'}} onClick={() => jumpToMessage(m.id)}>📄</div>
+                <div style={{flex:1,cursor:'pointer'}} onClick={() => jumpToMessage(m.id)}>
+                  <div style={{color:'#fff',fontSize:14,fontWeight:600}}>{m.fileName || 'Document'}</div>
+                  <div style={{color:'#9b7ec8',fontSize:12}}>{new Date(m.date*1000).toLocaleString()} • {m.fileSize ? (m.fileSize/1024).toFixed(1)+'KB' : ''}</div>
+                </div>
+                <a href={`/api/chat/media/${data.chatId}/${m.id}?t=${token}`} download target="_blank" style={{color:'#7c3aed',textDecoration:'none',fontSize:14}}>Download</a>
+              </div>
+            )
+          }
+          if (activeTab === 'links') {
             const matches = m.text.match(/(https?:\/\/[^\s]+)/g) || []
             return matches.map((link, idx) => (
-              <a key={`${m.id}-${idx}`} href={link} target="_blank" rel="noreferrer" style={{background:'rgba(124,58,237,.1)',padding:12,borderRadius:8,display:'flex',alignItems:'center',gap:12,textDecoration:'none',cursor:'pointer'}}>
-                <div style={{fontSize:24}}>🔗</div>
-                <div style={{flex:1,overflow:'hidden'}}>
+              <div key={`${m.id}-${idx}`} style={{background:'rgba(124,58,237,.1)',padding:12,borderRadius:8,display:'flex',alignItems:'center',gap:12}}>
+                <div style={{fontSize:24,cursor:'pointer'}} onClick={() => jumpToMessage(m.id)}>🔗</div>
+                <div style={{flex:1,overflow:'hidden',cursor:'pointer'}} onClick={() => jumpToMessage(m.id)}>
                   <div style={{color:'#fff',fontSize:14,fontWeight:600,textOverflow:'ellipsis',whiteSpace:'nowrap',overflow:'hidden'}}>{link}</div>
-                  <div style={{color:'#9b7ec8',fontSize:12}}>{new Date(m.date*1000).toLocaleString()}</div>
+                  <div style={{color:'#9b7ec8',fontSize:12,textOverflow:'ellipsis',whiteSpace:'nowrap',overflow:'hidden'}}>{m.text}</div>
                 </div>
-              </a>
+                <a href={link} target="_blank" rel="noreferrer" style={{color:'#7c3aed',textDecoration:'none',fontSize:14}}>Open</a>
+              </div>
             ))
           }
           return null
@@ -714,36 +747,43 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
           
           {/* Shared Media */}
           <div style={{width: 'calc(100% + 48px)', margin: '0 -24px', paddingBottom: 8}}>
-            <div onClick={()=>counts.photos > 0 && onOpenMedia('photos')} style={{display:'flex', alignItems:'center', padding:'12px 24px', cursor:counts.photos > 0 ? 'pointer' : 'default', opacity:counts.photos > 0 ? 1 : 0.5}} onMouseEnter={e=>counts.photos > 0 && (e.currentTarget.style.background='rgba(255,255,255,0.05)')} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+            <div onClick={()=>onOpenMedia('photos')} style={{display:'flex', alignItems:'center', padding:'12px 24px', cursor:'pointer'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.05)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
               <svg style={{width:24, height:24, fill:'none', stroke:'#9b7ec8', strokeWidth:1.5, strokeLinecap:'round', strokeLinejoin:'round', marginRight:24}} viewBox="0 0 24 24">
                 <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
               </svg>
-              <span style={{fontSize:15, color:'#e0d4f5'}}>{counts.photos} photo{counts.photos!==1?'s':''}</span>
+              <span style={{fontSize:15, color:'#e0d4f5'}}>{counts.photos > 0 ? `${counts.photos} photo${counts.photos!==1?'s':''}` : 'Not loaded'}</span>
             </div>
             
-            <div onClick={()=>counts.videos > 0 && onOpenMedia('videos')} style={{display:'flex', alignItems:'center', padding:'12px 24px', cursor:counts.videos > 0 ? 'pointer' : 'default', opacity:counts.videos > 0 ? 1 : 0.5}} onMouseEnter={e=>counts.videos > 0 && (e.currentTarget.style.background='rgba(255,255,255,0.05)')} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+            <div onClick={()=>onOpenMedia('videos')} style={{display:'flex', alignItems:'center', padding:'12px 24px', cursor:'pointer'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.05)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
               <svg style={{width:24, height:24, fill:'none', stroke:'#9b7ec8', strokeWidth:1.5, strokeLinecap:'round', strokeLinejoin:'round', marginRight:24}} viewBox="0 0 24 24">
                 <polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
               </svg>
-              <span style={{fontSize:15, color:'#e0d4f5'}}>{counts.videos} video{counts.videos!==1?'s':''}</span>
+              <span style={{fontSize:15, color:'#e0d4f5'}}>{counts.videos > 0 ? `${counts.videos} video${counts.videos!==1?'s':''}` : 'Not loaded'}</span>
             </div>
 
-            <div onClick={()=>counts.files > 0 && onOpenMedia('files')} style={{display:'flex', alignItems:'center', padding:'12px 24px', cursor:counts.files > 0 ? 'pointer' : 'default', opacity:counts.files > 0 ? 1 : 0.5}} onMouseEnter={e=>counts.files > 0 && (e.currentTarget.style.background='rgba(255,255,255,0.05)')} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+            <div onClick={()=>onOpenMedia('files')} style={{display:'flex', alignItems:'center', padding:'12px 24px', cursor:'pointer'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.05)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
               <svg style={{width:24, height:24, fill:'none', stroke:'#9b7ec8', strokeWidth:1.5, strokeLinecap:'round', strokeLinejoin:'round', marginRight:24}} viewBox="0 0 24 24">
                 <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/>
               </svg>
-              <span style={{fontSize:15, color:'#e0d4f5'}}>{counts.files} file{counts.files!==1?'s':''}</span>
+              <span style={{fontSize:15, color:'#e0d4f5'}}>{counts.files > 0 ? `${counts.files} file${counts.files!==1?'s':''}` : 'Not loaded'}</span>
             </div>
 
-            <div onClick={()=>counts.links > 0 && onOpenMedia('links')} style={{display:'flex', alignItems:'center', padding:'12px 24px', cursor:counts.links > 0 ? 'pointer' : 'default', opacity:counts.links > 0 ? 1 : 0.5}} onMouseEnter={e=>counts.links > 0 && (e.currentTarget.style.background='rgba(255,255,255,0.05)')} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+            <div onClick={()=>onOpenMedia('links')} style={{display:'flex', alignItems:'center', padding:'12px 24px', cursor:'pointer'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.05)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
               <svg style={{width:24, height:24, fill:'none', stroke:'#9b7ec8', strokeWidth:1.5, strokeLinecap:'round', strokeLinejoin:'round', marginRight:24}} viewBox="0 0 24 24">
                 <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
               </svg>
-              <span style={{fontSize:15, color:'#e0d4f5'}}>{counts.links} shared link{counts.links!==1?'s':''}</span>
+              <span style={{fontSize:15, color:'#e0d4f5'}}>{counts.links > 0 ? `${counts.links} shared link${counts.links!==1?'s':''}` : 'Not loaded'}</span>
+            </div>
+
+            <div onClick={()=>onOpenMedia('gifs')} style={{display:'flex', alignItems:'center', padding:'12px 24px', cursor:'pointer'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.05)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+              <svg style={{width:24, height:24, fill:'none', stroke:'#9b7ec8', strokeWidth:1.5, strokeLinecap:'round', strokeLinejoin:'round', marginRight:24}} viewBox="0 0 24 24">
+                <rect x="2" y="6" width="20" height="12" rx="2" ry="2"/><text x="12" y="15" fill="none" stroke="#9b7ec8" strokeWidth="1" textAnchor="middle" fontSize="9" fontWeight="bold">GIF</text>
+              </svg>
+              <span style={{fontSize:15, color:'#e0d4f5'}}>Not loaded</span>
             </div>
 
             {!isGroupProfile && (
-              <div onClick={()=>alert('TODO: Open Groups List')} style={{display:'flex', alignItems:'center', padding:'12px 24px', cursor:'pointer', opacity:0.5}} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.05)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+              <div onClick={()=>onOpenMedia('groups')} style={{display:'flex', alignItems:'center', padding:'12px 24px', cursor:'pointer'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.05)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
                 <svg style={{width:24, height:24, fill:'none', stroke:'#9b7ec8', strokeWidth:1.5, strokeLinecap:'round', strokeLinejoin:'round', marginRight:24}} viewBox="0 0 24 24">
                   <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
                 </svg>
@@ -1720,6 +1760,20 @@ export default function CRMChat({token}) {
     }
   `
 
+  const jumpToMessage = useCallback((msgId) => {
+    const el = document.getElementById('msg-' + msgId);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.style.transition = 'background 0.5s';
+      el.style.background = 'rgba(124,58,237,.3)';
+      setTimeout(() => el.style.background = 'transparent', 2000);
+      setSharedMediaView(null);
+      setProfilePreview(null);
+    } else {
+      alert('Message not currently loaded in DOM.');
+    }
+  }, []);
+
   return (<>
     <style>{STYLES}</style>
     <div className="crm-root">
@@ -2054,7 +2108,7 @@ export default function CRMChat({token}) {
                     </div>
                   )}
                   {showSep&&<div className="dsep"><span>{fmtDateSep(msg.date)}</span></div>}
-                  <div className={`msg-row${msg.fromMe?' out':' in'}${isSameGroup?' grouped':''}`}
+                  <div id={'msg-'+msg.id} className={`msg-row${msg.fromMe?' out':' in'}${isSameGroup?' grouped':''}`}
                     style={{cursor:selectMode?"pointer":"default"}}
                     onClick={selectMode?()=>setSelectedMsgs(prev=>{const s=new Set(prev);s.has(i)?s.delete(i):s.add(i);return s}):undefined}>
                   {selectMode&&<div style={{width:20,height:20,borderRadius:"50%",border:"2px solid #7c3aed",background:selectedMsgs.has(i)?"#7c3aed":"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,alignSelf:"center",fontSize:12,color:"#fff",cursor:"pointer"}}>
@@ -2646,12 +2700,13 @@ export default function CRMChat({token}) {
       {/* Shared Media Gallery Modal */}
       {sharedMediaView && profilePreview && (
         <SharedMediaModal 
-          type={sharedMediaView} 
+          initialTab={sharedMediaView} 
           msgs={msgs} 
           data={profilePreview} 
           onClose={() => setSharedMediaView(null)} 
           token={token} 
           setLightbox={setLightbox} 
+          jumpToMessage={jumpToMessage}
         />
       )}
 
