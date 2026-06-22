@@ -514,10 +514,11 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs 
   
   const counts = useMemo(() => {
     let photos = 0, videos = 0, files = 0, links = 0, gifs = 0;
+    console.log("CALC MEDIA", { msgsLength: msgs?.length, isGroupProfile, data, sampleMsg: msgs?.[0] });
     if (msgs && Array.isArray(msgs)) {
       msgs.forEach(m => {
         // In a DM, or when viewing a Group's profile, we count everything in the chat
-        const isSelfProfile = data?.id === data?.chatId;
+        const isSelfProfile = data?.id?.toString() === data?.chatId?.toString();
         // If viewing a user's profile from inside a group, filter by their messages
         if (!isSelfProfile && m.senderId && m.senderId.toString() !== data?.id?.toString()) return;
 
@@ -630,7 +631,7 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs 
           
           {/* Shared Media */}
           <div style={{marginTop:8}}>
-            <div style={{fontSize:15, fontWeight:600, color:'#e0d4f5', marginBottom:12}}>Shared Media (Loaded)</div>
+            <div style={{fontSize:15, fontWeight:600, color:'#e0d4f5', marginBottom:12}}>Shared Media ({msgs?.length || 0} messages loaded)</div>
             <div onClick={()=>alert('TODO: Open Photos Gallery')} style={{display:'flex', justifyContent:'space-between', fontSize:14, color:'#9b7ec8', marginBottom:8, cursor:'pointer'}} onMouseEnter={e=>e.currentTarget.style.color='#fff'} onMouseLeave={e=>e.currentTarget.style.color='#9b7ec8'}><span>Photos</span><span>{counts.photos}</span></div>
             <div onClick={()=>alert('TODO: Open Videos Gallery')} style={{display:'flex', justifyContent:'space-between', fontSize:14, color:'#9b7ec8', marginBottom:8, cursor:'pointer'}} onMouseEnter={e=>e.currentTarget.style.color='#fff'} onMouseLeave={e=>e.currentTarget.style.color='#9b7ec8'}><span>Videos</span><span>{counts.videos}</span></div>
             <div onClick={()=>alert('TODO: Open Files List')} style={{display:'flex', justifyContent:'space-between', fontSize:14, color:'#9b7ec8', marginBottom:8, cursor:'pointer'}} onMouseEnter={e=>e.currentTarget.style.color='#fff'} onMouseLeave={e=>e.currentTarget.style.color='#9b7ec8'}><span>Files</span><span>{counts.files}</span></div>
