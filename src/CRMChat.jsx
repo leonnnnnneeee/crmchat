@@ -506,7 +506,80 @@ function ChatPhoto({msg, chatId, authToken, onImageClick}) {
   )
 }
 
-function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs }) {
+function SharedMediaModal({ type, msgs, data, onClose, token, setLightbox }) {
+  const isSelfProfile = data?.id?.toString() === data?.chatId?.toString();
+
+  const filtered = useMemo(() => {
+    if (!msgs || !Array.isArray(msgs)) return [];
+    return msgs.filter(m => {
+      if (!isSelfProfile && m.senderId && m.senderId.toString() !== data?.id?.toString()) return false;
+      if (type === 'photos' && m.isPhoto) return true;
+      if (type === 'videos' && m.isVideo) return true;
+      if (type === 'files' && m.isDoc) return true;
+      if (type === 'links' && m.text && /(https?:\/\/[^\s]+)/.test(m.text)) return true;
+      return false;
+    });
+  }, [msgs, type, isSelfProfile, data?.id]);
+
+  return (
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.8)',zIndex:10000,display:'flex',flexDirection:'column'}}
+         onClick={(e) => { if(e.target===e.currentTarget) onClose() }}>
+      
+      {/* Header */}
+      <div style={{background:'#1a103c',padding:'16px 24px',display:'flex',alignItems:'center',gap:16,borderBottom:'1px solid rgba(124,58,237,.3)'}}>
+        <button onClick={onClose} style={{background:'transparent',border:'none',color:'#9b7ec8',cursor:'pointer',fontSize:24}}>←</button>
+        <div style={{fontSize:18,fontWeight:600,color:'#fff',textTransform:'capitalize'}}>Shared {type}</div>
+        <div style={{marginLeft:'auto',color:'#9b7ec8',fontSize:14}}>{filtered.length} items</div>
+      </div>
+
+      {/* Body */}
+      <div style={{flex:1,overflowY:'auto',padding:24,display:type==='photos'||type==='videos'?'grid':'flex',flexDirection:'column',gridTemplateColumns:'repeat(auto-fill, minmax(100px, 1fr))',gap:8}}>
+        {filtered.length === 0 && (
+          <div style={{color:'#9b7ec8',textAlign:'center',marginTop:40}}>No {type} found.</div>
+        )}
+        
+        {filtered.map(m => {
+          if (type === 'photos') {
+            return <div key={m.id} style={{aspectRatio:'1/1',background:'rgba(124,58,237,.1)',borderRadius:8,overflow:'hidden',cursor:'pointer'}}>
+              <ChatPhoto msg={m} chatId={data.chatId} authToken={token} onImageClick={(src)=>setLightbox(src)}/>
+            </div>
+          }
+          if (type === 'videos') {
+            return <div key={m.id} style={{aspectRatio:'1/1',background:'rgba(124,58,237,.1)',borderRadius:8,overflow:'hidden',display:'flex',alignItems:'center',justifyContent:'center',position:'relative'}}>
+              <video style={{width:'100%',height:'100%',objectFit:'cover'}} src={`/api/chat/media/${data.chatId}/${m.id}?t=${token}`}/>
+              <div style={{position:'absolute',fontSize:24,color:'white',pointerEvents:'none'}}>▶</div>
+            </div>
+          }
+          if (type === 'files') {
+            return <div key={m.id} style={{background:'rgba(124,58,237,.1)',padding:12,borderRadius:8,display:'flex',alignItems:'center',gap:12,cursor:'pointer'}}>
+              <div style={{fontSize:24}}>📄</div>
+              <div style={{flex:1}}>
+                <div style={{color:'#fff',fontSize:14,fontWeight:600}}>Document</div>
+                <div style={{color:'#9b7ec8',fontSize:12}}>{new Date(m.date*1000).toLocaleString()}</div>
+              </div>
+              <a href={`/api/chat/media/${data.chatId}/${m.id}?t=${token}`} download target="_blank" style={{color:'#7c3aed',textDecoration:'none',fontSize:14}}>Download</a>
+            </div>
+          }
+          if (type === 'links') {
+            const matches = m.text.match(/(https?:\/\/[^\s]+)/g) || []
+            return matches.map((link, idx) => (
+              <a key={`${m.id}-${idx}`} href={link} target="_blank" rel="noreferrer" style={{background:'rgba(124,58,237,.1)',padding:12,borderRadius:8,display:'flex',alignItems:'center',gap:12,textDecoration:'none',cursor:'pointer'}}>
+                <div style={{fontSize:24}}>🔗</div>
+                <div style={{flex:1,overflow:'hidden'}}>
+                  <div style={{color:'#fff',fontSize:14,fontWeight:600,textOverflow:'ellipsis',whiteSpace:'nowrap',overflow:'hidden'}}>{link}</div>
+                  <div style={{color:'#9b7ec8',fontSize:12}}>{new Date(m.date*1000).toLocaleString()}</div>
+                </div>
+              </a>
+            ))
+          }
+          return null
+        })}
+      </div>
+    </div>
+  )
+}
+
+function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs, onOpenMedia }) {
   const [status, setStatus] = useState(null)
   const [showMore, setShowMore] = useState(false)
   
@@ -632,14 +705,14 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs 
           {/* Shared Media */}
           <div style={{marginTop:8}}>
             <div style={{fontSize:15, fontWeight:600, color:'#e0d4f5', marginBottom:12}}>Shared Media ({msgs?.length || 0} messages loaded)</div>
-            <div onClick={()=>alert('TODO: Open Photos Gallery')} style={{display:'flex', justifyContent:'space-between', fontSize:14, color:'#9b7ec8', marginBottom:8, cursor:'pointer'}} onMouseEnter={e=>e.currentTarget.style.color='#fff'} onMouseLeave={e=>e.currentTarget.style.color='#9b7ec8'}><span>Photos</span><span>{counts.photos}</span></div>
-            <div onClick={()=>alert('TODO: Open Videos Gallery')} style={{display:'flex', justifyContent:'space-between', fontSize:14, color:'#9b7ec8', marginBottom:8, cursor:'pointer'}} onMouseEnter={e=>e.currentTarget.style.color='#fff'} onMouseLeave={e=>e.currentTarget.style.color='#9b7ec8'}><span>Videos</span><span>{counts.videos}</span></div>
-            <div onClick={()=>alert('TODO: Open Files List')} style={{display:'flex', justifyContent:'space-between', fontSize:14, color:'#9b7ec8', marginBottom:8, cursor:'pointer'}} onMouseEnter={e=>e.currentTarget.style.color='#fff'} onMouseLeave={e=>e.currentTarget.style.color='#9b7ec8'}><span>Files</span><span>{counts.files}</span></div>
-            <div onClick={()=>alert('TODO: Open Links List')} style={{display:'flex', justifyContent:'space-between', fontSize:14, color:'#9b7ec8', marginBottom:8, cursor:'pointer'}} onMouseEnter={e=>e.currentTarget.style.color='#fff'} onMouseLeave={e=>e.currentTarget.style.color='#9b7ec8'}><span>Links</span><span>{counts.links}</span></div>
+            <div onClick={()=>counts.photos > 0 && onOpenMedia('photos')} style={{display:'flex', justifyContent:'space-between', fontSize:14, color:'#9b7ec8', marginBottom:8, cursor:counts.photos > 0 ? 'pointer' : 'default', opacity: counts.photos > 0 ? 1 : 0.5}} onMouseEnter={e=>counts.photos > 0 && (e.currentTarget.style.color='#fff')} onMouseLeave={e=>e.currentTarget.style.color='#9b7ec8'}><span>Photos</span><span>{counts.photos}</span></div>
+            <div onClick={()=>counts.videos > 0 && onOpenMedia('videos')} style={{display:'flex', justifyContent:'space-between', fontSize:14, color:'#9b7ec8', marginBottom:8, cursor:counts.videos > 0 ? 'pointer' : 'default', opacity: counts.videos > 0 ? 1 : 0.5}} onMouseEnter={e=>counts.videos > 0 && (e.currentTarget.style.color='#fff')} onMouseLeave={e=>e.currentTarget.style.color='#9b7ec8'}><span>Videos</span><span>{counts.videos}</span></div>
+            <div onClick={()=>counts.files > 0 && onOpenMedia('files')} style={{display:'flex', justifyContent:'space-between', fontSize:14, color:'#9b7ec8', marginBottom:8, cursor:counts.files > 0 ? 'pointer' : 'default', opacity: counts.files > 0 ? 1 : 0.5}} onMouseEnter={e=>counts.files > 0 && (e.currentTarget.style.color='#fff')} onMouseLeave={e=>e.currentTarget.style.color='#9b7ec8'}><span>Files</span><span>{counts.files}</span></div>
+            <div onClick={()=>counts.links > 0 && onOpenMedia('links')} style={{display:'flex', justifyContent:'space-between', fontSize:14, color:'#9b7ec8', marginBottom:8, cursor:counts.links > 0 ? 'pointer' : 'default', opacity: counts.links > 0 ? 1 : 0.5}} onMouseEnter={e=>counts.links > 0 && (e.currentTarget.style.color='#fff')} onMouseLeave={e=>e.currentTarget.style.color='#9b7ec8'}><span>Links</span><span>{counts.links}</span></div>
             {!isGroupProfile && (
-              <div onClick={()=>alert('TODO: Open Groups List')} style={{display:'flex', justifyContent:'space-between', fontSize:14, color:'#9b7ec8', marginBottom:8, cursor:'pointer'}} onMouseEnter={e=>e.currentTarget.style.color='#fff'} onMouseLeave={e=>e.currentTarget.style.color='#9b7ec8'}><span>Groups in common</span><span>Unavailable</span></div>
+              <div onClick={()=>alert('TODO: Open Groups List')} style={{display:'flex', justifyContent:'space-between', fontSize:14, color:'#9b7ec8', marginBottom:8, cursor:'pointer', opacity:0.5}} onMouseEnter={e=>e.currentTarget.style.color='#fff'} onMouseLeave={e=>e.currentTarget.style.color='#9b7ec8'}><span>Groups in common</span><span>Unavailable</span></div>
             )}
-            <div onClick={()=>alert('TODO: Fetch full history from backend')} style={{textAlign:'center', fontSize:12, color:'#7c3aed', cursor:'pointer', marginTop:12}}>Load more history...</div>
+            <div onClick={()=>alert('Fetch full history from backend pending')} style={{textAlign:'center', fontSize:12, color:'#7c3aed', cursor:'pointer', marginTop:12}}>Load more history...</div>
           </div>
         </div>
 
@@ -864,6 +937,7 @@ export default function CRMChat({token}) {
   const [pollOptions,setPollOptions]=useState(['',''])
   const [msgInfoOpen,setMsgInfoOpen]=useState(null)
   const [profilePreview,setProfilePreview]=useState(null)
+  const [sharedMediaView,setSharedMediaView]=useState(null)
   const [recording,setRecording]=useState(false)
   const [recordSecs,setRecordSecs]=useState(0)
   const mediaRecRef=useRef(null)
@@ -2529,7 +2603,20 @@ export default function CRMChat({token}) {
         setSel={setSel}
         inputRef={inputRef}
         msgs={msgs}
+        onOpenMedia={(type) => setSharedMediaView(type)}
       />
+
+      {/* Shared Media Gallery Modal */}
+      {sharedMediaView && profilePreview && (
+        <SharedMediaModal 
+          type={sharedMediaView} 
+          msgs={msgs} 
+          data={profilePreview} 
+          onClose={() => setSharedMediaView(null)} 
+          token={token} 
+          setLightbox={setLightbox} 
+        />
+      )}
 
       {/* Chat Preview Modal */}
       {previewChat&&(
