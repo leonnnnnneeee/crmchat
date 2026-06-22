@@ -1626,11 +1626,11 @@ export default function CRMChat({token}) {
     .msg-row {
       display: flex;
       width: 100%;
-      margin-bottom: 12px;
+      margin-bottom: 10px;
     }
     .msg-row.out { justify-content: flex-end; }
     .msg-row.in  { justify-content: flex-start; align-items: flex-end; }
-    .msg-row.grouped { margin-bottom: 3px; }
+    .msg-row.grouped { margin-bottom: 2px; }
 
     /* ── AVATAR ── */
     .msg-avatar {
@@ -2160,26 +2160,30 @@ export default function CRMChat({token}) {
             {msgs.map((msg,i)=>{
               const prev=msgs[i-1]
               const next=msgs[i+1]
+              
+              const getTime = (d) => typeof d === 'number' ? d * 1000 : new Date(d).getTime();
+              const msgTime = getTime(msg.date);
+
               const showSep=i===0||(()=>{
                 try{
-                  const a=typeof msg.date==="number"?new Date(msg.date*1000):new Date(msg.date)
-                  const b=typeof prev.date==="number"?new Date(prev.date*1000):new Date(prev.date)
+                  const a=new Date(msgTime)
+                  const b=new Date(getTime(prev.date))
                   return a.toDateString()!==b.toDateString()
                 }catch{return false}
               })()
               let nextShowSep = false;
               if (next) {
                 try {
-                  const a=typeof next.date==="number"?new Date(next.date*1000):new Date(next.date)
-                  const b=typeof msg.date==="number"?new Date(msg.date*1000):new Date(msg.date)
+                  const a=new Date(getTime(next.date))
+                  const b=new Date(msgTime)
                   nextShowSep = a.toDateString()!==b.toDateString()
                 } catch {}
               }
               const isSameSenderAsPrev = prev && prev.fromMe === msg.fromMe && prev.senderId === msg.senderId
               const isSameSenderAsNext = next && next.fromMe === msg.fromMe && next.senderId === msg.senderId
 
-              const isSameGroup = !!(isSameSenderAsPrev && (msg.date - prev.date) < 300 && !showSep)
-              const isLastInGroup = !(isSameSenderAsNext && (next.date - msg.date) < 300 && !nextShowSep)
+              const isSameGroup = !!(isSameSenderAsPrev && (msgTime - getTime(prev.date)) < 300000 && !showSep)
+              const isLastInGroup = !(isSameSenderAsNext && (getTime(next.date) - msgTime) < 300000 && !nextShowSep)
               const isFirstInGroup = !isSameGroup
 
               let groupClass = ''
@@ -2215,8 +2219,8 @@ export default function CRMChat({token}) {
                       <div style={{flex:1,height:1,background:"rgba(124,58,237,.35)"}}/>
                     </div>
                   )}
-                  {showSep&&<div className="dsep"><span>{fmtDateSep(msg.date)}</span></div>}
-                  <div id={'msg-'+msg.id} className={`msg-row${msg.fromMe?' out':' in'}${isSameGroup?' grouped':''}`}
+                  {showSep&&<div className="dsep"><span>{fmtDateSep(msgTime)}</span></div>}
+                  <div id={'msg-'+msg.id} className={`msg-row${msg.fromMe?' out':' in'}${!isLastInGroup?' grouped':''}`}
                     style={{cursor:selectMode?"pointer":"default"}}
                     onClick={selectMode?()=>setSelectedMsgs(prev=>{const s=new Set(prev);s.has(i)?s.delete(i):s.add(i);return s}):undefined}>
                   {selectMode&&<div style={{width:20,height:20,borderRadius:"50%",border:"2px solid #7c3aed",background:selectedMsgs.has(i)?"#7c3aed":"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,alignSelf:"center",fontSize:12,color:"#fff",cursor:"pointer"}}>
