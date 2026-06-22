@@ -2113,6 +2113,32 @@ export default function CRMChat({token}) {
             </div>
           </div>
 
+          {/* Translate Bar */}
+          <div style={{
+            height: '34px', minHeight: '34px', flexShrink: 0,
+            background: '#23153d', borderBottom: '1px solid #0d0618',
+            display: 'flex', alignItems: 'center', padding: '0 16px', gap: '8px',
+            color: '#a78bfa', fontSize: '13px', cursor: 'pointer',
+            transition: 'background .15s'
+          }} onMouseEnter={e=>e.currentTarget.style.background='#2d1155'} onMouseLeave={e=>e.currentTarget.style.background='#23153d'}
+            onClick={()=>alert("Translation backend not configured yet.")}
+          >
+            <span style={{fontSize: '15px'}}>A文</span>
+            <span style={{flex: 1, fontWeight: 500}}>Translate to English</span>
+            <button style={{background: 'none', border: 'none', color: '#a78bfa', cursor: 'pointer', fontSize: '15px', padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px'}}
+              onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.1)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}
+              onClick={(e)=>{e.stopPropagation(); alert("Translation Settings TODO")}}
+            >
+              ⚙️
+            </button>
+            <button style={{background: 'none', border: 'none', color: '#a78bfa', cursor: 'pointer', fontSize: '15px', padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px'}}
+              onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.1)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}
+              onClick={(e)=>{e.stopPropagation(); alert("Hide Translate Bar TODO")}}
+            >
+              ✕
+            </button>
+          </div>
+
           {/* Messages */}
           <div className="msgs" onScroll={handleScroll}>
             {hasMore && msgs.length > 0 && !loadMsgs && (
