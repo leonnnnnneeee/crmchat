@@ -1,4 +1,4 @@
-// v-msgs-073556
+// v-fix-074104
 // v035029
 import { useState, useEffect, useRef, useCallback, useMemo } from "react"
 
@@ -1160,21 +1160,8 @@ export default function CRMChat({token}) {
     setMsgs([]); setAiText(""); setAiAnalysis(""); setAiAlt(""); setReplyTo(null)
     hasRestoredScroll.current = false
     
-    // Forum/topic check - only block if explicitly a forum with topics
-    if (sel.isForum === true && !currentTopic) {
-      setLoadingTopics(true)
-      fetch(`/api/chat/topics/${sel.id}`, { headers: {"x-auth-token": token} })
-        .then(r=>r.json())
-        .then(d=>{
-          const tList = Array.isArray(d) ? d : []
-          setTopics(p=>({...p, [sel.id]: tList}))
-          setLoadingTopics(false)
-          // If no topics, load messages directly
-          if(!tList.length) loadMessages(sel, null)
-        })
-        .catch(e=>{ setLoadingTopics(false); loadMessages(sel, null) })
-      return
-    }
+    // Load messages directly — topic handling is separate
+    // Forum topics loaded on demand when user clicks Topics tab
 
     loadMessages(sel, currentTopic?.id || null)
   },[sel, selTopic, token])
