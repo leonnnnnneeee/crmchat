@@ -519,7 +519,7 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs 
         // In a DM, or when viewing a Group's profile, we count everything in the chat
         const isSelfProfile = data?.id === data?.chatId;
         // If viewing a user's profile from inside a group, filter by their messages
-        if (!isSelfProfile && m.senderId && m.senderId.toString() !== data.id.toString()) return;
+        if (!isSelfProfile && m.senderId && m.senderId.toString() !== data?.id?.toString()) return;
 
         if (m.isPhoto) photos++;
         if (m.isVideo) videos++;
