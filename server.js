@@ -906,16 +906,23 @@ app.get('/api/chat/media/:chatId/:msgId', (req, res, next) => {
       () => client.downloadMedia(msg, { thumb: -1 }),
       () => client.downloadMedia(msg, {}),
       () => client.downloadMedia(msg.media, {}),
-    ]
+      () => (msg.media && msg.media.photo) ? client.downloadMedia(msg.media.photo, {}) : null,
+      () => (msg.media && msg.media.document) ? client.downloadMedia(msg.media.document, {}) : null
+    ].filter(Boolean)
+    
+    let lastError = ''
     for (const method of methods) {
       try {
         buffer = await withTimeout(method(), 20000, 'download')
         if (buffer && buffer.length > 0) break
-      } catch(e) { log('download attempt failed: ' + e.message) }
+      } catch(e) { 
+        lastError = e.message;
+        log('download attempt failed: ' + e.message) 
+      }
     }
 
     if (!buffer || !buffer.length) {
-      log('media: all download methods failed for msg ' + req.params.msgId)
+      log('media: all download methods failed for msg ' + req.params.msgId + (lastError ? ' error: '+lastError : ''))
       return res.status(404).send()
     }
 
