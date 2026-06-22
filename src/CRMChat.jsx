@@ -1,4 +1,4 @@
-// v-edit2-083448
+// v-fix-073013
 // v035029
 import { useState, useEffect, useRef, useCallback, useMemo } from "react"
 
@@ -529,7 +529,7 @@ function SharedMediaModal({ initialTab, msgs, data, onClose, token, setLightbox,
     { id: 'groups', label: 'Groups' }
   ];
 
-  const filtered = useMemo(() => {
+  const filteredMedia = useMemo(() => {
     if (!msgs || !Array.isArray(msgs)) return [];
     return msgs.filter(m => {
       const currentChat = chats?.find(c => c.id === data?.chatId);
@@ -555,7 +555,7 @@ function SharedMediaModal({ initialTab, msgs, data, onClose, token, setLightbox,
         <div style={{padding:'16px 24px',display:'flex',alignItems:'center',gap:16}}>
           <button onClick={onClose} style={{background:'transparent',border:'none',color:'#9b7ec8',cursor:'pointer',fontSize:24}}>←</button>
           <div style={{fontSize:18,fontWeight:600,color:'#fff'}}>Shared Media</div>
-          <div style={{marginLeft:'auto',color:'#9b7ec8',fontSize:14}}>{filtered.length > 0 ? `${filtered.length} items` : ''}</div>
+          <div style={{marginLeft:'auto',color:'#9b7ec8',fontSize:14}}>{filteredMedia.length > 0 ? `${filteredMedia.length} items` : ''}</div>
         </div>
         <div style={{display:'flex',overflowX:'auto',padding:'0 16px',gap:24,scrollbarWidth:'none'}}>
           {tabs.map(t => (
@@ -573,14 +573,14 @@ function SharedMediaModal({ initialTab, msgs, data, onClose, token, setLightbox,
           <div style={{color:'#9b7ec8',textAlign:'center',marginTop:40,gridColumn:'1 / -1'}}>Not loaded. Full history API pending.</div>
         )}
 
-        {filtered.length === 0 && activeTab !== 'groups' && (
+        {filteredMedia.length === 0 && activeTab !== 'groups' && (
           <div style={{color:'#9b7ec8',textAlign:'center',marginTop:40,gridColumn:'1 / -1',display:'flex',flexDirection:'column',alignItems:'center',gap:12}}>
             <div>No {activeTab} found in loaded history.</div>
             <button style={{background:'transparent',border:'1px solid rgba(124,58,237,.5)',color:'#9b7ec8',padding:'6px 12px',borderRadius:6,cursor:'pointer',fontSize:13}} onClick={()=>alert('TODO: Fetch full history API')}>Load More</button>
           </div>
         )}
         
-        {filtered.map(m => {
+        {filteredMedia.map(m => {
           if (activeTab === 'media') {
             if (isPhotoMsg(m)) {
               return (
