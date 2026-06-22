@@ -702,17 +702,51 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
             </div>
           )}
           
+          {/* Separator */}
+          <div style={{height: 8, background: '#0d0618', width: 'calc(100% + 48px)', margin: '16px -24px 8px'}} />
+          
           {/* Shared Media */}
-          <div style={{marginTop:8}}>
-            <div style={{fontSize:15, fontWeight:600, color:'#e0d4f5', marginBottom:12}}>Shared Media ({msgs?.length || 0} messages loaded)</div>
-            <div onClick={()=>counts.photos > 0 && onOpenMedia('photos')} style={{display:'flex', justifyContent:'space-between', fontSize:14, color:'#9b7ec8', marginBottom:8, cursor:counts.photos > 0 ? 'pointer' : 'default', opacity: counts.photos > 0 ? 1 : 0.5}} onMouseEnter={e=>counts.photos > 0 && (e.currentTarget.style.color='#fff')} onMouseLeave={e=>e.currentTarget.style.color='#9b7ec8'}><span>Photos</span><span>{counts.photos}</span></div>
-            <div onClick={()=>counts.videos > 0 && onOpenMedia('videos')} style={{display:'flex', justifyContent:'space-between', fontSize:14, color:'#9b7ec8', marginBottom:8, cursor:counts.videos > 0 ? 'pointer' : 'default', opacity: counts.videos > 0 ? 1 : 0.5}} onMouseEnter={e=>counts.videos > 0 && (e.currentTarget.style.color='#fff')} onMouseLeave={e=>e.currentTarget.style.color='#9b7ec8'}><span>Videos</span><span>{counts.videos}</span></div>
-            <div onClick={()=>counts.files > 0 && onOpenMedia('files')} style={{display:'flex', justifyContent:'space-between', fontSize:14, color:'#9b7ec8', marginBottom:8, cursor:counts.files > 0 ? 'pointer' : 'default', opacity: counts.files > 0 ? 1 : 0.5}} onMouseEnter={e=>counts.files > 0 && (e.currentTarget.style.color='#fff')} onMouseLeave={e=>e.currentTarget.style.color='#9b7ec8'}><span>Files</span><span>{counts.files}</span></div>
-            <div onClick={()=>counts.links > 0 && onOpenMedia('links')} style={{display:'flex', justifyContent:'space-between', fontSize:14, color:'#9b7ec8', marginBottom:8, cursor:counts.links > 0 ? 'pointer' : 'default', opacity: counts.links > 0 ? 1 : 0.5}} onMouseEnter={e=>counts.links > 0 && (e.currentTarget.style.color='#fff')} onMouseLeave={e=>e.currentTarget.style.color='#9b7ec8'}><span>Links</span><span>{counts.links}</span></div>
-            {!isGroupProfile && (
-              <div onClick={()=>alert('TODO: Open Groups List')} style={{display:'flex', justifyContent:'space-between', fontSize:14, color:'#9b7ec8', marginBottom:8, cursor:'pointer', opacity:0.5}} onMouseEnter={e=>e.currentTarget.style.color='#fff'} onMouseLeave={e=>e.currentTarget.style.color='#9b7ec8'}><span>Groups in common</span><span>Unavailable</span></div>
+          <div style={{width: 'calc(100% + 48px)', margin: '0 -24px', paddingBottom: 8}}>
+            {counts.photos > 0 && (
+              <div onClick={()=>onOpenMedia('photos')} style={{display:'flex', alignItems:'center', padding:'12px 24px', cursor:'pointer'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.05)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+                <svg style={{width:24, height:24, fill:'none', stroke:'#9b7ec8', strokeWidth:1.5, strokeLinecap:'round', strokeLinejoin:'round', marginRight:24}} viewBox="0 0 24 24">
+                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
+                </svg>
+                <span style={{fontSize:15, color:'#e0d4f5'}}>{counts.photos} photo{counts.photos!==1?'s':''}</span>
+              </div>
             )}
-            <div onClick={()=>alert('Fetch full history from backend pending')} style={{textAlign:'center', fontSize:12, color:'#7c3aed', cursor:'pointer', marginTop:12}}>Load more history...</div>
+            {counts.videos > 0 && (
+              <div onClick={()=>onOpenMedia('videos')} style={{display:'flex', alignItems:'center', padding:'12px 24px', cursor:'pointer'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.05)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+                <svg style={{width:24, height:24, fill:'none', stroke:'#9b7ec8', strokeWidth:1.5, strokeLinecap:'round', strokeLinejoin:'round', marginRight:24}} viewBox="0 0 24 24">
+                  <polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+                </svg>
+                <span style={{fontSize:15, color:'#e0d4f5'}}>{counts.videos} video{counts.videos!==1?'s':''}</span>
+              </div>
+            )}
+            {counts.files > 0 && (
+              <div onClick={()=>onOpenMedia('files')} style={{display:'flex', alignItems:'center', padding:'12px 24px', cursor:'pointer'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.05)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+                <svg style={{width:24, height:24, fill:'none', stroke:'#9b7ec8', strokeWidth:1.5, strokeLinecap:'round', strokeLinejoin:'round', marginRight:24}} viewBox="0 0 24 24">
+                  <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/>
+                </svg>
+                <span style={{fontSize:15, color:'#e0d4f5'}}>{counts.files} file{counts.files!==1?'s':''}</span>
+              </div>
+            )}
+            {counts.links > 0 && (
+              <div onClick={()=>onOpenMedia('links')} style={{display:'flex', alignItems:'center', padding:'12px 24px', cursor:'pointer'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.05)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+                <svg style={{width:24, height:24, fill:'none', stroke:'#9b7ec8', strokeWidth:1.5, strokeLinecap:'round', strokeLinejoin:'round', marginRight:24}} viewBox="0 0 24 24">
+                  <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+                </svg>
+                <span style={{fontSize:15, color:'#e0d4f5'}}>{counts.links} shared link{counts.links!==1?'s':''}</span>
+              </div>
+            )}
+            {!isGroupProfile && (
+              <div onClick={()=>alert('TODO: Open Groups List')} style={{display:'flex', alignItems:'center', padding:'12px 24px', cursor:'pointer', opacity:0.5}} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.05)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+                <svg style={{width:24, height:24, fill:'none', stroke:'#9b7ec8', strokeWidth:1.5, strokeLinecap:'round', strokeLinejoin:'round', marginRight:24}} viewBox="0 0 24 24">
+                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                </svg>
+                <span style={{fontSize:15, color:'#e0d4f5'}}>groups in common</span>
+              </div>
+            )}
           </div>
         </div>
 
