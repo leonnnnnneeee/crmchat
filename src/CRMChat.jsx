@@ -643,7 +643,7 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
     if (msgs && Array.isArray(msgs)) {
       msgs.forEach(m => {
         const isProfileOfChat = data?.id?.toString() === data?.chatId?.toString();
-        if (!isProfileOfChat && m.senderId && m.senderId.toString() !== data?.id?.toString()) return;
+        if (!isProfileOfChat && m.senderId && m.senderId.toString() !== data?.id?.toString()) { /* return; */ }
 
         if (isPhotoMsg(m)) photos++;
         if (isVideoMsg(m)) videos++;
