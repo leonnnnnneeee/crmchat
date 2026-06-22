@@ -1667,10 +1667,10 @@ export default function CRMChat({token}) {
       overflow-wrap: break-word;
       white-space: pre-wrap;
     }
-    .bbl.out { background: #7c3aed; color: #fff; }
-    .bbl.in { background: #1e0a3c; color: #f0e6ff; }
+    .bbl.out { background: #8774e1; color: #fff; } /* softer purple */
+    .bbl.in { background: #182533; color: #fff; } /* telegram dark incoming */
     .bbl.del { opacity: .5; font-style: italic; }
-    .bbl.rpl { border-left: 3px solid rgba(124,58,237,.5); padding-left: 10px; border-radius: 8px; margin-bottom: 4px; font-size: 13px; }
+    .bbl.rpl { border-left: 3px solid rgba(255,255,255,.5); padding-left: 10px; border-radius: 8px; margin-bottom: 4px; font-size: 13px; }
     .msg-link { color: #7dd3fc; text-decoration: none; word-break: break-word; overflow-wrap: anywhere; }
     .msg-link:hover { text-decoration: underline; }
     .bbl.out .msg-link { color: #e0e7ff; text-decoration: underline; }
@@ -1695,7 +1695,7 @@ export default function CRMChat({token}) {
       margin-left: 14px;
       white-space: nowrap;
       font-size: 11px;
-      opacity: .65;
+      color: rgba(255, 255, 255, 0.5);
       float: right;
     }
 
@@ -1705,12 +1705,12 @@ export default function CRMChat({token}) {
       margin: 20px 0 16px;
     }
     .dsep span {
-      background: rgba(124,58,237,.15);
-      padding: 4px 12px;
-      border-radius: 12px;
-      color: #a78bfa;
-      font-size: 12px;
-      font-weight: 600;
+      background: rgba(0,0,0,0.25);
+      padding: 4px 10px;
+      border-radius: 14px;
+      color: rgba(255,255,255,0.7);
+      font-size: 13px;
+      font-weight: 500;
     }
 
     /* ── REPLY BAR ── */
