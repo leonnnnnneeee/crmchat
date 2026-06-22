@@ -903,11 +903,11 @@ app.get('/api/chat/media/:chatId/:msgId', (req, res, next) => {
     // Download photo — try multiple methods
     let buffer = null
     const methods = [
-      () => client.downloadMedia(msg, { thumb: -1 }),
-      () => client.downloadMedia(msg, {}),
-      () => client.downloadMedia(msg.media, {}),
-      () => (msg.media && msg.media.photo) ? client.downloadMedia(msg.media.photo, {}) : null,
-      () => (msg.media && msg.media.document) ? client.downloadMedia(msg.media.document, {}) : null
+      () => client.downloadMedia(msg, { workers: 1 }),
+      () => (msg.media && msg.media.photo) ? client.downloadMedia(msg.media.photo, { workers: 1 }) : null,
+      () => (msg.media && msg.media.document) ? client.downloadMedia(msg.media.document, { workers: 1 }) : null,
+      () => client.downloadMedia(msg, { thumb: -1, workers: 1 }),
+      () => client.downloadMedia(msg.media, { workers: 1 }),
     ].filter(Boolean)
     
     let lastError = ''
