@@ -1116,10 +1116,7 @@ export default function CRMChat({token}) {
   useEffect(() => {
     if (chats.length > 0 && !hasRestoredSidebarScroll.current && leftColScrollRef.current) {
       hasRestoredSidebarScroll.current = true
-      const savedScroll = localStorage.getItem('crm_leftCol_scroll')
-      if (savedScroll) {
-        leftColScrollRef.current.scrollTop = parseInt(savedScroll, 10)
-      }
+      leftColScrollRef.current.scrollTop = parseInt(localStorage.getItem('crm_leftcol_scroll') || '0', 10)
     }
   }, [chats])
 
@@ -1127,17 +1124,24 @@ export default function CRMChat({token}) {
     const { scrollTop, scrollHeight, clientHeight } = e.target
     isNearBottom.current = scrollHeight - scrollTop - clientHeight < 150
     if (sel?.id) {
-      scrollPositions.current[sel.id] = scrollTop
+      const scrollKey = sel.id + (selTopic ? '_' + selTopic.id : '')
+      scrollPositions.current[scrollKey] = scrollTop
       clearTimeout(saveScrollTimeout.current)
       saveScrollTimeout.current = setTimeout(() => {
         localStorage.setItem('crm_scroll_positions', JSON.stringify(scrollPositions.current))
       }, 300)
     }
     // Mark as read if user has scrolled past the unread separator or reached bottom
-    if (sel?.unread > 0 && !readChats.has(sel.id)) {
+    const unreadCount = selTopic ? (selTopic.unread || 0) : (sel?.unread || 0)
+    const readKey = sel?.id + (selTopic ? '_' + selTopic.id : '')
+    if (unreadCount > 0 && !readChats.has(readKey)) {
       if (isNearBottom.current) {
-        setReadChats(p => new Set([...p, sel.id]))
-        setChats(p => p.map(c => c.id===sel.id ? {...c, unread:0} : c))
+        setReadChats(prev => new Set(prev).add(readKey))
+      } else if (firstUnreadRef.current) {
+        const rect = firstUnreadRef.current.getBoundingClientRect()
+        if (rect.top < window.innerHeight) {
+          setReadChats(prev => new Set(prev).add(readKey))
+        }
       }
     }
   }
@@ -1196,10 +1200,12 @@ export default function CRMChat({token}) {
     if(!msgs.length) return
     if(!hasRestoredScroll.current) {
       hasRestoredScroll.current = true
-      if(firstUnreadRef.current && sel?.unread > 0) {
+      const unreadCount = selTopic ? (selTopic.unread || 0) : (sel?.unread || 0)
+      if(firstUnreadRef.current && unreadCount > 0) {
         firstUnreadRef.current.scrollIntoView({behavior:"auto", block:"center"})
       } else {
-        const savedScroll = scrollPositions.current[sel?.id]
+        const scrollKey = sel?.id + (selTopic ? '_' + selTopic.id : '')
+        const savedScroll = scrollPositions.current[scrollKey]
         if (savedScroll !== undefined) {
           const container = document.querySelector('.msgs')
           if (container) container.scrollTop = savedScroll
@@ -1210,7 +1216,7 @@ export default function CRMChat({token}) {
     } else if(!loadingMore && isNearBottom.current) {
       endRef.current?.scrollIntoView({behavior:"smooth"})
     }
-  },[msgs, loadingMore, sel?.unread, sel?.id])
+  },[msgs, loadingMore, sel?.unread, selTopic?.unread, sel?.id, selTopic?.id])
 
   useEffect(()=>{
     if (inputRef.current) {
@@ -2146,8 +2152,9 @@ export default function CRMChat({token}) {
               else if (isLastInGroup) groupClass = ' bottom'
               else groupClass = ' mid'
               // Infer first unread: last N msgs where N = chat.unread count
-              const unreadCount = sel?.unread || 0
-              const isFirstUnread = !readChats.has(sel?.id) &&
+              const unreadCount = selTopic ? (selTopic.unread || 0) : (sel?.unread || 0)
+              const readKey = sel?.id + (selTopic ? '_' + selTopic.id : '')
+              const isFirstUnread = !readChats.has(readKey) &&
                 unreadCount > 0 &&
                 i === Math.max(0, msgs.length - unreadCount)
               return(
@@ -2167,7 +2174,7 @@ export default function CRMChat({token}) {
                         whiteSpace:"nowrap",
                       }}>
                         <span>●</span>
-                        <span>{sel.unread} new message{sel.unread>1?'s':''}</span>
+                        <span>{unreadCount} new message{unreadCount>1?'s':''}</span>
                       </div>
                       <div style={{flex:1,height:1,background:"rgba(124,58,237,.35)"}}/>
                     </div>
@@ -2456,9 +2463,12 @@ export default function CRMChat({token}) {
             <>
               <div style={{padding:"22px 16px 16px",textAlign:"center",borderBottom:`1px solid ${TG.border}`}}>
                 <Avatar name={sel.name} chatId={sel.id} username={sel.username} size={70}/>
-                <div style={{fontWeight:700,fontSize:18,color:TG.text,marginTop:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sel.name}</div>
+                <div style={{fontWeight:700,fontSize:18,color:TG.text,marginTop:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                  {selTopic ? selTopic.title : sel.name}
+                </div>
                 <div style={{fontSize:12,color:TG.textSec,marginTop:3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                  {sel.isGroup || sel.isChannel ? `Telegram · ${sel.memberCount ? sel.memberCount + ' members' : 'Group'}` :
+                  {selTopic ? `Topic in ${sel.name}` : 
+                   sel.isGroup || sel.isChannel ? `Telegram · ${sel.memberCount ? sel.memberCount + ' members' : 'Group'}` :
                    sel.isUser ? `Telegram · Contact · ${onlineStatus === 'online' ? 'Online' : onlineStatus === 'unknown' ? 'Status unavailable' : onlineStatus || 'Last seen recently'}` : 'Telegram'}
                 </div>
                 <div style={{marginTop:10,flexShrink:0}}><StageBadge stage={cStage}/></div>
