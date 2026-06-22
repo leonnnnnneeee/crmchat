@@ -2232,14 +2232,15 @@ export default function CRMChat({token}) {
                       : <div className="msg-avatar-gap"/>
                     )}
                     <div className="msg-content" onContextMenu={e=>handleCtx(e,msg,i)}>
-                      {msg.replyTo&&(
-                        <div className="bbl rpl" onClick={()=>{/* scroll to reply */}} style={{background:"rgba(124,58,237,.15)",borderLeft:`3px solid ${TG.blue}`,padding:"4px 8px",borderRadius:"0 6px 6px 0",marginBottom:4,fontSize:11,color:TG.textSec,maxWidth:"100%",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",cursor:"pointer"}}>
-                          ↩ {msg.replyTo.fromMe?"You":sel.name}: {msg.replyTo.text}
-                        </div>
-                      )}
                       <div className={`bbl msg-bubble ${msg.fromMe?"out":"in"}${msg.deleted?" del":""}${groupClass}`}>
                         {!msg.fromMe && !sel?.isUser && msg.senderName && !isSameGroup && (
-                          <div style={{fontSize:11,fontWeight:700,color:"#7c8ae8",marginBottom:3,whiteSpace:"nowrap",cursor:'pointer'}} onClick={() => setProfilePreview({ id: msg.senderId||sel.id, name: msg.senderName||sel.name, chatId: sel.id })}>{msg.senderName}</div>
+                          <div style={{fontSize:12,fontWeight:600,color:"#7dd3fc",marginBottom:2,whiteSpace:"nowrap",cursor:'pointer'}} onClick={() => setProfilePreview({ id: msg.senderId||sel.id, name: msg.senderName||sel.name, chatId: sel.id })}>{msg.senderName}</div>
+                        )}
+                        {msg.replyTo&&(
+                          <div onClick={()=>{/* scroll to reply */}} style={{background:"rgba(255,255,255,.05)",borderLeft:`3px solid #7dd3fc`,padding:"2px 8px",borderRadius:"0 4px 4px 0",marginBottom:6,fontSize:13,color:"rgba(255,255,255,.7)",maxWidth:"100%",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",cursor:"pointer",display:"flex",flexDirection:"column"}}>
+                            <span style={{color:"#7dd3fc",fontWeight:500,fontSize:12}}>{msg.replyTo.fromMe?"You":sel.name}</span>
+                            <span>{msg.replyTo.text}</span>
+                          </div>
                         )}
                         {isPhotoMsg(msg) && <ChatPhoto msg={msg} chatId={sel.id} authToken={token} onImageClick={(src)=>setLightbox(src)}/>}
                         {isVideoMsg(msg) && (
@@ -2258,11 +2259,11 @@ export default function CRMChat({token}) {
                           <div style={{minWidth:200}}>
                             <div style={{fontWeight:600,marginBottom:8,fontSize:14}}>{msg.text.split('\n')[0]}</div>
                             {msg.text.split('\n').slice(1).filter(l=>l.trim()).map((opt,i)=>(
-                              <div key={i} style={{background:"rgba(124,58,237,.15)",borderRadius:8,
+                              <div key={i} style={{background:"rgba(255,255,255,.1)",borderRadius:8,
                                 padding:"7px 12px",marginBottom:4,fontSize:13,cursor:"pointer",
-                                border:"1px solid rgba(124,58,237,.2)"}}
-                                onMouseEnter={e=>e.currentTarget.style.background="rgba(124,58,237,.25)"}
-                                onMouseLeave={e=>e.currentTarget.style.background="rgba(124,58,237,.15)"}>
+                                border:"1px solid rgba(255,255,255,.1)"}}
+                                onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,.2)"}
+                                onMouseLeave={e=>e.currentTarget.style.background="rgba(255,255,255,.1)"}>
                                 {opt}
                               </div>
                             ))}
@@ -2276,25 +2277,25 @@ export default function CRMChat({token}) {
                         {msg.text && (msg.text.includes('http://') || msg.text.includes('https://')) && (
                           <LinkPreview url={(msg.text.match(/https?:\/\/\S+/)||[''])[0]}/>
                         )}
-                        {reactions[msg.id]&&Object.keys(reactions[msg.id]).length>0&&(
-                          <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:3}}>
-                            {Object.entries(reactions[msg.id]).map(([e,n])=>(
-                              <span key={e} onClick={()=>setReactions(p=>({...p,[msg.id]:{...p[msg.id],[e]:(p[msg.id][e]||1)-1}}))}
-                                style={{background:"rgba(124,58,237,.2)",border:"1px solid rgba(124,58,237,.3)",
-                                  borderRadius:99,padding:"1px 6px",fontSize:12,cursor:"pointer",userSelect:"none"}}>
-                                {e}{n>1?` ${n}`:""}
-                              </span>
-                            ))}
-                          </div>
-                        )}
                         <div className="bfoot">
                           {(msg.edited||editedMsgs[msg.id])&&(
-                            <span style={{fontSize:10,fontStyle:'italic',color:msg.fromMe?'rgba(255,255,255,.5)':'#6b4d94'}}>edited</span>
+                            <span style={{fontSize:11,color:'rgba(255,255,255,.5)'}}>edited</span>
                           )}
-                          <span className={`bt${msg.fromMe?"":" in"}`}>{fmtMsgTime(msg.date)}</span>
-                          {msg.fromMe&&<span style={{fontSize:10,color:msg.pending?"rgba(255,255,255,.3)":"rgba(255,255,255,.6)"}}>{msg.pending?"⏳":"✓✓"}</span>}
+                          <span style={{fontSize:11,color:'rgba(255,255,255,.5)'}}>{fmtMsgTime(msg.date)}</span>
+                          {msg.fromMe&&<span style={{fontSize:11,color:msg.pending?"rgba(255,255,255,.3)":"rgba(255,255,255,.5)"}}>{msg.pending?"⏳":"✓✓"}</span>}
                         </div>
                       </div>
+                      {reactions[msg.id]&&Object.keys(reactions[msg.id]).length>0&&(
+                        <div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:2,marginLeft: msg.fromMe?0:12,marginRight: msg.fromMe?12:0}}>
+                          {Object.entries(reactions[msg.id]).map(([e,n])=>(
+                            <span key={e} onClick={()=>setReactions(p=>({...p,[msg.id]:{...p[msg.id],[e]:(p[msg.id][e]||1)-1}}))}
+                              style={{background:"rgba(0,0,0,.2)",border:"1px solid rgba(255,255,255,.05)",
+                                borderRadius:12,padding:"3px 8px",fontSize:13,color:"rgba(255,255,255,.8)",cursor:"pointer",userSelect:"none"}}>
+                              {e}{n>1?` ${n}`:""}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
