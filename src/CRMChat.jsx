@@ -512,13 +512,17 @@ const isDocMsg = (m) => !!(m.isDoc || m.document || m.file || m.media?.type === 
 const isGifMsg = (m) => !!(m.isGif || m.gif || m.media?.type === 'gif' || m.attachments?.some?.(a => a.type === 'gif'));
 const isLinkMsg = (m) => !!(m.url || m.links?.length > 0 || m.entities?.some?.(e => e.type === 'url') || (m.text && /(https?:\/\/[^\s]+)/.test(m.text)));
 
-function SharedMediaModal({ initialTab, msgs, data, onClose, token, setLightbox, jumpToMessage }) {
-  const [activeTab, setActiveTab] = useState(initialTab || 'photos');
-  const isProfileOfChat = data?.id?.toString() === data?.chatId?.toString();
+function SharedMediaModal({ initialTab, msgs, data, onClose, token, setLightbox, jumpToMessage, chats }) {
+  const [activeTab, setActiveTab] = useState(initialTab === 'photos' || initialTab === 'videos' ? 'media' : initialTab || 'media');
+
+  useEffect(() => {
+    const handleEsc = (e) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', handleEsc)
+    return () => window.removeEventListener('keydown', handleEsc)
+  }, [onClose])
 
   const tabs = [
-    { id: 'photos', label: 'Photos' },
-    { id: 'videos', label: 'Videos' },
+    { id: 'media', label: 'Media' },
     { id: 'files', label: 'Files' },
     { id: 'links', label: 'Links' },
     { id: 'gifs', label: 'GIFs' },
@@ -528,15 +532,19 @@ function SharedMediaModal({ initialTab, msgs, data, onClose, token, setLightbox,
   const filtered = useMemo(() => {
     if (!msgs || !Array.isArray(msgs)) return [];
     return msgs.filter(m => {
-      if (!isProfileOfChat && m.senderId && m.senderId.toString() !== data?.id?.toString()) return false;
-      if (activeTab === 'photos' && isPhotoMsg(m)) return true;
-      if (activeTab === 'videos' && isVideoMsg(m)) return true;
+      const currentChat = chats?.find(c => c.id === data?.chatId);
+      const isGroupChat = currentChat?.isGroup || currentChat?.isChannel;
+      const isProfileOfGroup = data?.id?.toString() === data?.chatId?.toString();
+      
+      if (isGroupChat && !isProfileOfGroup && m.senderId && m.senderId.toString() !== data?.id?.toString()) return false;
+      
+      if (activeTab === 'media' && (isPhotoMsg(m) || isVideoMsg(m))) return true;
       if (activeTab === 'files' && isDocMsg(m)) return true;
       if (activeTab === 'links' && isLinkMsg(m)) return true;
       if (activeTab === 'gifs' && isGifMsg(m)) return true;
       return false;
     });
-  }, [msgs, activeTab, isProfileOfChat, data?.id]);
+  }, [msgs, activeTab, data?.id, data?.chatId, chats]);
 
   return (
     <div style={{position:'fixed',inset:0,background:'#120929',zIndex:10000,display:'flex',flexDirection:'column'}}
@@ -559,7 +567,7 @@ function SharedMediaModal({ initialTab, msgs, data, onClose, token, setLightbox,
       </div>
 
       {/* Body */}
-      <div style={{flex:1,overflowY:'auto',padding:24,display:(activeTab==='photos'||activeTab==='videos'||activeTab==='gifs')?'grid':'flex',flexDirection:'column',gridTemplateColumns:'repeat(auto-fill, minmax(100px, 1fr))',gap:8}}>
+      <div style={{flex:1,overflowY:'auto',padding:24,display:(activeTab==='media'||activeTab==='gifs')?'grid':'flex',flexDirection:'column',gridTemplateColumns:'repeat(auto-fill, minmax(100px, 1fr))',gap:8}}>
         
         {activeTab === 'groups' && (
           <div style={{color:'#9b7ec8',textAlign:'center',marginTop:40,gridColumn:'1 / -1'}}>Not loaded. Full history API pending.</div>
@@ -573,22 +581,24 @@ function SharedMediaModal({ initialTab, msgs, data, onClose, token, setLightbox,
         )}
         
         {filtered.map(m => {
-          if (activeTab === 'photos') {
-            return (
-              <div key={m.id} style={{aspectRatio:'1/1',background:'rgba(124,58,237,.1)',borderRadius:8,overflow:'hidden',position:'relative'}}>
-                <ChatPhoto msg={m} chatId={data.chatId} authToken={token} onImageClick={(src)=>setLightbox(src)}/>
-                <div onClick={() => jumpToMessage(m.id)} style={{position:'absolute',top:4,right:4,background:'rgba(0,0,0,.5)',color:'#fff',padding:'2px 6px',borderRadius:4,fontSize:10,cursor:'pointer'}}>Show msg</div>
-              </div>
-            )
-          }
-          if (activeTab === 'videos') {
-            return (
-              <div key={m.id} style={{aspectRatio:'1/1',background:'rgba(124,58,237,.1)',borderRadius:8,overflow:'hidden',display:'flex',alignItems:'center',justifyContent:'center',position:'relative'}}>
-                <video style={{width:'100%',height:'100%',objectFit:'cover'}} src={`/api/chat/media/${data.chatId}/${m.id}?t=${token}`}/>
-                <div style={{position:'absolute',fontSize:24,color:'white',pointerEvents:'none'}}>▶</div>
-                <div onClick={() => jumpToMessage(m.id)} style={{position:'absolute',top:4,right:4,background:'rgba(0,0,0,.5)',color:'#fff',padding:'2px 6px',borderRadius:4,fontSize:10,cursor:'pointer',pointerEvents:'auto'}}>Show msg</div>
-              </div>
-            )
+          if (activeTab === 'media') {
+            if (isPhotoMsg(m)) {
+              return (
+                <div key={m.id} style={{aspectRatio:'1/1',background:'rgba(124,58,237,.1)',borderRadius:8,overflow:'hidden',position:'relative'}}>
+                  <ChatPhoto msg={m} chatId={data.chatId} authToken={token} onImageClick={(src)=>setLightbox(src)}/>
+                  <div onClick={() => jumpToMessage(m.id)} style={{position:'absolute',top:4,right:4,background:'rgba(0,0,0,.5)',color:'#fff',padding:'2px 6px',borderRadius:4,fontSize:10,cursor:'pointer'}}>Show msg</div>
+                </div>
+              )
+            }
+            if (isVideoMsg(m)) {
+              return (
+                <div key={m.id} style={{aspectRatio:'1/1',background:'rgba(124,58,237,.1)',borderRadius:8,overflow:'hidden',display:'flex',alignItems:'center',justifyContent:'center',position:'relative'}}>
+                  <video style={{width:'100%',height:'100%',objectFit:'cover'}} src={`/api/chat/media/${data.chatId}/${m.id}?t=${token}`}/>
+                  <div style={{position:'absolute',fontSize:24,color:'white',pointerEvents:'none'}}>▶</div>
+                  <div onClick={() => jumpToMessage(m.id)} style={{position:'absolute',top:4,right:4,background:'rgba(0,0,0,.5)',color:'#fff',padding:'2px 6px',borderRadius:4,fontSize:10,cursor:'pointer',pointerEvents:'auto'}}>Show msg</div>
+                </div>
+              )
+            }
           }
           if (activeTab === 'gifs') {
             return (
@@ -637,13 +647,22 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
   
   const isGroupProfile = data?.isGroup;
   
+  useEffect(() => {
+    const handleEsc = (e) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', handleEsc)
+    return () => window.removeEventListener('keydown', handleEsc)
+  }, [onClose])
+
   const counts = useMemo(() => {
     let photos = 0, videos = 0, files = 0, links = 0, gifs = 0;
     console.log("CALC MEDIA", { msgsLength: msgs?.length, isGroupProfile, data });
     if (msgs && Array.isArray(msgs)) {
       msgs.forEach(m => {
-        const isProfileOfChat = data?.id?.toString() === data?.chatId?.toString();
-        if (!isProfileOfChat && m.senderId && m.senderId.toString() !== data?.id?.toString()) { /* return; */ }
+        const currentChat = chats?.find(c => c.id === data?.chatId);
+        const isGroupChat = currentChat?.isGroup || currentChat?.isChannel;
+        const isProfileOfGroup = data?.id?.toString() === data?.chatId?.toString();
+        
+        if (isGroupChat && !isProfileOfGroup && m.senderId && m.senderId.toString() !== data?.id?.toString()) return;
 
         if (isPhotoMsg(m)) photos++;
         if (isVideoMsg(m)) videos++;
@@ -653,7 +672,7 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
       })
     }
     return { photos, videos, files, links, gifs, groups: data?.commonGroups?.length || null };
-  }, [msgs, data?.id, data?.chatId, data?.commonGroups]);
+  }, [msgs, data?.id, data?.chatId, data?.commonGroups, chats]);
 
   useEffect(() => {
     if (!data?.id) return
@@ -765,14 +784,14 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
           
           {/* Shared Media */}
           <div style={{width: 'calc(100% + 48px)', margin: '0 -24px', paddingBottom: 8}}>
-            <div onClick={()=>onOpenMedia('photos')} style={{display:'flex', alignItems:'center', padding:'12px 24px', cursor:'pointer'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.05)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+            <div onClick={()=>onOpenMedia('media')} style={{display:'flex', alignItems:'center', padding:'12px 24px', cursor:'pointer'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.05)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
               <svg style={{width:24, height:24, fill:'none', stroke:'#9b7ec8', strokeWidth:1.5, strokeLinecap:'round', strokeLinejoin:'round', marginRight:24}} viewBox="0 0 24 24">
                 <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
               </svg>
               <span style={{fontSize:15, color:'#e0d4f5'}}>{counts.photos} photo{counts.photos!==1?'s':''}</span>
             </div>
             
-            <div onClick={()=>onOpenMedia('videos')} style={{display:'flex', alignItems:'center', padding:'12px 24px', cursor:'pointer'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.05)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+            <div onClick={()=>onOpenMedia('media')} style={{display:'flex', alignItems:'center', padding:'12px 24px', cursor:'pointer'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.05)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
               <svg style={{width:24, height:24, fill:'none', stroke:'#9b7ec8', strokeWidth:1.5, strokeLinecap:'round', strokeLinejoin:'round', marginRight:24}} viewBox="0 0 24 24">
                 <polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
               </svg>
@@ -2725,6 +2744,7 @@ export default function CRMChat({token}) {
           token={token} 
           setLightbox={setLightbox} 
           jumpToMessage={jumpToMessage}
+          chats={chats}
         />
       )}
 
