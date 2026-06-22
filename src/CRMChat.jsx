@@ -2054,60 +2054,60 @@ export default function CRMChat({token}) {
           </div>
         ):<>
           {/* Chat header */}
-          <div className="chdr">
+          <div className="chdr" style={{ height: '60px', minHeight: '60px', padding: '0 16px', gap: '12px' }}>
             {selTopic&&(
-              <button onClick={()=>setSelTopic(null)} style={{background:"none",border:"none",color:TG.textSec,cursor:"pointer",fontSize:20,padding:"0 4px",flexShrink:0}}>←</button>
+              <button onClick={()=>setSelTopic(null)} style={{background:"none",border:"none",color:TG.textSec,cursor:"pointer",fontSize:22,padding:"0 4px",flexShrink:0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '36px', height: '36px', borderRadius: '50%', transition: 'background .15s'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.08)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>←</button>
             )}
             <div 
-              style={{cursor: 'pointer', display: 'flex', alignItems: 'center'}}
+              style={{cursor: 'pointer', display: 'flex', alignItems: 'center', flexShrink: 0}}
               onClick={() => setProfilePreview({ id: sel.id, name: sel.name, username: sel.username, chatId: sel.id, isGroup: sel.isGroup || sel.isChannel })}
             >
               {selTopic ? (
-                <div style={{width: 38, height: 38, borderRadius: '50%', background: '#2b5278', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 18, fontWeight: 600}}>
+                <div style={{width: 42, height: 42, borderRadius: '50%', background: '#2b5278', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 20, fontWeight: 600}}>
                   #
                 </div>
               ) : (
-                <Avatar name={sel.name} chatId={sel.id} username={sel.username} size={38}/>
+                <Avatar name={sel.name} chatId={sel.id} username={sel.username} size={42}/>
               )}
             </div>
-            <div style={{flex:1,minWidth:0,display:"flex",flexDirection:"column"}}>
+            <div style={{flex:1,minWidth:0,display:"flex",flexDirection:"column",justifyContent:"center",gap:"2px"}}>
               <div 
-                style={{fontWeight:700,fontSize:15,color:TG.text,lineHeight:1.2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap", cursor: 'pointer'}}
+                style={{fontWeight:600,fontSize:16,color:TG.text,lineHeight:1.2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap", cursor: 'pointer'}}
                 onClick={() => setProfilePreview({ id: sel.id, name: sel.name, username: sel.username, chatId: sel.id, isGroup: sel.isGroup || sel.isChannel })}
               >
                 {selTopic ? selTopic.title : sel.name}
               </div>
-              <div style={{fontSize:13,color:TG.textSec,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+              <div style={{fontSize:13,color:TG.textSec,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap", lineHeight:1.2}}>
                 {selTopic ? (
-                   <span style={{cursor:"pointer",color:TG.blueLight,transition:"color .15s"}} 
+                   <span style={{cursor:"pointer",color:TG.textSec,transition:"color .15s"}} 
                          onMouseEnter={e=>e.currentTarget.style.color="#fff"}
-                         onMouseLeave={e=>e.currentTarget.style.color=TG.blueLight}
+                         onMouseLeave={e=>e.currentTarget.style.color=TG.textSec}
                          onClick={()=>setSelTopic(null)}>
-                     in {sel.name}
+                     In {sel.name}
                    </span>
                  ) : 
                  (sel?.isGroup || sel?.isChannel) ? (
-                   <span style={{cursor:"pointer",color:TG.blueLight,transition:"color .15s"}} 
+                   <span style={{cursor:"pointer",color:TG.textSec,transition:"color .15s"}} 
                          onMouseEnter={e=>e.currentTarget.style.color="#fff"}
-                         onMouseLeave={e=>e.currentTarget.style.color=TG.blueLight}
+                         onMouseLeave={e=>e.currentTarget.style.color=TG.textSec}
                          onClick={()=>setShowMembers(true)}>
                      {sel.memberCount ? `${sel.memberCount} members` : "View members"}
                    </span>
                  ) :
                  sel?.isUser ? (
                    onlineStatus === 'online' ? <span style={{color: TG.blueLight}}>● online</span> :
-                   onlineStatus === 'unknown' ? '○ status unavailable' :
-                   onlineStatus ? '○ ' + onlineStatus :
-                   '○ last seen recently'
+                   onlineStatus === 'unknown' ? 'status unavailable' :
+                   onlineStatus ? onlineStatus :
+                   'last seen recently'
                  ) :
                  'Group'}
               </div>
             </div>
-            <div style={{display:"flex",gap:12,marginLeft:16,flexShrink:0}}>
-              <button onClick={()=>setChatSearchOpen(p=>!p)} title="Search in chat" style={{background: 'none', border: 'none', color: TG.textSec, cursor: 'pointer', fontSize: 18}}>
+            <div style={{display:"flex",gap:8,marginLeft:16,flexShrink:0, alignItems: 'center'}}>
+              <button onClick={()=>setChatSearchOpen(p=>!p)} title="Search in chat" style={{background: 'none', border: 'none', color: TG.textSec, cursor: 'pointer', fontSize: 18, width: 40, height: 40, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background .15s'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.08)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
                 🔍
               </button>
-              <button title="More Actions" style={{background: 'none', border: 'none', color: TG.textSec, cursor: 'pointer', fontSize: 18}}>
+              <button title="More Actions" style={{background: 'none', border: 'none', color: TG.textSec, cursor: 'pointer', fontSize: 20, width: 40, height: 40, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background .15s'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.08)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
                 ⋮
               </button>
             </div>
