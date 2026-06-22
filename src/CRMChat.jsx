@@ -450,6 +450,78 @@ function ChatPhoto({chatId, msgId, authToken}) {
   )
 }
 
+const URL_REGEX = /(https?:\/\/[^\s]+|www\.[^\s]+|[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(?:\/[^\s]*)?)/gi;
+
+function renderMessageText(text, searchStr) {
+  if (!text) return '';
+  
+  const parts = [];
+  let lastIndex = 0;
+  
+  text.replace(URL_REGEX, (match, p1, offset) => {
+    let url = match;
+    let trailing = '';
+    while (/[.,?!;'"]$/.test(url)) {
+      trailing = url.slice(-1) + trailing;
+      url = url.slice(0, -1);
+    }
+    
+    const isEmail = text.slice(0, offset).match(/\S+@$/);
+    if (isEmail) return match; 
+    
+    if (offset > lastIndex) {
+      parts.push({ type: 'text', content: text.slice(lastIndex, offset) });
+    }
+    
+    let href = url;
+    if (!href.match(/^https?:\/\//i)) {
+      href = 'https://' + href;
+    }
+    
+    parts.push({ type: 'link', content: url, href });
+    
+    if (trailing) {
+      parts.push({ type: 'text', content: trailing });
+    }
+    
+    lastIndex = offset + match.length;
+    return match;
+  });
+  
+  if (lastIndex < text.length) {
+    parts.push({ type: 'text', content: text.slice(lastIndex) });
+  }
+  
+  const renderPart = (part, idx) => {
+    if (part.type === 'link') {
+      return (
+        <a key={idx} href={part.href} target="_blank" rel="noopener noreferrer" 
+           onClick={e => e.stopPropagation()}
+           className="msg-link">
+          {part.content}
+        </a>
+      );
+    }
+    
+    if (searchStr && part.content.toLowerCase().includes(searchStr.toLowerCase())) {
+      const searchParts = part.content.split(new RegExp(`(${searchStr})`, 'gi'));
+      return (
+        <span key={idx}>
+          {searchParts.map((sp, i) => 
+            sp.toLowerCase() === searchStr.toLowerCase() 
+              ? <mark key={i} style={{background:"#f59e0b",color:"#000",borderRadius:2}}>{sp}</mark> 
+              : sp
+          )}
+        </span>
+      );
+    }
+    
+    return <span key={idx}>{part.content}</span>;
+  };
+  
+  return parts.map(renderPart);
+}
+
 export default function CRMChat({token}) {
   _authToken = token
   const [theme,setTheme]=useState(()=>localStorage.getItem('crm_theme')||'dark')
@@ -1143,6 +1215,9 @@ export default function CRMChat({token}) {
     .bbl.in { background: #1e0a3c; color: #f0e6ff; }
     .bbl.del { opacity: .5; font-style: italic; }
     .bbl.rpl { border-left: 3px solid rgba(124,58,237,.5); padding-left: 10px; border-radius: 8px; margin-bottom: 4px; font-size: 13px; }
+    .msg-link { color: #7dd3fc; text-decoration: none; word-break: break-word; overflow-wrap: anywhere; }
+    .msg-link:hover { text-decoration: underline; }
+    .bbl.out .msg-link { color: #e0e7ff; text-decoration: underline; }
 
     /* grouped radius */
     .bbl.out.single { border-radius: 16px 16px 4px 16px; }
@@ -1667,13 +1742,7 @@ export default function CRMChat({token}) {
                         )}
                         {(()=>{
                           const displayText = editedMsgs[msg.id] || msg.text || ''
-                          return chatSearch && displayText.toLowerCase().includes(chatSearch.toLowerCase())
-                            ? displayText.split(new RegExp(`(${chatSearch})`, 'gi')).map((part,i) =>
-                                part.toLowerCase()===chatSearch.toLowerCase()
-                                  ? <mark key={i} style={{background:"#f59e0b",color:"#000",borderRadius:2}}>{part}</mark>
-                                  : part
-                              )
-                            : displayText
+                          return renderMessageText(displayText, chatSearch)
                         })()}
                         {/* Link preview */}
                         {msg.text && (msg.text.includes('http://') || msg.text.includes('https://')) && (
