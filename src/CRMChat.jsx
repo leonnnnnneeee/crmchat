@@ -506,10 +506,30 @@ function ChatPhoto({msg, chatId, authToken, onImageClick}) {
   )
 }
 
-function UserProfileModal({ data, onClose, token, chats, setSel, inputRef }) {
+function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs }) {
   const [status, setStatus] = useState(null)
   const [showMore, setShowMore] = useState(false)
   
+  const isGroupProfile = data?.isGroup;
+  
+  const counts = useMemo(() => {
+    let photos = 0, videos = 0, files = 0, links = 0, gifs = 0;
+    if (msgs && Array.isArray(msgs)) {
+      msgs.forEach(m => {
+        // In a DM, or when viewing a Group's profile, we count everything in the chat
+        const isSelfProfile = data?.id === data?.chatId;
+        // If viewing a user's profile from inside a group, filter by their messages
+        if (!isSelfProfile && m.senderId && m.senderId.toString() !== data.id.toString()) return;
+
+        if (m.isPhoto) photos++;
+        if (m.isVideo) videos++;
+        if (m.isDoc) files++;
+        if (m.text && /(https?:\/\/[^\s]+)/.test(m.text)) links++;
+      })
+    }
+    return { photos, videos, files, links, gifs, groups: 0 };
+  }, [msgs, data?.id, data?.chatId]);
+
   useEffect(() => {
     if (!data?.id) return
     let isMounted = true
@@ -608,14 +628,17 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef }) {
             </div>
           )}
           
-          {/* Shared Media Mock */}
+          {/* Shared Media */}
           <div style={{marginTop:8}}>
-            <div style={{fontSize:15, fontWeight:600, color:'#e0d4f5', marginBottom:12}}>Shared Media</div>
-            <div style={{display:'flex', justifyContent:'space-between', fontSize:14, color:'#9b7ec8', marginBottom:8, cursor:'pointer'}}><span>Photos</span><span>0</span></div>
-            <div style={{display:'flex', justifyContent:'space-between', fontSize:14, color:'#9b7ec8', marginBottom:8, cursor:'pointer'}}><span>Videos</span><span>0</span></div>
-            <div style={{display:'flex', justifyContent:'space-between', fontSize:14, color:'#9b7ec8', marginBottom:8, cursor:'pointer'}}><span>Files</span><span>0</span></div>
-            <div style={{display:'flex', justifyContent:'space-between', fontSize:14, color:'#9b7ec8', marginBottom:8, cursor:'pointer'}}><span>Links</span><span>0</span></div>
-            <div style={{display:'flex', justifyContent:'space-between', fontSize:14, color:'#9b7ec8', marginBottom:8, cursor:'pointer'}}><span>Groups in common</span><span>0</span></div>
+            <div style={{fontSize:15, fontWeight:600, color:'#e0d4f5', marginBottom:12}}>Shared Media (Loaded)</div>
+            <div onClick={()=>alert('TODO: Open Photos Gallery')} style={{display:'flex', justifyContent:'space-between', fontSize:14, color:'#9b7ec8', marginBottom:8, cursor:'pointer'}} onMouseEnter={e=>e.currentTarget.style.color='#fff'} onMouseLeave={e=>e.currentTarget.style.color='#9b7ec8'}><span>Photos</span><span>{counts.photos}</span></div>
+            <div onClick={()=>alert('TODO: Open Videos Gallery')} style={{display:'flex', justifyContent:'space-between', fontSize:14, color:'#9b7ec8', marginBottom:8, cursor:'pointer'}} onMouseEnter={e=>e.currentTarget.style.color='#fff'} onMouseLeave={e=>e.currentTarget.style.color='#9b7ec8'}><span>Videos</span><span>{counts.videos}</span></div>
+            <div onClick={()=>alert('TODO: Open Files List')} style={{display:'flex', justifyContent:'space-between', fontSize:14, color:'#9b7ec8', marginBottom:8, cursor:'pointer'}} onMouseEnter={e=>e.currentTarget.style.color='#fff'} onMouseLeave={e=>e.currentTarget.style.color='#9b7ec8'}><span>Files</span><span>{counts.files}</span></div>
+            <div onClick={()=>alert('TODO: Open Links List')} style={{display:'flex', justifyContent:'space-between', fontSize:14, color:'#9b7ec8', marginBottom:8, cursor:'pointer'}} onMouseEnter={e=>e.currentTarget.style.color='#fff'} onMouseLeave={e=>e.currentTarget.style.color='#9b7ec8'}><span>Links</span><span>{counts.links}</span></div>
+            {!isGroupProfile && (
+              <div onClick={()=>alert('TODO: Open Groups List')} style={{display:'flex', justifyContent:'space-between', fontSize:14, color:'#9b7ec8', marginBottom:8, cursor:'pointer'}} onMouseEnter={e=>e.currentTarget.style.color='#fff'} onMouseLeave={e=>e.currentTarget.style.color='#9b7ec8'}><span>Groups in common</span><span>Unavailable</span></div>
+            )}
+            <div onClick={()=>alert('TODO: Fetch full history from backend')} style={{textAlign:'center', fontSize:12, color:'#7c3aed', cursor:'pointer', marginTop:12}}>Load more history...</div>
           </div>
         </div>
 
@@ -1786,15 +1809,15 @@ export default function CRMChat({token}) {
               <button onClick={()=>setSelTopic(null)} style={{background:"none",border:"none",color:TG.textSec,cursor:"pointer",fontSize:20,padding:"0 4px",flexShrink:0}}>←</button>
             )}
             <div 
-              style={{cursor: sel.isUser ? 'pointer' : 'default'}}
-              onClick={() => sel.isUser && setProfilePreview({ id: sel.id, name: sel.name, username: sel.username, chatId: sel.id })}
+              style={{cursor: 'pointer'}}
+              onClick={() => setProfilePreview({ id: sel.id, name: sel.name, username: sel.username, chatId: sel.id, isGroup: sel.isGroup || sel.isChannel })}
             >
               <Avatar name={sel.name} chatId={sel.id} username={sel.username} size={38}/>
             </div>
             <div style={{flex:1,minWidth:0,display:"flex",flexDirection:"column"}}>
               <div 
-                style={{fontWeight:700,fontSize:15,color:TG.text,lineHeight:1.2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap", cursor: sel.isUser ? 'pointer' : 'default'}}
-                onClick={() => sel.isUser && setProfilePreview({ id: sel.id, name: sel.name, username: sel.username, chatId: sel.id })}
+                style={{fontWeight:700,fontSize:15,color:TG.text,lineHeight:1.2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap", cursor: 'pointer'}}
+                onClick={() => setProfilePreview({ id: sel.id, name: sel.name, username: sel.username, chatId: sel.id, isGroup: sel.isGroup || sel.isChannel })}
               >
                 {selTopic ? selTopic.title : sel.name}
               </div>
@@ -2504,6 +2527,7 @@ export default function CRMChat({token}) {
         chats={chats}
         setSel={setSel}
         inputRef={inputRef}
+        msgs={msgs}
       />
 
       {/* Chat Preview Modal */}
