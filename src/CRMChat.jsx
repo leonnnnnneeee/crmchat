@@ -963,6 +963,7 @@ export default function CRMChat({token}) {
   const [sending,setSending]=useState(false)
   const [loadChats,setLoadChats]=useState(true)
   const [loadMsgs,setLoadMsgs]=useState(false)
+  const [messagesLoaded,setMessagesLoaded]=useState(false)
   const [loadingMore,setLoadingMore]=useState(false)
   const [hasMoreChats,setHasMoreChats]=useState(true)
   const [hasMore,setHasMore]=useState(true)
@@ -982,9 +983,12 @@ export default function CRMChat({token}) {
         const data = await res.json()
         if (isMounted && data.status) {
           setOnlineStatus(data.status)
+        } else if (isMounted) {
+          setOnlineStatus('status unavailable')
         }
       } catch (e) {
         console.error("status fetch error:", e)
+        if (isMounted) setOnlineStatus('status unavailable')
       }
     }
     
@@ -1116,6 +1120,7 @@ export default function CRMChat({token}) {
         
         setSel(prevSel => {
            if (!prevSel && !append && d.length > 0) return d[0]
+           // If selected chat exists but not in new fetch, keep it active (pagination/search handling)
            return prevSel
         })
       }
@@ -1187,6 +1192,7 @@ export default function CRMChat({token}) {
     }
 
     setMsgs([]); setAiText(""); setAiAnalysis(""); setAiAlt(""); setReplyTo(null)
+    setMessagesLoaded(false)
     hasRestoredScroll.current = false
     
     if (sel.isForum && !currentTopic && !forceNormalView) {
@@ -1305,6 +1311,7 @@ export default function CRMChat({token}) {
     } else {
       loadingRef.current = false
       setLoadMsgs(false)
+      setMessagesLoaded(true)
     }
   }
 
@@ -1507,7 +1514,24 @@ export default function CRMChat({token}) {
       if(folder === 'personal') return c.isUser === true
       return true
     })
-    .filter(c => !search || c.name?.toLowerCase().includes(search.toLowerCase()))
+    .filter(c => !search.trim() || c.name?.toLowerCase().includes(search.trim().toLowerCase()))
+
+  // Chat Sync & Fallback
+  useEffect(() => {
+    // Debug Logging
+    console.log("[ChatSync Debug]", { total: chats.length, filtered: filtered.length, folder, search, selId: sel?.id, msgsCount: msgs.length, loadMsgs, messagesLoaded })
+
+    if (chats.length > 0 && sel) {
+      const existsInChats = chats.some(c => c.id === sel.id)
+      if (!existsInChats) {
+        // Fallback to first available chat if the currently selected chat is definitively gone
+        setSel(filtered.length > 0 ? filtered[0] : chats[0])
+      }
+    } else if (chats.length > 0 && !sel) {
+      setSel(filtered.length > 0 ? filtered[0] : chats[0])
+    }
+  }, [chats, filtered, sel, folder, search, msgs.length, loadMsgs, messagesLoaded])
+
   const cStage=sel?stages[sel.id]||"Contacted":"New"
   const cProb=sel?probs[sel.id]??50:50
   const cDeal=sel?deals[sel.id]??0:0
@@ -1978,7 +2002,21 @@ export default function CRMChat({token}) {
               </div>
             )
           })}
-          {!loadChats&&filtered.length===0&&<div style={{padding:32,textAlign:"center",color:TG.textMuted,fontSize:13}}>No chats found</div>}
+          {!loadChats&&filtered.length===0&&(
+            <div style={{padding:32,textAlign:"center",color:TG.textMuted,fontSize:13}}>
+              {search.trim() ? (
+                <>
+                  <div style={{marginBottom: 8}}>No matches for "{search.trim()}"</div>
+                  <button onClick={() => setSearch('')} style={{background: 'none', border: '1px solid #3d1f6a', padding: '6px 12px', borderRadius: 16, color: '#a78bfa', cursor: 'pointer'}}>Clear Search</button>
+                </>
+              ) : folder !== 'all' ? (
+                <>
+                  <div style={{marginBottom: 8}}>No chats in this folder</div>
+                  <button onClick={() => setFolder('all')} style={{background: 'none', border: '1px solid #3d1f6a', padding: '6px 12px', borderRadius: 16, color: '#a78bfa', cursor: 'pointer'}}>View All</button>
+                </>
+              ) : "No chats found"}
+            </div>
+          )}
           {hasMoreChats && chats.length > 0 && !search && (
             <div style={{padding:12,textAlign:"center",color:TG.textMuted,fontSize:12}}>Loading more chats...</div>
           )}
@@ -1999,6 +2037,7 @@ export default function CRMChat({token}) {
           </div>
         ): sel && sel.isForum && !selTopic && !forceNormalView ? (
           // ── FORUM TOPICS VIEW ──
+          /* TODO(Refactor): Split out into <ForumTopicsView> component */
           <div style={{display:"flex",flexDirection:"column",height:"100%",background:TG.bg}}>
             <div style={{height:58,background:TG.panel,borderBottom:"1px solid "+TG.border,display:"flex",alignItems:"center",padding:"0 16px",gap:12,flexShrink:0}}>
               <Avatar name={sel.name} chatId={sel.id} username={sel.username} size={38}/>
@@ -2064,6 +2103,7 @@ export default function CRMChat({token}) {
           </div>
         ):<>
           {/* Chat header */}
+          {/* TODO(Refactor): Split out into <ChatHeader> component */}
           <div className="chdr" style={{ height: '60px', minHeight: '60px', padding: '0 16px', gap: '12px' }}>
             {selTopic&&(
               <button onClick={()=>setSelTopic(null)} style={{background:"none",border:"none",color:TG.textSec,cursor:"pointer",fontSize:22,padding:"0 4px",flexShrink:0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '36px', height: '36px', borderRadius: '50%', transition: 'background .15s'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.08)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>←</button>
@@ -2153,6 +2193,8 @@ export default function CRMChat({token}) {
           </div>
 
           {/* Messages */}
+          {/* TODO(Refactor): Split out into <MessageList> and <MessageBubble> components */}
+          {/* Handles scroll restoration, grouping, reactions, and media rendering */}
           <div className="msgs" onScroll={handleScroll}>
             {hasMore && msgs.length > 0 && !loadMsgs && (
               <div style={{textAlign:'center', margin:'10px 0'}}>
@@ -2163,7 +2205,7 @@ export default function CRMChat({token}) {
               </div>
             )}
             {loadMsgs&&<div style={{textAlign:"center",color:TG.textMuted,fontSize:13,marginTop:40}}>Loading messages...</div>}
-            {!loadMsgs&&msgs.length===0&&(
+            {!loadMsgs&&messagesLoaded&&msgs.length===0&&(
               <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8,color:TG.textSec,marginTop:60}}>
                 <div style={{fontSize:36}}>👋</div>
                 <div style={{fontSize:14}}>No messages yet</div>
@@ -2439,6 +2481,8 @@ export default function CRMChat({token}) {
             </div>
           )}
           {/* Input area */}
+          {/* TODO(Refactor): Split out into <Composer> component */}
+          {/* Handles AI suggestions, templates, voice recording, typing indicator */}
           <div className="ia">
             {/* Editing bar */}
             {editingMsg&&(
@@ -2509,6 +2553,7 @@ export default function CRMChat({token}) {
       </div>
 
       {/* RIGHT COL */}
+      {/* TODO(Refactor): Split out into <CRMRightPanel> component */}
       {showProfile&&(
         <div className="rc">
           {!sel?(
