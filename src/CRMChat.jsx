@@ -532,7 +532,7 @@ function SharedMediaModal({ initialTab, msgs, data, onClose, token, setLightbox,
   }, [msgs, activeTab, isSelfProfile, data?.id]);
 
   return (
-    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.8)',zIndex:10000,display:'flex',flexDirection:'column'}}
+    <div style={{position:'fixed',inset:0,background:'#120929',zIndex:10000,display:'flex',flexDirection:'column'}}
          onClick={(e) => { if(e.target===e.currentTarget) onClose() }}>
       
       {/* Header with Tabs */}
@@ -555,11 +555,11 @@ function SharedMediaModal({ initialTab, msgs, data, onClose, token, setLightbox,
       <div style={{flex:1,overflowY:'auto',padding:24,display:(activeTab==='photos'||activeTab==='videos')?'grid':'flex',flexDirection:'column',gridTemplateColumns:'repeat(auto-fill, minmax(100px, 1fr))',gap:8}}>
         
         {(activeTab === 'gifs' || activeTab === 'groups') && (
-          <div style={{color:'#9b7ec8',textAlign:'center',marginTop:40}}>Not loaded. Full history API pending.</div>
+          <div style={{color:'#9b7ec8',textAlign:'center',marginTop:40,gridColumn:'1 / -1'}}>Not loaded. Full history API pending.</div>
         )}
 
         {filtered.length === 0 && activeTab !== 'gifs' && activeTab !== 'groups' && (
-          <div style={{color:'#9b7ec8',textAlign:'center',marginTop:40}}>No {activeTab} found in loaded history.</div>
+          <div style={{color:'#9b7ec8',textAlign:'center',marginTop:40,gridColumn:'1 / -1'}}>No {activeTab} found in loaded history.</div>
         )}
         
         {filtered.map(m => {
