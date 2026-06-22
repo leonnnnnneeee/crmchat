@@ -1013,7 +1013,15 @@ export default function CRMChat({token}) {
   const [aiLoading,setAiLoading]=useState(false)
   const msgsRef = useRef([])
   useEffect(()=>{ msgsRef.current = msgs },[msgs])
-  const [showProfile,setShowProfile]=useState(true)
+  const [showProfile,setShowProfile]=useState(()=>{
+    try{
+      const s=localStorage.getItem('tg_show_crm')
+      return s?JSON.parse(s):true
+    }catch{return true}
+  })
+  useEffect(()=>{
+    localStorage.setItem('tg_show_crm',JSON.stringify(showProfile))
+  },[showProfile])
   const [stages,setStages]=useState({})
   const [tags,setTags]=useState({})
   const [leadSource,setLeadSource]=useState({})
@@ -1789,11 +1797,12 @@ export default function CRMChat({token}) {
     .rc {
       display: flex; flex-direction: column;
       overflow-y: auto;
-      width: 280px;
-      min-width: 280px;
+      width: 320px;
+      min-width: 320px;
       flex-shrink: 0;
       background: #1a0533; border-left: 1px solid #0d0618;
       padding: 20px 14px; gap: 14px;
+      box-sizing: border-box; height: 100%;
     }
     .rr  { background: #2d1155; border-radius: 10px; padding: 12px; }
     .ri  { display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 8px 10px; border-radius: 8px; font-size: 13px; font-weight: 600; transition: background .1s; }
@@ -2107,6 +2116,9 @@ export default function CRMChat({token}) {
             <div style={{display:"flex",gap:8,marginLeft:16,flexShrink:0, alignItems: 'center'}}>
               <button onClick={()=>setChatSearchOpen(p=>!p)} title="Search in chat" style={{background: 'none', border: 'none', color: TG.textSec, cursor: 'pointer', fontSize: 18, width: 40, height: 40, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background .15s'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.08)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
                 🔍
+              </button>
+              <button onClick={()=>setShowProfile(p=>!p)} title="Toggle CRM Panel" style={{background: showProfile ? 'rgba(124,58,237,0.2)' : 'none', border: 'none', color: showProfile ? '#a78bfa' : TG.textSec, cursor: 'pointer', fontSize: 20, width: 40, height: 40, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all .15s'}} onMouseEnter={e=>e.currentTarget.style.background=showProfile?'rgba(124,58,237,0.3)':'rgba(255,255,255,0.08)'} onMouseLeave={e=>e.currentTarget.style.background=showProfile?'rgba(124,58,237,0.2)':'transparent'}>
+                {showProfile ? '▶' : '◀'}
               </button>
               <button title="More Actions" style={{background: 'none', border: 'none', color: TG.textSec, cursor: 'pointer', fontSize: 20, width: 40, height: 40, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background .15s'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.08)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
                 ⋮
