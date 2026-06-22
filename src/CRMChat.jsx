@@ -422,29 +422,83 @@ function LinkPreview({url}) {
   )
 }
 
-// ── ChatPhoto — lazy load with spinner ──
-const imgCache = new Set()
-function ChatPhoto({chatId, msgId, authToken, onImageClick}) {
+// ── ChatPhoto — lazy load with fetch & blob ──
+const blobCache = new Map()
+
+function ChatPhoto({msg, chatId, authToken, onImageClick}) {
+  const msgId = msg.id
   const [retryCnt, setRetryCnt] = useState(0)
-  const [status, setStatus] = useState(imgCache.has(msgId) ? 'loaded' : 'loading')
-  const src = `/api/chat/media/${chatId}/${msgId}?t=${authToken}&r=${retryCnt}`
+  const [status, setStatus] = useState(blobCache.has(msgId) ? 'loaded' : 'loading')
+  const [imgSrc, setImgSrc] = useState(msg.photoUrl || msg.mediaUrl || blobCache.get(msgId) || '')
+
+  useEffect(() => {
+    if (imgSrc && status === 'loaded') return
+    
+    let isMounted = true
+    let objectUrl = ''
+
+    const fetchMedia = async () => {
+      setStatus('loading')
+      try {
+        const url = `/api/chat/media/${chatId}/${msgId}?t=${authToken}&r=${retryCnt}`
+        console.log(`[ChatPhoto] Fetching media for msgId=${msgId}, url=${url}`)
+        const res = await fetch(url)
+        
+        if (!isMounted) return
+        
+        if (!res.ok) {
+          console.error(`[ChatPhoto] Failed to fetch msgId=${msgId}, status=${res.status} ${res.statusText}`)
+          setStatus('error')
+          return
+        }
+
+        const blob = await res.blob()
+        if (blob.size === 0) {
+          console.error(`[ChatPhoto] Empty blob returned for msgId=${msgId}`)
+          setStatus('error')
+          return
+        }
+        
+        objectUrl = URL.createObjectURL(blob)
+        blobCache.set(msgId, objectUrl)
+        
+        if (isMounted) {
+          setImgSrc(objectUrl)
+          setStatus('loaded')
+          console.log(`[ChatPhoto] Successfully loaded media for msgId=${msgId}, blob size=${blob.size}`)
+        }
+      } catch (err) {
+        if (isMounted) {
+          console.error(`[ChatPhoto] Network/CORS error for msgId=${msgId}:`, err)
+          setStatus('error')
+        }
+      }
+    }
+
+    fetchMedia()
+
+    return () => {
+      isMounted = false
+    }
+  }, [msgId, chatId, authToken, retryCnt])
+
   return (
-    <div style={{position:'relative',marginBottom:4,minHeight:status==='loaded'?0:80,background:status==='loading'?'rgba(124,58,237,.1)':'transparent',borderRadius:8,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden'}}>
+    <div style={{position:'relative',marginBottom:4,minHeight:status==='loaded'?0:80,background:status==='loading'?'rgba(124,58,237,.1)':'transparent',borderRadius:8,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden',maxWidth:520}}>
       {status==='loading' && (
         <div style={{position:'absolute',color:'#7c3aed',fontSize:20,zIndex:1}}>⏳</div>
       )}
-      <img
-        src={src}
-        alt="photo"
-        style={{maxWidth:'100%',maxHeight:320,borderRadius:8,display:status==='error'?'none':'block',cursor:'pointer',objectFit:'contain'}}
-        onLoad={()=>{ imgCache.add(msgId); setStatus('loaded') }}
-        onError={()=>{ setStatus('error') }}
-        onClick={()=>onImageClick && onImageClick(src)}
-        loading="lazy"
-      />
+      {status==='loaded' && imgSrc && (
+        <img
+          src={imgSrc}
+          alt="photo"
+          style={{maxWidth:'100%',maxHeight:320,borderRadius:8,display:'block',cursor:'pointer',objectFit:'contain'}}
+          onClick={()=>onImageClick && onImageClick(imgSrc)}
+          loading="lazy"
+        />
+      )}
       {status==='error' && (
         <div style={{padding:'8px 12px',color:'#9b7ec8',fontSize:12,cursor:'pointer',textAlign:'center',background:'rgba(124,58,237,.1)',borderRadius:8,width:'100%'}} 
-             onClick={()=>{setStatus('loading'); setRetryCnt(c=>c+1)}}>
+             onClick={()=>setRetryCnt(c=>c+1)}>
           📷 Tap to retry
         </div>
       )}
@@ -1758,7 +1812,7 @@ export default function CRMChat({token}) {
                         {!msg.fromMe && !sel?.isUser && msg.senderName && !isSameGroup && (
                           <div style={{fontSize:11,fontWeight:700,color:"#7c8ae8",marginBottom:3,whiteSpace:"nowrap"}}>{msg.senderName}</div>
                         )}
-                        {msg.isPhoto && <ChatPhoto chatId={sel.id} msgId={msg.id} authToken={token} onImageClick={(src)=>setLightbox(src)}/>}
+                        {msg.isPhoto && <ChatPhoto msg={msg} chatId={sel.id} authToken={token} onImageClick={(src)=>setLightbox(src)}/>}
                         {msg.isVideo && (
                           <video controls style={{maxWidth:'100%',maxHeight:200,borderRadius:8,display:'block'}}>
                             <source src={`/api/chat/media/${sel.id}/${msg.id}?t=${token}`}/>
