@@ -506,9 +506,15 @@ function ChatPhoto({msg, chatId, authToken, onImageClick}) {
   )
 }
 
+const isPhotoMsg = (m) => !!(m.isPhoto || m.photo || m.image || m.media?.type === 'photo' || m.attachments?.some?.(a => a.type === 'photo' || a.type === 'image'));
+const isVideoMsg = (m) => !!(m.isVideo || m.video || m.media?.type === 'video' || m.attachments?.some?.(a => a.type === 'video'));
+const isDocMsg = (m) => !!(m.isDoc || m.document || m.file || m.media?.type === 'document' || m.media?.type === 'file' || m.attachments?.some?.(a => a.type === 'document' || a.type === 'file'));
+const isGifMsg = (m) => !!(m.isGif || m.gif || m.media?.type === 'gif' || m.attachments?.some?.(a => a.type === 'gif'));
+const isLinkMsg = (m) => !!(m.url || m.links?.length > 0 || m.entities?.some?.(e => e.type === 'url') || (m.text && /(https?:\/\/[^\s]+)/.test(m.text)));
+
 function SharedMediaModal({ initialTab, msgs, data, onClose, token, setLightbox, jumpToMessage }) {
   const [activeTab, setActiveTab] = useState(initialTab || 'photos');
-  const isSelfProfile = data?.id?.toString() === data?.chatId?.toString();
+  const isProfileOfChat = data?.id?.toString() === data?.chatId?.toString();
 
   const tabs = [
     { id: 'photos', label: 'Photos' },
@@ -522,14 +528,15 @@ function SharedMediaModal({ initialTab, msgs, data, onClose, token, setLightbox,
   const filtered = useMemo(() => {
     if (!msgs || !Array.isArray(msgs)) return [];
     return msgs.filter(m => {
-      if (!isSelfProfile && m.senderId && m.senderId.toString() !== data?.id?.toString()) return false;
-      if (activeTab === 'photos' && m.isPhoto) return true;
-      if (activeTab === 'videos' && m.isVideo) return true;
-      if (activeTab === 'files' && m.isDoc) return true;
-      if (activeTab === 'links' && m.text && /(https?:\/\/[^\s]+)/.test(m.text)) return true;
+      if (!isProfileOfChat && m.senderId && m.senderId.toString() !== data?.id?.toString()) return false;
+      if (activeTab === 'photos' && isPhotoMsg(m)) return true;
+      if (activeTab === 'videos' && isVideoMsg(m)) return true;
+      if (activeTab === 'files' && isDocMsg(m)) return true;
+      if (activeTab === 'links' && isLinkMsg(m)) return true;
+      if (activeTab === 'gifs' && isGifMsg(m)) return true;
       return false;
     });
-  }, [msgs, activeTab, isSelfProfile, data?.id]);
+  }, [msgs, activeTab, isProfileOfChat, data?.id]);
 
   return (
     <div style={{position:'fixed',inset:0,background:'#120929',zIndex:10000,display:'flex',flexDirection:'column'}}
@@ -552,14 +559,17 @@ function SharedMediaModal({ initialTab, msgs, data, onClose, token, setLightbox,
       </div>
 
       {/* Body */}
-      <div style={{flex:1,overflowY:'auto',padding:24,display:(activeTab==='photos'||activeTab==='videos')?'grid':'flex',flexDirection:'column',gridTemplateColumns:'repeat(auto-fill, minmax(100px, 1fr))',gap:8}}>
+      <div style={{flex:1,overflowY:'auto',padding:24,display:(activeTab==='photos'||activeTab==='videos'||activeTab==='gifs')?'grid':'flex',flexDirection:'column',gridTemplateColumns:'repeat(auto-fill, minmax(100px, 1fr))',gap:8}}>
         
-        {(activeTab === 'gifs' || activeTab === 'groups') && (
+        {activeTab === 'groups' && (
           <div style={{color:'#9b7ec8',textAlign:'center',marginTop:40,gridColumn:'1 / -1'}}>Not loaded. Full history API pending.</div>
         )}
 
-        {filtered.length === 0 && activeTab !== 'gifs' && activeTab !== 'groups' && (
-          <div style={{color:'#9b7ec8',textAlign:'center',marginTop:40,gridColumn:'1 / -1'}}>No {activeTab} found in loaded history.</div>
+        {filtered.length === 0 && activeTab !== 'groups' && (
+          <div style={{color:'#9b7ec8',textAlign:'center',marginTop:40,gridColumn:'1 / -1',display:'flex',flexDirection:'column',alignItems:'center',gap:12}}>
+            <div>No {activeTab} found in loaded history.</div>
+            <button style={{background:'transparent',border:'1px solid rgba(124,58,237,.5)',color:'#9b7ec8',padding:'6px 12px',borderRadius:6,cursor:'pointer',fontSize:13}} onClick={()=>alert('TODO: Fetch full history API')}>Load More</button>
+          </div>
         )}
         
         {filtered.map(m => {
@@ -576,6 +586,15 @@ function SharedMediaModal({ initialTab, msgs, data, onClose, token, setLightbox,
               <div key={m.id} style={{aspectRatio:'1/1',background:'rgba(124,58,237,.1)',borderRadius:8,overflow:'hidden',display:'flex',alignItems:'center',justifyContent:'center',position:'relative'}}>
                 <video style={{width:'100%',height:'100%',objectFit:'cover'}} src={`/api/chat/media/${data.chatId}/${m.id}?t=${token}`}/>
                 <div style={{position:'absolute',fontSize:24,color:'white',pointerEvents:'none'}}>▶</div>
+                <div onClick={() => jumpToMessage(m.id)} style={{position:'absolute',top:4,right:4,background:'rgba(0,0,0,.5)',color:'#fff',padding:'2px 6px',borderRadius:4,fontSize:10,cursor:'pointer',pointerEvents:'auto'}}>Show msg</div>
+              </div>
+            )
+          }
+          if (activeTab === 'gifs') {
+            return (
+              <div key={m.id} style={{aspectRatio:'1/1',background:'rgba(124,58,237,.1)',borderRadius:8,overflow:'hidden',position:'relative'}}>
+                <ChatPhoto msg={m} chatId={data.chatId} authToken={token} onImageClick={(src)=>setLightbox(src)}/>
+                <div style={{position:'absolute',top:4,left:4,background:'rgba(124,58,237,.8)',color:'#fff',padding:'2px 4px',borderRadius:4,fontSize:10,fontWeight:'bold',pointerEvents:'none'}}>GIF</div>
                 <div onClick={() => jumpToMessage(m.id)} style={{position:'absolute',top:4,right:4,background:'rgba(0,0,0,.5)',color:'#fff',padding:'2px 6px',borderRadius:4,fontSize:10,cursor:'pointer',pointerEvents:'auto'}}>Show msg</div>
               </div>
             )
@@ -620,22 +639,21 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
   
   const counts = useMemo(() => {
     let photos = 0, videos = 0, files = 0, links = 0, gifs = 0;
-    console.log("CALC MEDIA", { msgsLength: msgs?.length, isGroupProfile, data, sampleMsg: msgs?.[0] });
+    console.log("CALC MEDIA", { msgsLength: msgs?.length, isGroupProfile, data });
     if (msgs && Array.isArray(msgs)) {
       msgs.forEach(m => {
-        // In a DM, or when viewing a Group's profile, we count everything in the chat
-        const isSelfProfile = data?.id?.toString() === data?.chatId?.toString();
-        // If viewing a user's profile from inside a group, filter by their messages
-        if (!isSelfProfile && m.senderId && m.senderId.toString() !== data?.id?.toString()) return;
+        const isProfileOfChat = data?.id?.toString() === data?.chatId?.toString();
+        if (!isProfileOfChat && m.senderId && m.senderId.toString() !== data?.id?.toString()) return;
 
-        if (m.isPhoto) photos++;
-        if (m.isVideo) videos++;
-        if (m.isDoc) files++;
-        if (m.text && /(https?:\/\/[^\s]+)/.test(m.text)) links++;
+        if (isPhotoMsg(m)) photos++;
+        if (isVideoMsg(m)) videos++;
+        if (isDocMsg(m)) files++;
+        if (isLinkMsg(m)) links++;
+        if (isGifMsg(m)) gifs++;
       })
     }
-    return { photos, videos, files, links, gifs, groups: 0 };
-  }, [msgs, data?.id, data?.chatId]);
+    return { photos, videos, files, links, gifs, groups: data?.commonGroups?.length || null };
+  }, [msgs, data?.id, data?.chatId, data?.commonGroups]);
 
   useEffect(() => {
     if (!data?.id) return
@@ -779,7 +797,7 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
               <svg style={{width:24, height:24, fill:'none', stroke:'#9b7ec8', strokeWidth:1.5, strokeLinecap:'round', strokeLinejoin:'round', marginRight:24}} viewBox="0 0 24 24">
                 <rect x="2" y="6" width="20" height="12" rx="2" ry="2"/><text x="12" y="15" fill="none" stroke="#9b7ec8" strokeWidth="1" textAnchor="middle" fontSize="9" fontWeight="bold">GIF</text>
               </svg>
-              <span style={{fontSize:15, color:'#e0d4f5'}}>GIFs (Unavailable)</span>
+              <span style={{fontSize:15, color:'#e0d4f5'}}>{counts.gifs} GIF{counts.gifs!==1?'s':''}</span>
             </div>
 
             {!isGroupProfile && (
@@ -787,7 +805,7 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
                 <svg style={{width:24, height:24, fill:'none', stroke:'#9b7ec8', strokeWidth:1.5, strokeLinecap:'round', strokeLinejoin:'round', marginRight:24}} viewBox="0 0 24 24">
                   <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
                 </svg>
-                <span style={{fontSize:15, color:'#e0d4f5'}}>Groups in common (Unavailable)</span>
+                <span style={{fontSize:15, color:'#e0d4f5'}}>{counts.groups !== null ? `${counts.groups} Groups in common` : 'Groups in common (Unavailable)'}</span>
               </div>
             )}
           </div>
