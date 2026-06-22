@@ -257,6 +257,7 @@ app.get('/api/chat/list', requireAuth, async (req,res) => {
       isUser: d.isUser,
       isGroup: d.isGroup || false,
       isChannel: d.isChannel || false,
+      isForum: d.entity?.forum === true || false,
       isPinned: d.pinned || false,
       isForum: !!d.entity?.forum,
       username: d.entity?.username || null,
