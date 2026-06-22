@@ -1,4 +1,4 @@
-// v-fix-074104
+// v-edit2-083448
 // v035029
 import { useState, useEffect, useRef, useCallback, useMemo } from "react"
 
@@ -529,7 +529,7 @@ function SharedMediaModal({ initialTab, msgs, data, onClose, token, setLightbox,
     { id: 'groups', label: 'Groups' }
   ];
 
-  const filteredMedia = useMemo(() => {
+  const filtered = useMemo(() => {
     if (!msgs || !Array.isArray(msgs)) return [];
     return msgs.filter(m => {
       const currentChat = chats?.find(c => c.id === data?.chatId);
@@ -555,7 +555,7 @@ function SharedMediaModal({ initialTab, msgs, data, onClose, token, setLightbox,
         <div style={{padding:'16px 24px',display:'flex',alignItems:'center',gap:16}}>
           <button onClick={onClose} style={{background:'transparent',border:'none',color:'#9b7ec8',cursor:'pointer',fontSize:24}}>←</button>
           <div style={{fontSize:18,fontWeight:600,color:'#fff'}}>Shared Media</div>
-          <div style={{marginLeft:'auto',color:'#9b7ec8',fontSize:14}}>{filteredMedia.length > 0 ? `${filteredMedia.length} items` : ''}</div>
+          <div style={{marginLeft:'auto',color:'#9b7ec8',fontSize:14}}>{filtered.length > 0 ? `${filtered.length} items` : ''}</div>
         </div>
         <div style={{display:'flex',overflowX:'auto',padding:'0 16px',gap:24,scrollbarWidth:'none'}}>
           {tabs.map(t => (
@@ -573,14 +573,14 @@ function SharedMediaModal({ initialTab, msgs, data, onClose, token, setLightbox,
           <div style={{color:'#9b7ec8',textAlign:'center',marginTop:40,gridColumn:'1 / -1'}}>Not loaded. Full history API pending.</div>
         )}
 
-        {filteredMedia.length === 0 && activeTab !== 'groups' && (
+        {filtered.length === 0 && activeTab !== 'groups' && (
           <div style={{color:'#9b7ec8',textAlign:'center',marginTop:40,gridColumn:'1 / -1',display:'flex',flexDirection:'column',alignItems:'center',gap:12}}>
             <div>No {activeTab} found in loaded history.</div>
             <button style={{background:'transparent',border:'1px solid rgba(124,58,237,.5)',color:'#9b7ec8',padding:'6px 12px',borderRadius:6,cursor:'pointer',fontSize:13}} onClick={()=>alert('TODO: Fetch full history API')}>Load More</button>
           </div>
         )}
         
-        {filteredMedia.map(m => {
+        {filtered.map(m => {
           if (activeTab === 'media') {
             if (isPhotoMsg(m)) {
               return (
@@ -932,6 +932,8 @@ export default function CRMChat({token}) {
     try { return JSON.parse(localStorage.getItem('crm_selTopic')) || null } catch { return null }
   })
   const [loadingTopics,setLoadingTopics]=useState(false)
+  const [topicError,setTopicError]=useState(false)
+  const [forceNormalView,setForceNormalView]=useState(false)
   const [topicSearch,setTopicSearch]=useState("")
   const [topicCtxMenu,setTopicCtxMenu]=useState(null)
   const [msgs,setMsgs]=useState([])
@@ -1155,16 +1157,39 @@ export default function CRMChat({token}) {
        currentTopic = null
        setSelTopic(null)
        prevSelId.current = sel.id
+       setForceNormalView(false)
+       setTopicError(false)
     }
 
     setMsgs([]); setAiText(""); setAiAnalysis(""); setAiAlt(""); setReplyTo(null)
     hasRestoredScroll.current = false
     
-    // Load messages directly — topic handling is separate
-    // Forum topics loaded on demand when user clicks Topics tab
+    if (sel.isForum && !currentTopic && !forceNormalView) {
+      setLoadingTopics(true)
+      setTopicError(false)
+      fetch(`/api/chat/topics/${sel.id}`, { headers: {"x-auth-token": token} })
+        .then(r=>{
+          if (!r.ok) throw new Error('Failed to fetch')
+          return r.json()
+        })
+        .then(d=>{
+          const tList = Array.isArray(d) ? d : []
+          setTopics(p=>({...p, [sel.id]: tList}))
+          setLoadingTopics(false)
+          if (tList.length === 0) {
+            setForceNormalView(true)
+            loadMessages(sel, null)
+          }
+        })
+        .catch(e=>{
+          setLoadingTopics(false)
+          setTopicError(true)
+        })
+      return
+    }
 
     loadMessages(sel, currentTopic?.id || null)
-  },[sel, selTopic, token])
+  },[sel, selTopic, token, forceNormalView])
 
 
   useEffect(()=>{
@@ -1943,7 +1968,7 @@ export default function CRMChat({token}) {
             <div style={{fontSize:16,fontWeight:500,color:TG.text}}>Select a conversation</div>
             <div style={{fontSize:13}}>Pick a chat from your Telegram on the left</div>
           </div>
-        ): sel && sel.isForum && !selTopic ? (
+        ): sel && sel.isForum && !selTopic && !forceNormalView ? (
           // ── FORUM TOPICS VIEW ──
           <div style={{display:"flex",flexDirection:"column",height:"100%",background:TG.bg}}>
             <div style={{height:58,background:TG.panel,borderBottom:"1px solid "+TG.border,display:"flex",alignItems:"center",padding:"0 16px",gap:12,flexShrink:0}}>
@@ -1959,9 +1984,22 @@ export default function CRMChat({token}) {
               </div>
             </div>
             <div style={{flex:1,overflowY:"auto",padding:"8px 0"}} onClick={()=>setTopicCtxMenu(null)}>
-              {loadingTopics&&<div style={{padding:20,textAlign:"center",color:TG.textSec,fontSize:13}}>Loading topics...</div>}
+              {loadingTopics&&<div style={{padding:40,textAlign:"center",color:TG.textSec,fontSize:14}}>Loading topics...</div>}
+              {topicError&&!loadingTopics&&(
+                <div style={{padding:40,textAlign:"center",color:TG.textSec,fontSize:14,display:'flex',flexDirection:'column',alignItems:'center',gap:16}}>
+                  <div>Failed to load topics.</div>
+                  <button onClick={()=>{setForceNormalView(true);loadMessages(sel, null)}} style={{background:'rgba(124,58,237,.2)',border:'1px solid rgba(124,58,237,.5)',color:'#fff',padding:'8px 16px',borderRadius:8,cursor:'pointer'}}>
+                    Open normal chat
+                  </button>
+                </div>
+              )}
               {!loadingTopics && topics[sel.id] && topics[sel.id].length === 0 && (
-                <div style={{padding:20,textAlign:"center",color:TG.textSec,fontSize:13}}>No topics found.</div>
+                <div style={{padding:40,textAlign:"center",color:TG.textSec,fontSize:14,display:'flex',flexDirection:'column',alignItems:'center',gap:16}}>
+                  <div>No topics found.</div>
+                  <button onClick={()=>{setForceNormalView(true);loadMessages(sel, null)}} style={{background:'rgba(124,58,237,.2)',border:'1px solid rgba(124,58,237,.5)',color:'#fff',padding:'8px 16px',borderRadius:8,cursor:'pointer'}}>
+                    Open normal chat
+                  </button>
+                </div>
               )}
               {(Array.isArray(topics[sel.id]) ? topics[sel.id] : []).filter(t=>!topicSearch || t.title?.toLowerCase().includes(topicSearch.toLowerCase())).map(topic=>(
                 <div key={topic.id} onClick={()=>{setSelTopic(topic)}}
