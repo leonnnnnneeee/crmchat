@@ -879,10 +879,14 @@ app.post('/api/chat/send-file', requireAuth, (req, res) => {
 // ── DOWNLOAD MEDIA from TG message ──
 const mediaCache = {}
 app.get('/api/chat/media/:chatId/:msgId', (req, res, next) => {
-  // Allow auth via query param for img src tags
   const t = req.headers['x-auth-token'] || req.query.token || req.query.t
-  if (t !== VALID_TOKEN) return res.status(401).send()
-  next()
+  if (!t) return res.status(401).send()
+  try {
+    jwt.verify(t, JWT_SECRET)
+    next()
+  } catch(err) {
+    res.status(401).send()
+  }
 }, async (req, res) => {
   const key = req.params.chatId + '_' + req.params.msgId
   if (mediaCache[key]) {
