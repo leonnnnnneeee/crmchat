@@ -424,25 +424,27 @@ function LinkPreview({url}) {
 
 // ── ChatPhoto — lazy load with spinner ──
 const imgCache = new Set()
-function ChatPhoto({chatId, msgId, authToken}) {
+function ChatPhoto({chatId, msgId, authToken, onImageClick}) {
+  const [retryCnt, setRetryCnt] = useState(0)
   const [status, setStatus] = useState(imgCache.has(msgId) ? 'loaded' : 'loading')
-  const src = `/api/chat/media/${chatId}/${msgId}?t=${authToken}`
+  const src = `/api/chat/media/${chatId}/${msgId}?t=${authToken}&r=${retryCnt}`
   return (
-    <div style={{marginBottom:4,minHeight:status==='loaded'?0:80,background:status==='loading'?'rgba(124,58,237,.1)':'transparent',borderRadius:8,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden'}}>
+    <div style={{position:'relative',marginBottom:4,minHeight:status==='loaded'?0:80,background:status==='loading'?'rgba(124,58,237,.1)':'transparent',borderRadius:8,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden'}}>
       {status==='loading' && (
-        <div style={{position:'absolute',color:'#7c3aed',fontSize:20}}>⏳</div>
+        <div style={{position:'absolute',color:'#7c3aed',fontSize:20,zIndex:1}}>⏳</div>
       )}
       <img
         src={src}
         alt="photo"
-        style={{maxWidth:'100%',maxHeight:320,borderRadius:8,display:status==='error'?'none':'block',cursor:'pointer'}}
+        style={{maxWidth:'100%',maxHeight:320,borderRadius:8,display:status==='error'?'none':'block',cursor:'pointer',objectFit:'contain'}}
         onLoad={()=>{ imgCache.add(msgId); setStatus('loaded') }}
-        onError={()=>setStatus('error')}
-        onClick={()=>window.open(src,'_blank')}
+        onError={()=>{ setStatus('error') }}
+        onClick={()=>onImageClick && onImageClick(src)}
         loading="lazy"
       />
       {status==='error' && (
-        <div style={{padding:'8px 12px',color:'#9b7ec8',fontSize:12,cursor:'pointer'}} onClick={()=>setStatus('loading')}>
+        <div style={{padding:'8px 12px',color:'#9b7ec8',fontSize:12,cursor:'pointer',textAlign:'center',background:'rgba(124,58,237,.1)',borderRadius:8,width:'100%'}} 
+             onClick={()=>{setStatus('loading'); setRetryCnt(c=>c+1)}}>
           📷 Tap to retry
         </div>
       )}
@@ -1756,7 +1758,7 @@ export default function CRMChat({token}) {
                         {!msg.fromMe && !sel?.isUser && msg.senderName && !isSameGroup && (
                           <div style={{fontSize:11,fontWeight:700,color:"#7c8ae8",marginBottom:3,whiteSpace:"nowrap"}}>{msg.senderName}</div>
                         )}
-                        {msg.isPhoto && <ChatPhoto chatId={sel.id} msgId={msg.id} authToken={token}/>}
+                        {msg.isPhoto && <ChatPhoto chatId={sel.id} msgId={msg.id} authToken={token} onImageClick={(src)=>setLightbox(src)}/>}
                         {msg.isVideo && (
                           <video controls style={{maxWidth:'100%',maxHeight:200,borderRadius:8,display:'block'}}>
                             <source src={`/api/chat/media/${sel.id}/${msg.id}?t=${token}`}/>
