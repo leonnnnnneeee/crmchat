@@ -506,8 +506,9 @@ function ChatPhoto({msg, chatId, authToken, onImageClick}) {
   )
 }
 
-function UserProfileModal({ data, onClose, token }) {
+function UserProfileModal({ data, onClose, token, chats, setSel, inputRef }) {
   const [status, setStatus] = useState(null)
+  const [showMore, setShowMore] = useState(false)
   
   useEffect(() => {
     if (!data?.id) return
@@ -527,54 +528,97 @@ function UserProfileModal({ data, onClose, token }) {
 
   if (!data) return null
 
+  const handleMessage = () => {
+    const existing = chats.find(c => c.isUser && c.id === data.id)
+    if (existing) {
+      setSel(existing)
+      onClose()
+      setTimeout(() => inputRef?.current?.focus(), 100)
+    } else {
+      alert('Cannot open DM, user info missing / backend API pending')
+      // TODO: Call backend to create/resolve DM by ID when API is added
+    }
+  }
+
   return (
     <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.6)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center'}}
          onClick={(e) => { if(e.target===e.currentTarget) onClose() }}>
-      <div style={{background:'#1a103c',width:360,borderRadius:16,overflow:'hidden',boxShadow:'0 10px 40px rgba(0,0,0,.5)',border:'1px solid rgba(124,58,237,.3)',color:'#fff'}}>
-        {/* Header with X */}
-        <div style={{display:'flex',justifyContent:'flex-end',padding:'12px 12px 0'}}>
-          <button onClick={onClose} style={{background:'transparent',border:'none',color:'#9b7ec8',cursor:'pointer',fontSize:20}}>&times;</button>
-        </div>
+      <div style={{background:'#1a103c',width:380,borderRadius:12,overflow:'hidden',boxShadow:'0 10px 40px rgba(0,0,0,.5)',border:'1px solid rgba(124,58,237,.3)',color:'#fff'}}>
         
-        {/* Body */}
-        <div style={{padding:'0 24px 24px',display:'flex',flexDirection:'column',alignItems:'center'}}>
-          <div style={{marginBottom:16}}>
-            <Avatar name={data.name||'User'} chatId={data.id} username={data.username} size={80}/>
+        {/* Header (Telegram-like solid block or gradient) */}
+        <div style={{position:'relative', padding:'24px 24px 16px', background:'linear-gradient(180deg, rgba(124,58,237,.2) 0%, #1a103c 100%)', display:'flex', flexDirection:'column', alignItems:'center'}}>
+          <div style={{position:'absolute', top:12, right:12}}>
+            <button onClick={onClose} style={{background:'transparent',border:'none',color:'#9b7ec8',cursor:'pointer',fontSize:24}}>&times;</button>
           </div>
-          <div style={{fontSize:20,fontWeight:700,marginBottom:4,textAlign:'center'}}>{data.name||'Unknown User'}</div>
-          
-          <div style={{fontSize:13,color:status==='online'?'#4caf50':'#9b7ec8',marginBottom:16}}>
+          <Avatar name={data.name||'User'} chatId={data.id} username={data.username} size={90}/>
+          <div style={{fontSize:22,fontWeight:700,marginTop:12,textAlign:'center'}}>{data.name||'Unknown User'}</div>
+          <div style={{fontSize:14,color:status==='online'?'#4caf50':'#9b7ec8',marginTop:4}}>
             {status ? status : 'Loading status...'}
           </div>
+        </div>
 
-          <div style={{width:'100%',background:'rgba(0,0,0,.2)',borderRadius:8,padding:12,marginBottom:16}}>
-            <div style={{display:'flex',justifyContent:'space-between',marginBottom:8,fontSize:13}}>
-              <span style={{color:'#9b7ec8'}}>User ID</span>
-              <span style={{color:'#e0d4f5',cursor:'pointer'}} onClick={()=>{navigator.clipboard.writeText(data.id);alert('ID Copied')}}>{data.id} 📋</span>
+        {/* Action Buttons Row */}
+        <div style={{display:'flex', justifyContent:'space-around', padding:'12px 24px', borderBottom:'1px solid rgba(124,58,237,.2)'}}>
+          <div onClick={handleMessage} style={{display:'flex', flexDirection:'column', alignItems:'center', cursor:'pointer', color:'#e0d4f5', gap:4}}>
+            <div style={{width:40,height:40,borderRadius:'50%',background:'rgba(124,58,237,.2)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18}}>💬</div>
+            <span style={{fontSize:12}}>Message</span>
+          </div>
+          <div onClick={()=>alert('Mute feature coming soon')} style={{display:'flex', flexDirection:'column', alignItems:'center', cursor:'pointer', color:'#e0d4f5', gap:4}}>
+            <div style={{width:40,height:40,borderRadius:'50%',background:'rgba(124,58,237,.2)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18}}>🔕</div>
+            <span style={{fontSize:12}}>Mute</span>
+          </div>
+          <div onClick={()=>alert('Call feature coming soon')} style={{display:'flex', flexDirection:'column', alignItems:'center', cursor:'pointer', color:'#e0d4f5', gap:4}}>
+            <div style={{width:40,height:40,borderRadius:'50%',background:'rgba(124,58,237,.2)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18}}>📞</div>
+            <span style={{fontSize:12}}>Call</span>
+          </div>
+          <div style={{position:'relative'}}>
+            <div onClick={()=>setShowMore(!showMore)} style={{display:'flex', flexDirection:'column', alignItems:'center', cursor:'pointer', color:'#e0d4f5', gap:4}}>
+              <div style={{width:40,height:40,borderRadius:'50%',background:'rgba(124,58,237,.2)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18}}>⋯</div>
+              <span style={{fontSize:12}}>More</span>
             </div>
-            {data.username && (
-              <div style={{display:'flex',justifyContent:'space-between',marginBottom:8,fontSize:13}}>
-                <span style={{color:'#9b7ec8'}}>Username</span>
-                <span style={{color:'#e0d4f5',cursor:'pointer'}} onClick={()=>{navigator.clipboard.writeText('@'+data.username);alert('Username Copied')}}>@{data.username} 📋</span>
+            {showMore && (
+              <div style={{position:'absolute',top:'100%',right:0,marginTop:8,background:'#2a1b54',borderRadius:8,padding:8,minWidth:160,boxShadow:'0 4px 12px rgba(0,0,0,.5)',zIndex:10}}>
+                <div onClick={()=>{navigator.clipboard.writeText(data.id);setShowMore(false);alert('ID Copied')}} style={{padding:'8px 12px',cursor:'pointer',fontSize:13,color:'#fff',borderRadius:4}} onMouseEnter={e=>e.currentTarget.style.background='rgba(124,58,237,.4)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>Copy User ID</div>
+                {data.username && <div onClick={()=>{navigator.clipboard.writeText('@'+data.username);setShowMore(false);alert('Username Copied')}} style={{padding:'8px 12px',cursor:'pointer',fontSize:13,color:'#fff',borderRadius:4}} onMouseEnter={e=>e.currentTarget.style.background='rgba(124,58,237,.4)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>Copy Username</div>}
+                <div onClick={()=>{alert('Add to contacts pending');setShowMore(false)}} style={{padding:'8px 12px',cursor:'pointer',fontSize:13,color:'#fff',borderRadius:4}} onMouseEnter={e=>e.currentTarget.style.background='rgba(124,58,237,.4)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>Add to Contacts</div>
+                <div onClick={()=>{alert('CRM Note feature pending');setShowMore(false)}} style={{padding:'8px 12px',cursor:'pointer',fontSize:13,color:'#fff',borderRadius:4}} onMouseEnter={e=>e.currentTarget.style.background='rgba(124,58,237,.4)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>Add CRM Note</div>
               </div>
             )}
-            <div style={{display:'flex',justifyContent:'space-between',fontSize:13}}>
-              <span style={{color:'#9b7ec8'}}>Phone</span>
-              <span style={{color:'#e0d4f5'}}>{data.phone||'Hidden'}</span>
-            </div>
-          </div>
-
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,width:'100%'}}>
-            <button style={{background:'#7c3aed',color:'#fff',border:'none',padding:'10px',borderRadius:8,cursor:'pointer',fontWeight:600}}
-                    onClick={()=>alert('Send message to non-contact is under development')}>
-              💬 Send Message
-            </button>
-            <button style={{background:'rgba(124,58,237,.2)',color:'#e0d4f5',border:'1px solid rgba(124,58,237,.3)',padding:'10px',borderRadius:8,cursor:'pointer',fontWeight:600}}
-                    onClick={()=>alert('CRM Note feature under development')}>
-              📝 Add Note
-            </button>
           </div>
         </div>
+
+        {/* Info Body */}
+        <div style={{padding:'16px 24px 24px', display:'flex', flexDirection:'column', gap:16}}>
+          {data.phone && (
+            <div>
+              <div style={{fontSize:16, color:'#fff'}}>{data.phone}</div>
+              <div style={{fontSize:13, color:'#9b7ec8'}}>Phone</div>
+            </div>
+          )}
+          {data.username && (
+            <div>
+              <div style={{fontSize:16, color:'#fff'}}>@{data.username}</div>
+              <div style={{fontSize:13, color:'#9b7ec8'}}>Username</div>
+            </div>
+          )}
+          {(data.bio || data.about) && (
+            <div>
+              <div style={{fontSize:15, color:'#fff', lineHeight:1.4}}>{data.bio || data.about}</div>
+              <div style={{fontSize:13, color:'#9b7ec8'}}>Bio</div>
+            </div>
+          )}
+          
+          {/* Shared Media Mock */}
+          <div style={{marginTop:8}}>
+            <div style={{fontSize:15, fontWeight:600, color:'#e0d4f5', marginBottom:12}}>Shared Media</div>
+            <div style={{display:'flex', justifyContent:'space-between', fontSize:14, color:'#9b7ec8', marginBottom:8, cursor:'pointer'}}><span>Photos</span><span>0</span></div>
+            <div style={{display:'flex', justifyContent:'space-between', fontSize:14, color:'#9b7ec8', marginBottom:8, cursor:'pointer'}}><span>Videos</span><span>0</span></div>
+            <div style={{display:'flex', justifyContent:'space-between', fontSize:14, color:'#9b7ec8', marginBottom:8, cursor:'pointer'}}><span>Files</span><span>0</span></div>
+            <div style={{display:'flex', justifyContent:'space-between', fontSize:14, color:'#9b7ec8', marginBottom:8, cursor:'pointer'}}><span>Links</span><span>0</span></div>
+            <div style={{display:'flex', justifyContent:'space-between', fontSize:14, color:'#9b7ec8', marginBottom:8, cursor:'pointer'}}><span>Groups in common</span><span>0</span></div>
+          </div>
+        </div>
+
       </div>
     </div>
   )
@@ -2453,7 +2497,14 @@ export default function CRMChat({token}) {
       )}
 
       {/* User Profile Preview Modal */}
-      <UserProfileModal data={profilePreview} onClose={() => setProfilePreview(null)} token={token} />
+      <UserProfileModal 
+        data={profilePreview} 
+        onClose={() => setProfilePreview(null)} 
+        token={token} 
+        chats={chats}
+        setSel={setSel}
+        inputRef={inputRef}
+      />
 
       {/* Chat Preview Modal */}
       {previewChat&&(
