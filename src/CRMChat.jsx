@@ -1745,43 +1745,44 @@ export default function CRMChat({token}) {
     .ir {
       display: flex;
       align-items: flex-end;
-      gap: 10px;
-      padding: 8px 14px 20px;
-      min-height: 64px;
+      gap: 8px;
+      padding: 10px 16px 14px;
+      min-height: 56px;
     }
 
     /* Icon buttons */
     .ib {
-      width: 34px; height: 34px; flex-shrink: 0;
-      background: transparent; border: none; border-radius: 8px;
+      width: 36px; height: 36px; flex-shrink: 0;
+      background: transparent; border: none; border-radius: 50%;
       cursor: pointer; display: flex; align-items: center; justify-content: center;
-      color: #9b7ec8; font-size: 17px; transition: background .1s;
-      margin-bottom: 3px;
+      color: #9b7ec8; font-size: 20px; transition: background .1s;
+      margin-bottom: 2px;
     }
-    .ib:hover, .ib.on { background: #2d1155; color: #f0e6ff; }
-    .ib.g { font-size: 13px; font-weight: 700; }
+    .ib:hover, .ib.on { background: rgba(255,255,255,0.08); color: #f0e6ff; }
+    .ib.g { font-size: 16px; font-weight: 700; }
 
     /* Textarea */
     .message-input {
       flex: 1; min-width: 0;
-      min-height: 40px; max-height: 250px;
-      padding: 9px 14px;
-      background: #2d1155; border: none; border-radius: 20px;
-      color: #f0e6ff; font-size: 14px; font-family: inherit;
-      line-height: 1.45; resize: none; outline: none;
+      min-height: 40px; max-height: 120px;
+      padding: 10px 14px;
+      background: #23153d; border: none; border-radius: 20px;
+      color: #f0e6ff; font-size: 15px; font-family: inherit;
+      line-height: 20px; resize: none; outline: none;
       overflow-y: auto; box-sizing: border-box;
     }
     .message-input::placeholder { color: #6b4d94; }
 
     /* Send button */
     .sb {
-      width: 38px; height: 38px; flex-shrink: 0;
-      border-radius: 50%; background: #7c3aed; border: none;
+      width: 36px; height: 36px; flex-shrink: 0;
+      border-radius: 50%; background: #8774e1; border: none;
       cursor: pointer; display: flex; align-items: center; justify-content: center;
-      font-size: 17px; color: #fff;
+      font-size: 18px; color: #fff;
       transition: background .15s, opacity .15s;
+      margin-bottom: 2px;
     }
-    .sb:hover { background: #6d2ed5; }
+    .sb:hover { background: #766ac8; }
     .sb:disabled { opacity: .35; cursor: default; }
 
     /* ── RIGHT COL ── */
