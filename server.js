@@ -371,6 +371,82 @@ app.get('/api/chat/members/:id', requireAuth, async (req, res) => {
   }
 })
 
+// ── FULL PROFILE ──
+app.get('/api/chat/profile/:id', requireAuth, async (req, res) => {
+  if (!_session) return res.json({error: 'No session'})
+  try {
+    const client = await getClient()
+    const { Api } = require('telegram/tl')
+    const entity = await resolveEntity(client, req.params.id)
+    
+    // Attempt to get full user or full chat
+    let full = null
+    try {
+      if (entity.className === 'User') {
+        full = await client.invoke(new Api.users.GetFullUser({ id: entity }))
+      } else if (entity.className === 'Chat' || entity.className === 'Channel') {
+        full = await client.invoke(new Api.messages.GetFullChat({ chatId: entity.id })) // For channels: channels.GetFullChannel
+      }
+    } catch(err) {
+      // If messages.GetFullChat fails, try channels.GetFullChannel
+      if (entity.className === 'Channel') {
+        try {
+          full = await client.invoke(new Api.channels.GetFullChannel({ channel: entity }))
+        } catch(e) { log('Full channel fetch error: ' + e.message) }
+      } else {
+        log('Full profile fetch error: ' + err.message)
+      }
+    }
+    
+    res.json({ ok: true, full })
+  } catch(e) {
+    log('profile error: ' + e.message)
+    res.status(500).json({ error: e.message })
+  }
+})
+
+// ── SHARED MEDIA ──
+app.get('/api/chat/shared_media/:id', requireAuth, async (req, res) => {
+  if (!_session) return res.json({error: 'No session'})
+  try {
+    const client = await getClient()
+    const { Api } = require('telegram/tl')
+    const entity = await resolveEntity(client, req.params.id)
+    
+    const type = req.query.type || 'photos'
+    let filter = new Api.InputMessagesFilterPhotoVideo()
+    if (type === 'photos') filter = new Api.InputMessagesFilterPhotos()
+    if (type === 'videos') filter = new Api.InputMessagesFilterVideo()
+    if (type === 'files') filter = new Api.InputMessagesFilterDocument()
+    if (type === 'links') filter = new Api.InputMessagesFilterUrl()
+    if (type === 'gifs') filter = new Api.InputMessagesFilterGif()
+    
+    const msgs = await client.getMessages(entity, { filter, limit: 30 })
+    
+    const results = msgs.map(m => {
+      const isPhoto = m.media?.className === 'MessageMediaPhoto'
+      const isDoc   = m.media?.className === 'MessageMediaDocument'
+      const isVideo = isDoc && m.media?.document?.mimeType?.startsWith('video/')
+      return {
+        id: m.id,
+        text: m.message || '',
+        date: m.date,
+        hasMedia: !!m.media,
+        isPhoto,
+        isVideo,
+        isDoc: isDoc && !isVideo,
+        fileName: m.media?.document?.attributes?.find(a=>a.className==='DocumentAttributeFilename')?.fileName,
+        fileSize: m.media?.document?.size
+      }
+    })
+    
+    res.json({ ok: true, media: results })
+  } catch(e) {
+    log('shared media error: ' + e.message)
+    res.status(500).json({ error: e.message })
+  }
+})
+
 // ── MESSAGES ──
 app.get('/api/chat/messages/:id', requireAuth, async (req,res) => {
   if (!_session) return res.json([])

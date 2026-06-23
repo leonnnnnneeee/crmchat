@@ -656,39 +656,41 @@ function SharedMediaModal({ initialTab, msgs, data, onClose, token, setLightbox,
 function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs, messagesLoaded, hasMore, onOpenMedia }) {
   const [status, setStatus] = useState(null)
   const [showMore, setShowMore] = useState(false)
+  const [fullProfile, setFullProfile] = useState(null)
+  const [activeMediaTab, setActiveMediaTab] = useState(null)
+  const [sharedMedia, setSharedMedia] = useState([])
+  const [mediaLoading, setMediaLoading] = useState(false)
   
   const isGroupProfile = data?.isGroup;
   
   useEffect(() => {
-    const handleEsc = (e) => { if (e.key === 'Escape') onClose() }
-    window.addEventListener('keydown', handleEsc)
-    return () => window.removeEventListener('keydown', handleEsc)
-  }, [onClose])
+    if (!data?.chatId) return
+    let isMounted = true
+    fetch(`/api/chat/profile/${data.chatId}`, { headers: {'x-auth-token': token} })
+      .then(r => r.json())
+      .then(d => { if(isMounted && d.ok && d.full) setFullProfile(d.full) })
+      .catch(e => console.error(e))
+    return () => { isMounted = false }
+  }, [data?.chatId, token])
 
-  const counts = useMemo(() => {
-    let photos = 0, videos = 0, files = 0, links = 0, gifs = 0;
-    console.log("CALC MEDIA", { msgsLength: msgs?.length, isGroupProfile, data, messagesLoaded, hasMore });
-    
-    if (!messagesLoaded) return { loading: true };
-    if (!msgs || msgs.length === 0) return { photos: 0, videos: 0, files: 0, links: 0, gifs: 0, groups: data?.commonGroups?.length || null, hasMore };
-
-    if (msgs && Array.isArray(msgs)) {
-      msgs.forEach(m => {
-        const currentChat = chats?.find(c => c.id === data?.chatId);
-        const isGroupChat = currentChat?.isGroup || currentChat?.isChannel;
-        const isProfileOfGroup = data?.id?.toString() === data?.chatId?.toString();
-        
-        if (isGroupChat && !isProfileOfGroup && m.senderId && m.senderId.toString() !== data?.id?.toString()) return;
-
-        if (isPhotoMsg(m)) photos++;
-        if (isVideoMsg(m)) videos++;
-        if (isDocMsg(m)) files++;
-        if (isLinkMsg(m)) links++;
-        if (isGifMsg(m)) gifs++;
+  useEffect(() => {
+    if (!activeMediaTab) return
+    let isMounted = true
+    setMediaLoading(true)
+    setSharedMedia([])
+    fetch(`/api/chat/shared_media/${data.chatId}?type=${activeMediaTab}`, { headers: {'x-auth-token': token} })
+      .then(r => r.json())
+      .then(d => {
+        if(isMounted && d.ok) {
+           setSharedMedia(d.media || [])
+           setMediaLoading(false)
+        }
       })
-    }
-    return { photos, videos, files, links, gifs, groups: data?.commonGroups?.length, hasMore };
-  }, [msgs, data?.id, data?.chatId, data?.commonGroups, chats, messagesLoaded, hasMore]);
+      .catch(e => {
+         if(isMounted) { setMediaLoading(false) }
+      })
+    return () => { isMounted = false }
+  }, [activeMediaTab, data?.chatId, token])
 
   useEffect(() => {
     if (!data?.id) return
@@ -716,16 +718,20 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
       setTimeout(() => inputRef?.current?.focus(), 100)
     } else {
       alert('Cannot open DM, user info missing / backend API pending')
-      // TODO: Call backend to create/resolve DM by ID when API is added
     }
   }
+
+  // Extract full profile info
+  const bio = fullProfile?.fullUser?.about || fullProfile?.fullChat?.about || data.bio || data.about;
+  const businessHours = fullProfile?.fullUser?.businessWorkHours;
+  const location = fullProfile?.fullUser?.businessLocation?.address;
 
   return (
     <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.6)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center'}}
          onClick={(e) => { if(e.target===e.currentTarget) onClose() }}>
-      <div style={{background:'#1a103c',width:380,borderRadius:12,overflow:'hidden',boxShadow:'0 10px 40px rgba(0,0,0,.5)',border:'1px solid rgba(124,58,237,.3)',color:'#fff'}}>
+      <div style={{background:'#1a103c',width:420,maxHeight:'90vh',display:'flex',flexDirection:'column',borderRadius:12,overflow:'hidden',boxShadow:'0 10px 40px rgba(0,0,0,.5)',border:'1px solid rgba(124,58,237,.3)',color:'#fff'}}>
         
-        {/* Header (Telegram-like solid block or gradient) */}
+        {/* Header */}
         <div style={{position:'relative', padding:'24px 24px 16px', background:'linear-gradient(180deg, rgba(124,58,237,.2) 0%, #1a103c 100%)', display:'flex', flexDirection:'column', alignItems:'center'}}>
           <div style={{position:'absolute', top:12, right:12}}>
             <button onClick={onClose} style={{background:'transparent',border:'none',color:'#9b7ec8',cursor:'pointer',fontSize:24}}>&times;</button>
@@ -733,12 +739,12 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
           <Avatar name={data.name||'User'} chatId={data.id} username={data.username} size={90}/>
           <div style={{fontSize:22,fontWeight:700,marginTop:12,textAlign:'center'}}>{data.name||'Unknown User'}</div>
           <div style={{fontSize:14,color:status==='online'?'#4caf50':'#9b7ec8',marginTop:4}}>
-            {status ? status : 'Loading status...'}
+            {status ? status : 'last seen recently'}
           </div>
         </div>
 
         {/* Action Buttons Row */}
-        <div style={{display:'flex', justifyContent:'space-around', padding:'12px 24px'}}>
+        <div style={{display:'flex', justifyContent:'space-around', padding:'12px 24px', flexShrink:0}}>
           <div onClick={handleMessage} style={{display:'flex', flexDirection:'column', alignItems:'center', cursor:'pointer', color:'#e0d4f5', gap:4}}>
             <div style={{width:40,height:40,borderRadius:'50%',background:'rgba(124,58,237,.2)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18}}>💬</div>
             <span style={{fontSize:12}}>Message</span>
@@ -767,109 +773,125 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
           </div>
         </div>
 
-        {/* Separator After Action Buttons */}
-        <div style={{height: 8, background: '#0d0618', width: '100%'}} />
+        <div style={{height: 8, background: '#0d0618', width: '100%', flexShrink:0}} />
 
-        {/* Info Body */}
-        <div style={{padding:'16px 24px 24px', display:'flex', flexDirection:'column', gap:16}}>
-          {data.phone && (
-            <div>
-              <div style={{fontSize:16, color:'#fff'}}>{data.phone}</div>
-              <div style={{fontSize:13, color:'#9b7ec8'}}>Phone</div>
-            </div>
-          )}
-          {data.username && (
-            <div>
-              <div style={{fontSize:16, color:'#fff'}}>@{data.username}</div>
-              <div style={{fontSize:13, color:'#9b7ec8'}}>Username</div>
-            </div>
-          )}
-          {(data.bio || data.about) && (
-            <div>
-              <div style={{fontSize:15, color:'#fff', lineHeight:1.4}}>{data.bio || data.about}</div>
-              <div style={{fontSize:13, color:'#9b7ec8'}}>Bio</div>
-            </div>
-          )}
-          
-          {/* Separator Before Shared Media */}
-          {((data.phone || data.username || data.bio || data.about) ? (
-            <div style={{height: 8, background: '#0d0618', width: 'calc(100% + 48px)', margin: '16px -24px 8px'}} />
-          ) : (
-            <div style={{height: 8, background: 'transparent', width: 'calc(100% + 48px)', margin: '0px -24px 8px'}} />
-          ))}
-          
-          {/* Shared Media */}
-          <div style={{width: 'calc(100% + 48px)', margin: '0 -24px', paddingBottom: 8}}>
-            {counts.loading ? (
-              <div style={{padding:'12px 24px', color:'#9b7ec8', fontSize: 13, textAlign: 'center'}}>Loading media...</div>
-            ) : (
-              <>
-                {counts.photos > 0 && (
-                  <div onClick={()=>onOpenMedia('photos')} style={{display:'flex', alignItems:'center', padding:'12px 24px', cursor:'pointer'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.05)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-                    <svg style={{width:24, height:24, fill:'none', stroke:'#9b7ec8', strokeWidth:1.5, strokeLinecap:'round', strokeLinejoin:'round', marginRight:24}} viewBox="0 0 24 24">
-                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
-                    </svg>
-                    <span style={{fontSize:15, color:'#e0d4f5'}}>{counts.photos}{counts.hasMore ? '+' : ''} photo{counts.photos!==1?'s':''}</span>
-                  </div>
-                )}
-                
-                {counts.videos > 0 && (
-                  <div onClick={()=>onOpenMedia('videos')} style={{display:'flex', alignItems:'center', padding:'12px 24px', cursor:'pointer'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.05)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-                    <svg style={{width:24, height:24, fill:'none', stroke:'#9b7ec8', strokeWidth:1.5, strokeLinecap:'round', strokeLinejoin:'round', marginRight:24}} viewBox="0 0 24 24">
-                      <polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
-                    </svg>
-                    <span style={{fontSize:15, color:'#e0d4f5'}}>{counts.videos}{counts.hasMore ? '+' : ''} video{counts.videos!==1?'s':''}</span>
-                  </div>
-                )}
-
-                {counts.files > 0 && (
-                  <div onClick={()=>onOpenMedia('files')} style={{display:'flex', alignItems:'center', padding:'12px 24px', cursor:'pointer'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.05)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-                    <svg style={{width:24, height:24, fill:'none', stroke:'#9b7ec8', strokeWidth:1.5, strokeLinecap:'round', strokeLinejoin:'round', marginRight:24}} viewBox="0 0 24 24">
-                      <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/>
-                    </svg>
-                    <span style={{fontSize:15, color:'#e0d4f5'}}>{counts.files}{counts.hasMore ? '+' : ''} file{counts.files!==1?'s':''}</span>
-                  </div>
-                )}
-
-                {counts.links > 0 && (
-                  <div onClick={()=>onOpenMedia('links')} style={{display:'flex', alignItems:'center', padding:'12px 24px', cursor:'pointer'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.05)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-                    <svg style={{width:24, height:24, fill:'none', stroke:'#9b7ec8', strokeWidth:1.5, strokeLinecap:'round', strokeLinejoin:'round', marginRight:24}} viewBox="0 0 24 24">
-                      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
-                    </svg>
-                    <span style={{fontSize:15, color:'#e0d4f5'}}>{counts.links}{counts.hasMore ? '+' : ''} shared link{counts.links!==1?'s':''}</span>
-                  </div>
-                )}
-
-                {counts.gifs > 0 && (
-                  <div onClick={()=>onOpenMedia('gifs')} style={{display:'flex', alignItems:'center', padding:'12px 24px', cursor:'pointer'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.05)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-                    <svg style={{width:24, height:24, fill:'none', stroke:'#9b7ec8', strokeWidth:1.5, strokeLinecap:'round', strokeLinejoin:'round', marginRight:24}} viewBox="0 0 24 24">
-                      <rect x="2" y="6" width="20" height="12" rx="2" ry="2"/><text x="12" y="15" fill="none" stroke="#9b7ec8" strokeWidth="1" textAnchor="middle" fontSize="9" fontWeight="bold">GIF</text>
-                    </svg>
-                    <span style={{fontSize:15, color:'#e0d4f5'}}>{counts.gifs}{counts.hasMore ? '+' : ''} GIF{counts.gifs!==1?'s':''}</span>
-                  </div>
-                )}
-
-                {!isGroupProfile && data?.commonGroups !== undefined && counts.groups > 0 && (
-                  <div onClick={()=>onOpenMedia('groups')} style={{display:'flex', alignItems:'center', padding:'12px 24px', cursor:'pointer'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.05)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-                    <svg style={{width:24, height:24, fill:'none', stroke:'#9b7ec8', strokeWidth:1.5, strokeLinecap:'round', strokeLinejoin:'round', marginRight:24}} viewBox="0 0 24 24">
-                      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-                    </svg>
-                    <span style={{fontSize:15, color:'#e0d4f5'}}>{counts.groups} Groups in common</span>
-                  </div>
-                )}
-                
-                {counts.photos === 0 && counts.videos === 0 && counts.files === 0 && counts.links === 0 && counts.gifs === 0 && (!data?.commonGroups || counts.groups === 0) && (
-                  <div style={{padding:'12px 24px', color:'#9b7ec8', fontSize: 13, textAlign: 'center'}}>No shared media found.</div>
-                )}
-              </>
+        {/* Scrollable Body */}
+        <div style={{overflowY:'auto', flex:1, display:'flex', flexDirection:'column'}}>
+          {/* Info Section */}
+          <div style={{padding:'16px 24px', display:'flex', flexDirection:'column', gap:16}}>
+            {data.phone && (
+              <div>
+                <div style={{fontSize:16, color:'#fff'}}>{data.phone}</div>
+                <div style={{fontSize:13, color:'#9b7ec8'}}>Phone</div>
+              </div>
             )}
+            {data.username && (
+              <div>
+                <div style={{fontSize:16, color:'#fff'}}>@{data.username}</div>
+                <div style={{fontSize:13, color:'#9b7ec8'}}>Username</div>
+              </div>
+            )}
+            {bio && (
+              <div>
+                <div style={{fontSize:15, color:'#fff', lineHeight:1.4}}>{bio}</div>
+                <div style={{fontSize:13, color:'#9b7ec8'}}>Bio</div>
+              </div>
+            )}
+            {location && (
+              <div>
+                <div style={{fontSize:15, color:'#fff', lineHeight:1.4}}>{location}</div>
+                <div style={{fontSize:13, color:'#9b7ec8'}}>Location</div>
+              </div>
+            )}
+            {businessHours && (
+              <div>
+                <div style={{fontSize:15, color:'#4caf50', lineHeight:1.4}}>Business Hours Available</div>
+                <div style={{fontSize:13, color:'#9b7ec8'}}>Business</div>
+              </div>
+            )}
+            
+            {/* Settings (UI only) */}
+            <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginTop:8}}>
+              <span style={{fontSize:15}}>Notifications</span>
+              <div style={{width:36,height:20,background:'#7c3aed',borderRadius:10,position:'relative'}}>
+                <div style={{width:16,height:16,background:'#fff',borderRadius:'50%',position:'absolute',top:2,right:2}}/>
+              </div>
+            </div>
           </div>
-        </div>
+          
+          <div style={{height: 8, background: '#0d0618', width: '100%', flexShrink:0}} />
 
+          {/* Inline Media Tabs */}
+          <div style={{padding:'0 24px', borderBottom:'1px solid rgba(124,58,237,.2)', display:'flex', gap:24, overflowX:'auto', scrollbarWidth:'none'}}>
+            {['photos','videos','files','links','gifs'].map(t => (
+              <div key={t} onClick={() => setActiveMediaTab(activeMediaTab === t ? null : t)} style={{padding:'12px 0',color:activeMediaTab===t?'#fff':'#9b7ec8',fontWeight:activeMediaTab===t?600:400,borderBottom:activeMediaTab===t?'2px solid #7c3aed':'2px solid transparent',cursor:'pointer',textTransform:'capitalize',whiteSpace:'nowrap'}}>
+                {t}
+              </div>
+            ))}
+          </div>
+
+          {/* Media Content */}
+          {activeMediaTab && (
+             <div style={{padding:24, minHeight:200, display: (activeMediaTab==='photos'||activeMediaTab==='videos'||activeMediaTab==='gifs')?'grid':'flex', flexDirection:'column', gridTemplateColumns:'repeat(auto-fill, minmax(100px, 1fr))', gap:8}}>
+               {mediaLoading ? (
+                 <div style={{gridColumn:'1 / -1', color:'#9b7ec8', textAlign:'center', marginTop:20}}>Loading...</div>
+               ) : sharedMedia.length === 0 ? (
+                 <div style={{gridColumn:'1 / -1', color:'#9b7ec8', textAlign:'center', marginTop:20}}>No {activeMediaTab} found.</div>
+               ) : (
+                 sharedMedia.map(m => {
+                   if (activeMediaTab === 'photos' || activeMediaTab === 'videos') {
+                     if (activeMediaTab === 'photos' && m.isPhoto) {
+                       return (
+                         <div key={m.id} style={{aspectRatio:'1/1',background:'rgba(124,58,237,.1)',borderRadius:8,overflow:'hidden',position:'relative'}}>
+                           <ChatPhoto msg={m} chatId={data.chatId} authToken={token} onImageClick={()=>{}}/>
+                         </div>
+                       )
+                     }
+                     if (activeMediaTab === 'videos' && m.isVideo) {
+                       return (
+                         <div key={m.id} style={{aspectRatio:'1/1',background:'rgba(124,58,237,.1)',borderRadius:8,overflow:'hidden',display:'flex',alignItems:'center',justifyContent:'center',position:'relative'}}>
+                           <video style={{width:'100%',height:'100%',objectFit:'cover'}} src={`/api/chat/media/${data.chatId}/${m.id}?t=${token}`}/>
+                           <div style={{position:'absolute',fontSize:24,color:'white',pointerEvents:'none'}}>▶</div>
+                         </div>
+                       )
+                     }
+                   }
+                   if (activeMediaTab === 'files') {
+                     return (
+                       <div key={m.id} style={{background:'rgba(124,58,237,.1)',padding:12,borderRadius:8,display:'flex',alignItems:'center',gap:12}}>
+                         <div style={{fontSize:24}}>📄</div>
+                         <div style={{flex:1}}>
+                           <div style={{color:'#fff',fontSize:14,fontWeight:600}}>{m.fileName || 'Document'}</div>
+                           <div style={{color:'#9b7ec8',fontSize:12}}>{new Date(m.date*1000).toLocaleString()}</div>
+                         </div>
+                       </div>
+                     )
+                   }
+                   if (activeMediaTab === 'links') {
+                     const matches = m.text.match(/(https?:\/\/[^\s]+)/g) || []
+                     return matches.map((link, idx) => (
+                       <div key={`${m.id}-${idx}`} style={{background:'rgba(124,58,237,.1)',padding:12,borderRadius:8,display:'flex',alignItems:'center',gap:12}}>
+                         <div style={{fontSize:24}}>🔗</div>
+                         <div style={{flex:1,overflow:'hidden'}}>
+                           <div style={{color:'#fff',fontSize:14,fontWeight:600,textOverflow:'ellipsis',whiteSpace:'nowrap',overflow:'hidden'}}>{link}</div>
+                           <div style={{color:'#9b7ec8',fontSize:12,textOverflow:'ellipsis',whiteSpace:'nowrap',overflow:'hidden'}}>{m.text}</div>
+                         </div>
+                         <a href={link} target="_blank" rel="noreferrer" style={{color:'#7c3aed',textDecoration:'none',fontSize:14}}>Open</a>
+                       </div>
+                     ))
+                   }
+                   return null;
+                 })
+               )}
+             </div>
+          )}
+
+        </div>
       </div>
     </div>
   )
 }
+
 
 const URL_REGEX = /(https?:\/\/[^\s]+|www\.[^\s]+|[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(?:\/[^\s]*)?)/gi;
 
