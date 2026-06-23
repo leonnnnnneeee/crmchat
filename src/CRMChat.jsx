@@ -1374,8 +1374,23 @@ export default function CRMChat({ token, onAuthFailed }) {
     sendingRef.current = true
     setSending(true); setReplyTo(null)
     // Show message instantly (optimistic)
-    const tempMsg = {id: -Date.now(), text, fromMe:true, date:Math.floor(Date.now()/1000), pending:true}
+    const sentDate = Math.floor(Date.now()/1000)
+    const tempMsg = {id: -Date.now(), text, fromMe:true, date:sentDate, pending:true}
     setMsgs(p=>[...p, tempMsg])
+    
+    // Optimistic chat list update
+    let prevChatState = null;
+    setChats(prev => {
+      const idx = prev.findIndex(c => c.id === sel.id)
+      if (idx > -1) {
+        prevChatState = { date: prev[idx].date, lastMsg: prev[idx].lastMsg }
+        const newChats = [...prev]
+        newChats[idx] = { ...newChats[idx], date: sentDate, lastMsg: text }
+        return newChats
+      }
+      return prev
+    })
+
     try {
       if(selTopic) {
         await fetch('/api/chat/topics/'+sel.id+'/'+selTopic.id+'/send', {
@@ -1388,13 +1403,29 @@ export default function CRMChat({ token, onAuthFailed }) {
           body:JSON.stringify({chatId:sel.id, text})
         })
       }
+      
+      // Update message status to remove pending
+      setMsgs(p=>p.map(m=>m.id===tempMsg.id ? {...m, pending:false} : m))
+      
       setTimeout(async()=>{
         loadingRef.current = false
         await loadMessages(sel, selTopic?.id || null)
       }, 200)
     } catch(e) {
+      // Rollback
       setMsgs(p=>p.filter(m=>m.id!==tempMsg.id))
       setInput(text)
+      if (prevChatState) {
+        setChats(prev => {
+          const idx = prev.findIndex(c => c.id === sel.id)
+          if (idx > -1) {
+            const newChats = [...prev]
+            newChats[idx] = { ...newChats[idx], date: prevChatState.date, lastMsg: prevChatState.lastMsg }
+            return newChats
+          }
+          return prev
+        })
+      }
     }
     sendingRef.current = false
     setSending(false)
