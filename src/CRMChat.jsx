@@ -2373,6 +2373,7 @@ export default function CRMChat({ token, onAuthFailed }) {
 
                 return filteredMembers.map(m => (
                   <div key={m.id} style={{display:'flex',alignItems:'center',gap:12,padding:'10px 20px',cursor:'pointer'}}
+                    onClick={() => setProfilePreview({ id: m.id, name: m.name, username: m.username, chatId: sel.id })}
                     onMouseEnter={e=>e.currentTarget.style.background='#2d1155'}
                     onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
                     <Avatar name={m.name} chatId={m.id} username={m.username} size={42}/>
