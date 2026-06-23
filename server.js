@@ -637,7 +637,7 @@ app.post('/api/chat/send', requireAuth, async (req,res) => {
 
 // ── AI SUGGEST (Groq) ──
 app.post('/api/ai/suggest', requireAuth, async (req,res) => {
-  const { contactName, lastMessage, messages, stage, notes } = req.body
+  const { contactName, lastMessage, messages, stage, notes, instruction } = req.body
   const history = (messages||[]).slice(-20)
   const lastClientMsg = (lastMessage||'').trim()
   const leonLines = history.filter(m=>m.fromMe).map(m=>m.text).filter(Boolean)
@@ -738,6 +738,7 @@ Return EXACTLY this JSON structure. Do not return markdown blocks like \`\`\`jso
       '=== TASK ===',
       'Client just said: "' + lastClientMsg + '"',
       'Leon already said (do not repeat): ' + (leonSaid || '(nothing)'),
+      instruction ? '\n=== USER INSTRUCTION ===\nThe user specifically wants the AI to: "' + instruction + '". Follow this instruction strictly while maintaining the BD context.\n' : null,
       'Generate 2 to 3 diverse, short, Telegram-style reply options in JSON format.'
     ].filter(Boolean).join('\n')
 

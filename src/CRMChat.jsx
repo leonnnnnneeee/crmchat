@@ -291,7 +291,7 @@ function ContextMenu({x,y,msg,onDelete,onCopy,onReply,onClose,onDeleteAll,onSele
 
 
 // ── AI Suggest Panel ──
-function AISuggestPanel({text,suggestions,analysis,alternative,messages,loading,onUse,onUseAlt,onUseAll,onRegenerate,onClose,hasResearch}) {
+function AISuggestPanel({text,suggestions,analysis,alternative,messages,loading,onUse,onUseAlt,onUseAll,onRegenerate,onClose,hasResearch,aiInstruction,setAiInstruction}) {
   const [editIdx,setEditIdx] = useState(null)
   const [edited,setEdited]   = useState({})
 
@@ -324,6 +324,38 @@ function AISuggestPanel({text,suggestions,analysis,alternative,messages,loading,
           textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{analysis}</span>}
         <button onClick={onClose}
           style={{background:"none",border:"none",color:"#6b7280",cursor:"pointer",fontSize:14,flexShrink:0}}>✕</button>
+      </div>
+
+      {/* Command Bar */}
+      <div style={{padding:"8px 12px", borderBottom:"1px solid rgba(124,58,237,.15)", display:"flex", flexDirection:"column", gap:8}}>
+        <div style={{display:"flex", gap:8}}>
+          <input 
+            type="text" 
+            placeholder="Tell AI what you want to reply, e.g. offer commission, ask budget, mention CMC..."
+            value={aiInstruction||""}
+            onChange={(e)=>setAiInstruction&&setAiInstruction(e.target.value)}
+            onKeyDown={(e)=>{if(e.key==='Enter'&&!loading) onRegenerate()}}
+            style={{flex:1, background:"rgba(0,0,0,.2)", border:"1px solid rgba(124,58,237,.3)", borderRadius:6, padding:"6px 10px", color:"#f0e6ff", fontSize:13, outline:"none"}}
+          />
+          <button onClick={onRegenerate} disabled={loading} style={{background:"#7c3aed", color:"#fff", border:"none", borderRadius:6, padding:"0 12px", fontSize:13, fontWeight:600, cursor:loading?"not-allowed":"pointer", opacity:loading?0.5:1}}>
+            {loading ? "..." : "Generate"}
+          </button>
+        </div>
+        
+        {/* Quick Command Chips */}
+        <div style={{display:"flex", gap:6, overflowX:"auto", paddingBottom:2}} className="no-scrollbar">
+          {["Offer commission", "Mention CMC News", "Ask budget", "Ask timeline", "Softer", "More direct", "Don't sell yet", "Follow up"].map(chip => (
+            <button key={chip} 
+              onClick={()=>{
+                 const current = aiInstruction || "";
+                 const sep = current && !current.endsWith(" ") ? ", " : "";
+                 setAiInstruction && setAiInstruction(current + sep + chip);
+              }}
+              style={{background:"rgba(124,58,237,.15)", border:"1px solid rgba(124,58,237,.3)", borderRadius:12, padding:"3px 8px", color:"#c4a8e8", fontSize:11, whiteSpace:"nowrap", cursor:"pointer", flexShrink:0}}>
+              {chip}
+            </button>
+          ))}
+        </div>
       </div>
 
       {loading ? (
@@ -1135,6 +1167,7 @@ export default function CRMChat({ token, onAuthFailed }) {
   const [aiAnalysis,setAiAnalysis]=useState("")
   const [aiAlt,setAiAlt]=useState("")
   const [aiLoading,setAiLoading]=useState(false)
+  const [aiInstruction,setAiInstruction]=useState("")
   const msgsRef = useRef([])
   useEffect(()=>{ msgsRef.current = msgs },[msgs])
   const [showProfile,setShowProfile]=useState(()=>{
@@ -1704,7 +1737,8 @@ export default function CRMChat({ token, onAuthFailed }) {
           lastMessage: lastClientMsg,
           messages: allMsgs.slice(-20).map(m => ({text: m.text, fromMe: m.fromMe})),
           stage: stages[sel.id] || "Contacted",
-          notes: (notes[sel.id]||[]).map(n=>n.content).join(" | ")
+          notes: (notes[sel.id]||[]).map(n=>n.content).join(" | "),
+          instruction: aiInstruction
         })
       })
       const d = await r.json()
@@ -2216,7 +2250,7 @@ export default function CRMChat({ token, onAuthFailed }) {
     scheduleTime, setScheduleTime, sendScheduled, scheduledMsgs,
     globalSearchOpen, setGlobalSearchOpen, globalSearch, setGlobalSearch,
     chats, sending, setForceNormalView, loadingMore, readChats,
-    firstUnreadRef, renderMessageText, chatSearch, endRef,
+    renderMessageText, chatSearch, endRef, aiInstruction, setAiInstruction,
     AISuggestPanel, aiText, setAiText, aiSuggestions, setAiSuggestions, aiAnalysis, setAiAnalysis,
     aiAlt, setAiAlt, setAiLoading, tmplCats, setTmplCat,
     tmplCat, TEMPLATES, setMsgs, setSelectMode, lightbox, StageBadge, gifOpen, setGifOpen,

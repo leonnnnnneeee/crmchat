@@ -37,7 +37,7 @@ export default function MessageList(props) {
     scheduleTime, setScheduleTime, sendScheduled, scheduledMsgs,
     globalSearchOpen, setGlobalSearchOpen, globalSearch, setGlobalSearch,
     chats, sending, setForceNormalView, loadingMore, readChats,
-    firstUnreadRef, renderMessageText, chatSearch, endRef,
+    firstUnreadRef, renderMessageText, chatSearch, endRef, aiInstruction, setAiInstruction,
     AISuggestPanel, aiText, setAiText, aiSuggestions, setAiSuggestions, aiAnalysis, setAiAnalysis,
     aiAlt, setAiAlt, setAiLoading, tmplCats, setTmplCat,
     tmplCat, TEMPLATES, setMsgs, setSelectMode, lightbox, StageBadge, gifOpen, setGifOpen,
@@ -228,6 +228,8 @@ export default function MessageList(props) {
             onUseAlt={()=>{setInput(aiAlt);setAiText("");setAiSuggestions([]);setAiAnalysis("");setAiAlt("")}}
             onRegenerate={()=>getAI(false)}
             onClose={()=>{setAiText("");setAiSuggestions([]);setAiAnalysis("");setAiAlt("");setAiLoading(false)}}
+            aiInstruction={aiInstruction}
+            setAiInstruction={setAiInstruction}
           />
 
           {/* Reply bar */}
