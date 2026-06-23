@@ -674,7 +674,7 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
   }, [data?.chatId, token])
 
   useEffect(() => {
-    if (!activeMediaTab) return
+    if (!activeMediaTab || !data?.chatId) return
     let isMounted = true
     setMediaLoading(true)
     setSharedMedia([])
