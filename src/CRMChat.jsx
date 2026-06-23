@@ -1552,7 +1552,25 @@ export default function CRMChat({ token, onAuthFailed }) {
 
   const searchLower = removeDiacritics(search.trim());
 
-  const filtered = [...chats]
+  // 1. Log actual chat object structure
+  // 3. Verify which real fields exist
+  if (chats.length > 0 && !window.__loggedChatStructure) {
+    console.log("DEBUG [Chat Object Structure]:", Object.keys(chats[0]), chats[0]);
+    window.__loggedChatStructure = true;
+  }
+
+  // 4. Build a getSearchableText(chat) helper using the real fields
+  const getSearchableText = (c) => {
+    // Only use fields we KNOW exist in the object based on server.js
+    const parts = [
+      c.name,
+      c.username,
+      c.lastMsg
+    ];
+    return removeDiacritics(parts.filter(Boolean).join(" "));
+  };
+
+  const preSearchFiltered = [...chats]
     .sort((a,b) => {
       const ap = (a.isPinned || pinnedChats.has(a.id)) ? 1 : 0
       const bp = (b.isPinned || pinnedChats.has(b.id)) ? 1 : 0
@@ -1570,22 +1588,30 @@ export default function CRMChat({ token, onAuthFailed }) {
       if(folder === 'groups')   return !!(c.isGroup || c.isChannel)
       if(folder === 'personal') return c.isUser === true
       return true
-    })
-    .filter(c => {
-      if (!searchLower) return true;
-      return removeDiacritics(c.name).includes(searchLower) ||
-             removeDiacritics(c.username).includes(searchLower) ||
-             removeDiacritics(c.lastMsg).includes(searchLower);
-    })
+    });
+
+  const filtered = preSearchFiltered.filter(c => {
+    if (!searchLower) return true;
+    return getSearchableText(c).includes(searchLower);
+  });
 
   useEffect(() => {
-    // Debug Logging
+    // 2. Log exactly what was requested
+    console.log("DEBUG [Search Flow]:", {
+      searchQuery: search.trim(),
+      activeFilter: folder,
+      rawChatsLength: chats.length,
+      preSearchFilteredLength: preSearchFiltered.length,
+      matchedChatsLength: filtered.length,
+      first5SearchableText: filtered.slice(0, 5).map(c => getSearchableText(c))
+    });
+
     console.log("[ChatSync Debug]", { total: chats.length, filtered: filtered.length, matchedChats: filtered.length, folder, searchQuery: search.trim(), selId: sel?.id, msgsCount: msgs.length, loadMsgs, messagesLoaded })
 
     if (chats.length > 0 && !sel) {
       setSel(filtered.length > 0 ? filtered[0] : chats[0])
     }
-  }, [chats, filtered, sel])
+  }, [chats, filtered, sel, search, folder, preSearchFiltered.length])
 
   const cStage=sel?stages[sel.id]||"Contacted":"New"
   const cProb=sel?probs[sel.id]??50:50
@@ -2047,11 +2073,14 @@ export default function CRMChat({ token, onAuthFailed }) {
             </div>
           ))}
         </div>
-        <div style={{padding:"8px 12px",flexShrink:0,position:"relative",background:"#1a0533"}}>
-          <span style={{position:"absolute",left:22,top:"50%",transform:"translateY(-50%)",
-            color:"#6b4d94",fontSize:14,pointerEvents:"none"}}>🔍</span>
-          <input className="sinp" placeholder="Search"
+        <div style={{padding:"12px 24px",borderBottom:`1px solid ${TG.border}`}}>
+          <input type="text" placeholder="Search" style={{width:"100%",padding:"10px 16px",background:TG.elevated,border:"none",borderRadius:20,color:"#fff",fontSize:14,outline:"none",fontFamily:"inherit"}}
             value={search} onChange={e=>setSearch(e.target.value)}/>
+          {search.trim() && (
+            <div style={{fontSize: 11, color: TG.textMuted, marginTop: 8, textAlign: 'center'}}>
+              Searching only loaded chats...
+            </div>
+          )}
         </div>
         <div ref={leftColScrollRef} style={{flex:1,overflowY:"auto",minHeight:0}} onScroll={(e) => {
           const { scrollTop, scrollHeight, clientHeight } = e.target
@@ -2105,7 +2134,7 @@ export default function CRMChat({ token, onAuthFailed }) {
             <div style={{padding:32,textAlign:"center",color:TG.textMuted,fontSize:13}}>
               {search.trim() ? (
                 <>
-                  <div style={{marginBottom: 8}}>No matches for "{search.trim()}"</div>
+                  <div style={{marginBottom: 8}}>No matches for "{search.trim()}" in loaded chats</div>
                   <button onClick={() => setSearch('')} style={{background: 'none', border: '1px solid #3d1f6a', padding: '6px 12px', borderRadius: 16, color: '#a78bfa', cursor: 'pointer'}}>Clear Search</button>
                 </>
               ) : folder !== 'all' ? (
