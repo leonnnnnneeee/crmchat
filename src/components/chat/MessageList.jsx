@@ -224,6 +224,7 @@ export default function MessageList(props) {
           {/* AI Suggest panel */}
           <AISuggestPanel
             text={aiText} suggestions={aiSuggestions} analysis={aiAnalysis} alternative={aiAlt} loading={aiLoading}
+            aiError={aiError}
             onUse={(txt)=>{setInput(txt);setAiText("");setAiSuggestions([]);setAiAnalysis("");setAiAlt("")}}
             onUseAlt={()=>{setInput(aiAlt);setAiText("");setAiSuggestions([]);setAiAnalysis("");setAiAlt("")}}
             onRegenerate={()=>getAI(false)}

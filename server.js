@@ -736,10 +736,25 @@ Return EXACTLY this JSON structure.
       if (parsed.normalizedIntent) {
         log('AI Intent: ' + parsed.normalizedIntent)
       }
+
+      // Safety parsing for plain text or flat objects if the LLM didn't return an array
+      let safeSuggestions = parsed.suggestions;
+      if (!safeSuggestions || !Array.isArray(safeSuggestions)) {
+        // Collect string values from the flat object, excluding normalizedIntent
+        const stringValues = Object.entries(parsed)
+          .filter(([key, val]) => key !== 'normalizedIntent' && typeof val === 'string' && val.length > 3)
+          .map(([_, val], i) => ({ label: `Option ${i + 1}`, text: val }));
+        
+        if (stringValues.length > 0) {
+          safeSuggestions = stringValues;
+          log('AI Safety Parse: Extracted ' + safeSuggestions.length + ' flat string suggestions.');
+        }
+      }
+
       res.json({ 
         ok: true, 
-        suggestions: parsed.suggestions || (instruction ? null : ruleBased()),
-        error: (!parsed.suggestions && instruction) ? "Failed to generate custom reply. Please try rephrasing your command." : null,
+        suggestions: safeSuggestions || (instruction ? null : ruleBased()),
+        error: (!safeSuggestions && instruction) ? "Failed to generate custom reply. Please try rephrasing your command." : null,
         source: "fresh",
         normalizedIntent: parsed.normalizedIntent || null,
         finalPromptPreview: userPrompt
