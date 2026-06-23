@@ -1535,7 +1535,7 @@ export default function CRMChat({ token, onAuthFailed }) {
   async function deleteMsg(idx){
     const msg = msgs[idx]
     if(!msg) return
-    setMsgs(p=>p.map((m,i)=>i===idx?{...m,deleted:true,text:"This message was deleted"}:m))
+    setMsgs(p=>p.filter((m,i)=>i!==idx))
     if(msg.id && msg.id > 0 && msg.fromMe) {
       try {
         await fetch("/api/chat/delete",{
@@ -1549,8 +1549,8 @@ export default function CRMChat({ token, onAuthFailed }) {
   async function deleteAllMsgs(){
     if(!sel || !window.confirm("Delete all your messages in this chat?")) return
     const myMsgs = msgs.filter(m=>m.fromMe && m.id && m.id>0)
-    // Mark all as deleted in UI immediately
-    setMsgs(p=>p.map(m=>m.fromMe?{...m,deleted:true,text:"This message was deleted"}:m))
+    // Remove all my messages from UI immediately
+    setMsgs(p=>p.filter(m=>!m.fromMe))
     // Delete each on server
     for(const msg of myMsgs) {
       try {

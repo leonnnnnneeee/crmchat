@@ -149,7 +149,7 @@ export default function MessageList(props) {
                       : <div className="msg-avatar-gap"/>
                     )}
                     <div className="msg-content" onContextMenu={e=>handleCtx(e,msg,i)}>
-                      <div className={`bbl msg-bubble ${msg.fromMe?"out":"in"}${msg.deleted?" del":""}${groupClass}`}>
+                      <div className={`bbl msg-bubble ${msg.fromMe?"out":"in"}${groupClass}`}>
                         {!msg.fromMe && !sel?.isUser && !isSameGroup && (
                           <div style={{fontSize:12,fontWeight:600,color:"#7dd3fc",marginBottom:2,whiteSpace:"nowrap",cursor:'pointer'}} onClick={() => setProfilePreview({ id: getSenderId(msg)||sel.id, name: resolveSender(msg, sel)||sel.name, chatId: sel.id })}>{resolveSender(msg, sel)}</div>
                         )}
@@ -269,7 +269,7 @@ export default function MessageList(props) {
               <span style={{fontSize:13,color:"#c4a8e8",flex:1}}>{selectedMsgs.size} selected</span>
               <button onClick={()=>{
                 const toDelete = [...selectedMsgs].map(i=>msgs[i]).filter(m=>m&&m.fromMe&&m.id>0)
-                setMsgs(p=>p.map((m,i)=>selectedMsgs.has(i)?{...m,deleted:true,text:"This message was deleted"}:m))
+                setMsgs(p=>p.filter((m,i)=>!selectedMsgs.has(i)))
                 toDelete.forEach(m=>fetch("/api/chat/delete",{method:"POST",headers:{"Content-Type":"application/json","x-auth-token":token},body:JSON.stringify({chatId:sel.id,messageId:m.id})}))
                 setSelectMode(false);setSelectedMsgs(new Set())
               }} style={{padding:"7px 14px",background:"rgba(229,57,53,.15)",color:"#e53935",border:"1px solid rgba(229,57,53,.3)",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600}}>
