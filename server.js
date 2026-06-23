@@ -646,13 +646,30 @@ app.post('/api/ai/suggest', requireAuth, async (req,res) => {
 
   log('AI suggest — last: "' + lastClientMsg + '" stage: ' + stage)
 
-  // Rule-based fallback (when no Groq key or Groq fails)
+  // Rule-based fallback (when no Groq key or Groq fails and no instruction is present)
   function ruleBased() {
     return [
       { label: "Soft", text: "Got it. When would be a better time to reconnect?" },
       { label: "Value", text: "CMC News puts your content directly on CoinMarketCap for instant credibility. Want me to send the rate card?" },
       { label: "Question", text: "What's the main goal right now — awareness, credibility, or user growth?" }
     ];
+  }
+
+  // Local intent fallback for simple Vietnamese commands if AI fails
+  function localFallback(cmd) {
+    if (!cmd) return null;
+    const norm = cmd.toLowerCase().normalize('NFC');
+    
+    if (norm.includes("bao nhiêu dự án") || norm.includes("mấy dự án")) {
+      log('AI Suggest Fallback: Used local fallback for "bao nhiêu dự án" intent');
+      return [
+        { label: "Option 1", text: "How many projects are you currently working on?" },
+        { label: "Option 2", text: "Are you currently handling one project or multiple projects?" },
+        { label: "Option 3", text: "How many projects are you managing at the moment?" }
+      ];
+    }
+    
+    return null;
   }
 
   if (!GROQ_KEY) return res.json({ suggestions: ruleBased() })
@@ -762,17 +779,27 @@ Return EXACTLY this JSON structure.
     } catch(err) {
       log('Groq JSON parse error: ' + err.message + ' | Raw: ' + rawText)
       if (instruction) {
-        res.json({ ok: false, error: "Failed to generate custom reply. Please try rephrasing your command.", source: "fallback_error" })
+        const fallback = localFallback(instruction);
+        if (fallback) {
+          res.json({ ok: true, suggestions: fallback, source: "local_fallback", fallbackUsed: true, apiError: err.message });
+        } else {
+          res.json({ ok: false, error: "Failed to generate custom reply. Please try rephrasing your command.", source: "fallback_error", apiError: err.message });
+        }
       } else {
-        res.json({ ok: true, suggestions: ruleBased(), source: "fallback_error" })
+        res.json({ ok: true, suggestions: ruleBased(), source: "fallback_error", apiError: err.message });
       }
     }
   } catch(e) {
     log('groq suggest error: ' + (e.response?.data?.error?.message || e.message))
     if (instruction) {
-      res.json({ ok: false, error: "Failed to generate custom reply. Please try rephrasing your command.", source: "fallback_error" })
+      const fallback = localFallback(instruction);
+      if (fallback) {
+        res.json({ ok: true, suggestions: fallback, source: "local_fallback", fallbackUsed: true, apiError: e.message });
+      } else {
+        res.json({ ok: false, error: "Failed to generate custom reply. Please try rephrasing your command.", source: "fallback_error", apiError: e.message });
+      }
     } else {
-      res.json({ ok: true, suggestions: ruleBased(), source: "fallback_error" })
+      res.json({ ok: true, suggestions: ruleBased(), source: "fallback_error", apiError: e.message });
     }
   }
 })

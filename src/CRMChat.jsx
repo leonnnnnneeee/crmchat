@@ -1836,10 +1836,14 @@ export default function CRMChat({ token, onAuthFailed }) {
   async function getAI(){
     if(!sel) return
 
-    const cmd = (aiInstruction||"").trim();
+    let cmd = (aiInstruction||"").normalize('NFC').trim();
+    // Remove accidental mid-word punctuation like "đang. làm"
+    cmd = cmd.replace(/([a-zA-Z\p{L}])[.,]([a-zA-Z\p{L}])/gu, '$1 $2');
+    cmd = cmd.replace(/\s+/g, ' ');
     
     console.log("[AI Suggest Generate Click]", {
-      commandInput: aiInstruction,
+      rawCommand: aiInstruction,
+      normalizedCommand: cmd,
       isGenerating: aiLoading,
       isGenerateDisabled: aiLoading, // Assuming it's disabled if aiLoading is true
       messagesCount: msgsRef.current?.length || 0
@@ -1871,7 +1875,7 @@ export default function CRMChat({ token, onAuthFailed }) {
       messages: allMsgs.slice(-40).map(m => ({text: m.text, fromMe: m.fromMe})),
       stage: stages[sel.id] || "Contacted",
       notes: (notes[sel.id]||[]).map(n=>n.content).join(" | "),
-      instruction: aiInstruction,
+      instruction: cmd,
       chatId: sel.id,
       topicId: selTopic?.id || null
     };
