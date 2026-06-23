@@ -678,6 +678,15 @@ app.post('/api/ai/suggest', requireAuth, async (req,res) => {
       ];
     }
 
+    if (norm.includes("group chung") || norm.includes("hợp tác") || norm.includes("cơ hội")) {
+      log('AI Suggest Fallback: Used local fallback for "shared group collaboration" intent');
+      return [
+        { label: "Option 1", text: "Hey, I noticed we're in the same group, so I wanted to reach out and see if there's any potential collaboration." },
+        { label: "Option 2", text: "Hi, I saw we're both in the same community. Would be nice to connect and explore if there's any way to collaborate." },
+        { label: "Option 3", text: "Hey, I noticed we share the same group here. Are you open to a quick chat about possible collaboration?" }
+      ];
+    }
+
     if (norm.includes("link dự án") || norm.includes("cho xin link") || norm.includes("gửi link")) {
       log('AI Suggest Fallback: Used local fallback for "project link" intent');
       return [
@@ -725,6 +734,7 @@ CRITICAL RULES FOR INSTRUCTION:
 - If intent confidence is low, ask a clarification internally or generate a safe direct question based on the command, DO NOT fall back to generic sales pitches.
 
 VIETNAMESE INTENT EXAMPLES:
+- "tôi thấy bạn trong group chung và muốn nhắn tìm cơ hội hợp tác" -> intent is "shared group outreach collaboration".
 - "bạn đang làm bao nhiêu dự án" -> intent is "ask how many projects customer is working on".
 - "cho tôi link dự án của bạn" -> intent is "ask customer to share their project link".
 - "bạn có hỗ trợ dự án web3 nào khác không" -> intent is "ask if customer supports other Web3 projects".
@@ -773,15 +783,26 @@ Return EXACTLY this JSON structure.
     ].filter(Boolean).join('\n')
 
     const axios = require('axios')
-    const r = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
-      model: "llama-3.3-70b-versatile",
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: userPrompt }
-      ],
-      response_format: { type: "json_object" },
-      temperature: 0.7
-    }, { headers: { 'Authorization': 'Bearer ' + GROQ_KEY }})
+    
+    const makeGroqCall = async (modelName) => {
+      return axios.post('https://api.groq.com/openai/v1/chat/completions', {
+        model: modelName,
+        messages: [
+          { role: "system", content: SYSTEM_PROMPT },
+          { role: "user", content: userPrompt }
+        ],
+        response_format: { type: "json_object" },
+        temperature: 0.7
+      }, { headers: { 'Authorization': 'Bearer ' + GROQ_KEY }});
+    };
+
+    let r;
+    try {
+      r = await makeGroqCall("llama-3.3-70b-versatile");
+    } catch(e) {
+      log("Groq 70b failed (" + (e.response?.data?.error?.message || e.message) + "). Failing over to 8b-instant...");
+      r = await makeGroqCall("llama-3.1-8b-instant");
+    }
 
     let rawText = r.data.choices[0].message.content;
     // Strip markdown formatting if the LLM wraps the JSON in ```json ... ```
