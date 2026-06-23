@@ -697,7 +697,7 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
     fetch(`/api/chat/status/${data.id}`, { headers: {'x-auth-token': token} })
       .then(r => r.json())
       .then(d => { if(isMounted) setStatus(d.status) })
-      .catch(e => { if(isMounted) setStatus('User info not available') })
+      .catch(e => { if(isMounted) setStatus('') })
     return () => { isMounted = false }
   }, [data?.id, token])
 
@@ -1066,11 +1066,11 @@ export default function CRMChat({ token, onAuthFailed }) {
         if (isMounted && data.status) {
           setOnlineStatus(data.status)
         } else if (isMounted) {
-          setOnlineStatus('status unavailable')
+          setOnlineStatus('')
         }
       } catch (e) {
         console.error("status fetch error:", e)
-        if (isMounted) setOnlineStatus('status unavailable')
+        if (isMounted) setOnlineStatus('')
       }
     }
     

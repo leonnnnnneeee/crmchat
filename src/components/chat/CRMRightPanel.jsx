@@ -40,7 +40,7 @@ export default function CRMRightPanel(props) {
                 <div style={{fontSize:12,color:TG.textSec,marginTop:3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
                   {selTopic ? `Topic in ${sel.name}` : 
                    sel.isGroup || sel.isChannel ? `Telegram · ${sel.memberCount ? sel.memberCount + ' members' : 'Group'}` :
-                   sel.isUser ? `Telegram · Contact · ${onlineStatus === 'online' ? 'Online' : onlineStatus === 'unknown' ? 'Status unavailable' : onlineStatus || 'Last seen recently'}` : 'Telegram'}
+                   sel.isUser ? `Telegram · Contact · ${onlineStatus || 'last seen recently'}` : 'Telegram'}
                 </div>
                 <div style={{marginTop:10,flexShrink:0}}><StageBadge stage={cStage}/></div>
                 <div style={{display:"flex",justifyContent:"center",gap:8,marginTop:12}}>

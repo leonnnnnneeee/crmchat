@@ -66,13 +66,10 @@ export default function ChatHeader(props) {
                      {sel.memberCount ? `${sel.memberCount} members` : "View members"}
                    </span>
                  ) :
-                 sel?.isUser ? (
-                   onlineStatus === 'online' ? <span style={{color: TG.blueLight}}>● online</span> :
-                   onlineStatus === 'unknown' ? 'status unavailable' :
-                   onlineStatus ? onlineStatus :
-                   'last seen recently'
-                 ) :
-                 'Group'}
+                 sel.isUser ? (
+                   onlineStatus || 'last seen recently'
+                 ) : 'last seen recently'
+                 }
               </div>
             </div>
             <div style={{display:"flex",gap:8,marginLeft:16,flexShrink:0, alignItems: 'center'}}>
