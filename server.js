@@ -829,9 +829,21 @@ app.get('/api/chat/topics/:id/:topicId/messages', requireAuth, async (req, res) 
       minId: 0,
       hash: BigInt(0)
     }))
+    const users = result.users || []
     const msgs = (result.messages || [])
       .reverse()
-      .map(m => ({ id: m.id, text: m.message, fromMe: m.out, date: m.date }))
+      .map(m => {
+        const sId = m.fromId?.userId?.toString() || m.fromId?.peerId?.toString() || null
+        const u = users.find(x => x.id?.toString() === sId)
+        return { 
+          id: m.id, 
+          text: m.message, 
+          fromMe: m.out, 
+          date: m.date,
+          senderId: sId,
+          senderName: u ? (u.firstName + (u.lastName ? ' ' + u.lastName : '')).trim() : (u?.username || null)
+        }
+      })
       .filter(m => m.text)
     res.json(msgs)
   } catch(e) {

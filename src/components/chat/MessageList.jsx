@@ -1,4 +1,24 @@
-import React from 'react';
+import React, { useEffect } from 'react';
+
+const getSenderId = (m) => m.senderId || m.fromId || m.userId || m.peerId || m.author?.id || m.sender?.id || m.from?.id;
+
+const resolveSender = (msg, chat) => {
+  if (msg.senderName) return msg.senderName;
+  if (msg.fromName) return msg.fromName;
+  if (msg.sender?.firstName) return msg.sender.firstName + (msg.sender.lastName ? ' ' + msg.sender.lastName : '');
+  if (msg.sender?.username) return msg.sender.username;
+  if (msg.from?.firstName) return msg.from.firstName;
+  if (msg.author?.name) return msg.author.name;
+
+  const sId = getSenderId(msg);
+  if (sId) {
+    const cache = chat?.participants || chat?.members || chat?.users || [];
+    const found = cache.find(u => u.id == sId || u.userId == sId);
+    if (found) return found.name || found.firstName || found.username;
+  }
+  
+  return "Unknown user";
+};
 
 export default function MessageList(props) {
   const { 
@@ -23,6 +43,16 @@ export default function MessageList(props) {
     tmplCat, TEMPLATES, setMsgs, setSelectMode, lightbox, StageBadge, gifOpen, setGifOpen,
     gifQuery, setGifQuery, searchGifs, gifs, loadingRef, showScrollBtn
   } = props;
+
+  useEffect(() => {
+    const firstInMsg = msgs.find(m => !m.fromMe);
+    if (firstInMsg && !window.__loggedSenderInfo) {
+      const sId = getSenderId(firstInMsg);
+      const sName = resolveSender(firstInMsg, sel);
+      console.log("DEBUG [Sender Info]:", { messageId: firstInMsg.id, senderId: sId, resolvedSenderName: sName, rawMessage: firstInMsg });
+      window.__loggedSenderInfo = true;
+    }
+  }, [msgs, sel]);
 
   return (
     <>
@@ -115,13 +145,13 @@ export default function MessageList(props) {
                   </div>}
                     {!msg.fromMe && (
                       isLastInGroup
-                      ? <div className="msg-avatar" style={{cursor:'pointer'}} onClick={() => setProfilePreview({ id: msg.senderId||sel.id, name: msg.senderName||sel.name, chatId: sel.id })}><Avatar name={msg.senderName||sel.name} chatId={msg.senderId||sel.id} username={null} size={32}/></div>
+                      ? <div className="msg-avatar" style={{cursor:'pointer'}} onClick={() => setProfilePreview({ id: getSenderId(msg)||sel.id, name: resolveSender(msg, sel)||sel.name, chatId: sel.id })}><Avatar name={resolveSender(msg, sel)||sel.name} chatId={getSenderId(msg)||sel.id} username={null} size={32}/></div>
                       : <div className="msg-avatar-gap"/>
                     )}
                     <div className="msg-content" onContextMenu={e=>handleCtx(e,msg,i)}>
                       <div className={`bbl msg-bubble ${msg.fromMe?"out":"in"}${msg.deleted?" del":""}${groupClass}`}>
-                        {!msg.fromMe && !sel?.isUser && msg.senderName && !isSameGroup && (
-                          <div style={{fontSize:12,fontWeight:600,color:"#7dd3fc",marginBottom:2,whiteSpace:"nowrap",cursor:'pointer'}} onClick={() => setProfilePreview({ id: msg.senderId||sel.id, name: msg.senderName||sel.name, chatId: sel.id })}>{msg.senderName}</div>
+                        {!msg.fromMe && !sel?.isUser && !isSameGroup && (
+                          <div style={{fontSize:12,fontWeight:600,color:"#7dd3fc",marginBottom:2,whiteSpace:"nowrap",cursor:'pointer'}} onClick={() => setProfilePreview({ id: getSenderId(msg)||sel.id, name: resolveSender(msg, sel)||sel.name, chatId: sel.id })}>{resolveSender(msg, sel)}</div>
                         )}
                         {msg.replyTo&&(
                           <div onClick={()=>{/* scroll to reply */}} style={{background:"rgba(255,255,255,.05)",borderLeft:`3px solid #7dd3fc`,padding:"2px 8px",borderRadius:"0 4px 4px 0",marginBottom:6,fontSize:13,color:"rgba(255,255,255,.7)",maxWidth:"100%",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",cursor:"pointer",display:"flex",flexDirection:"column"}}>
