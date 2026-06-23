@@ -10,7 +10,18 @@ export default function Composer(props) {
     emojiOpen, setEmojiOpen, showTmpl, setShowTmpl, recording, recordSecs, fileInputRef, handleFileChange, mediaRecRef, recordTimerRef, setRecording, setRecordSecs,
     cStage, stages, setStages, tags, cProb, probs, setProbs, cDeal, deals, setDeals, leadSource,
     fups, setFups, notes, saveNote, addNote, setAddNote, noteInp, setNoteInp,
-    LinkPreview, ChatPhoto, Avatar, fmtTime
+    LinkPreview, ChatPhoto, Avatar, fmtTime,
+    STAGES, cFup, cNotes, msgInfoOpen, setMsgInfoOpen,
+    pollOpen, setPollOpen, pollQuestion, setPollQuestion,
+    pollOptions, setPollOptions, scheduleOpen, setScheduleOpen,
+    scheduleTime, setScheduleTime, sendScheduled, scheduledMsgs,
+    globalSearchOpen, setGlobalSearchOpen, globalSearch, setGlobalSearch,
+    chats, sending, setForceNormalView, loadingMore, readChats,
+    firstUnreadRef, renderMessageText, chatSearch, endRef,
+    AISuggestPanel, aiText, setAiText, aiAnalysis, setAiAnalysis,
+    aiAlt, setAiAlt, setAiLoading, tmplCats, setTmplCat,
+    tmplCat, TEMPLATES, setMsgs, setSelectMode, lightbox, StageBadge, gifOpen, setGifOpen,
+    gifQuery, setGifQuery, searchGifs, gifs, loadingRef, showScrollBtn
   } = props;
 
   return (
