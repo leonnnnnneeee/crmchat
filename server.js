@@ -714,8 +714,8 @@ CRITICAL RULES FOR INSTRUCTION:
 - If instruction asks to mention CMC, mention Coincu + CMC News softly.
 - If instruction says "don't sell" or similar, ONLY qualify with one soft question, do not pitch.
 - Preserve speaker direction: "bạn/your/anh/chị" means the CUSTOMER. "tôi/mình/I/me" means YOU (the sender).
-- If the instruction is in Vietnamese, understand the intent, but OUTPUT THE REPLY IN ENGLISH unless the conversation context is entirely in Vietnamese.
-- You are a translator and BD assistant. You MUST support ANY free-text instruction. Translate the core intent of the command into natural English Telegram replies.
+- You are a translator and BD assistant. You MUST support ANY free-text instruction in ANY language (English, Vietnamese, or mixed "Vietglish"). Translate the core intent of the command into natural English Telegram replies.
+- OUTPUT THE REPLY IN ENGLISH unless the conversation context is entirely in Vietnamese.
 - Even if the command is not in the examples, you MUST process it and generate 2-3 options.
 - DO NOT invent wrong context like podcasts, partnerships, rate cards, or budgets unless the instruction explicitly asks for it or it exists in chat.
 - DO NOT reply to the instruction itself. Create a message intended for the customer.
@@ -802,15 +802,29 @@ Return EXACTLY this JSON structure.
         log('AI Intent: ' + parsed.normalizedIntent)
       }
 
-      // Safety parsing for plain text or flat objects if the LLM didn't return an array under "suggestions"
-      let safeSuggestions = parsed.suggestions || parsed.options || parsed.replies;
+      // Safety parsing: find ANY array in the parsed JSON object
+      let safeSuggestions = null;
       
-      // If the LLM returned an array directly instead of an object
+      // If the LLM returned an array directly
       if (Array.isArray(parsed) && parsed.length > 0) {
         if (typeof parsed[0] === 'object' && parsed[0].text) {
           safeSuggestions = parsed;
         } else if (typeof parsed[0] === 'string') {
           safeSuggestions = parsed.map((val, i) => ({ label: `Option ${i + 1}`, text: val }));
+        }
+      } else if (typeof parsed === 'object' && parsed !== null) {
+        // Look for any array inside the object (e.g., suggestions, replyOptions, messages, output, etc.)
+        for (const key of Object.keys(parsed)) {
+          const val = parsed[key];
+          if (Array.isArray(val) && val.length > 0) {
+            if (typeof val[0] === 'object' && val[0].text) {
+              safeSuggestions = val;
+              break;
+            } else if (typeof val[0] === 'string') {
+              safeSuggestions = val.map((v, i) => ({ label: `Option ${i + 1}`, text: v }));
+              break;
+            }
+          }
         }
       }
 
