@@ -227,7 +227,7 @@ export default function MessageList(props) {
             onUse={(txt)=>{setInput(txt);setAiText("");setAiSuggestions([]);setAiAnalysis("");setAiAlt("")}}
             onUseAlt={()=>{setInput(aiAlt);setAiText("");setAiSuggestions([]);setAiAnalysis("");setAiAlt("")}}
             onRegenerate={()=>getAI(false)}
-            onClose={()=>{setAiText("");setAiSuggestions([]);setAiAnalysis("");setAiAlt("");setAiLoading(false)}}
+            onClose={()=>{setAiText("");setAiSuggestions([]);setAiAnalysis("");setAiAlt("");setAiLoading(false);setAiInstruction("")}}
             aiInstruction={aiInstruction}
             setAiInstruction={setAiInstruction}
           />

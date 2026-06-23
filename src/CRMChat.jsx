@@ -295,7 +295,7 @@ function AISuggestPanel({text,suggestions,analysis,alternative,messages,loading,
   const [editIdx,setEditIdx] = useState(null)
   const [edited,setEdited]   = useState({})
 
-  if(!text && !loading && (!suggestions || suggestions.length === 0) && !aiError) return null
+  if(!text && !loading && (!suggestions || suggestions.length === 0) && !aiError && !aiInstruction) return null
 
   // Support both new suggestions array and old text/alternative format
   let msgs = []
@@ -1837,6 +1837,14 @@ export default function CRMChat({ token, onAuthFailed }) {
     if(!sel) return
 
     const cmd = (aiInstruction||"").trim();
+    
+    console.log("[AI Suggest Generate Click]", {
+      commandInput: aiInstruction,
+      isGenerating: aiLoading,
+      isGenerateDisabled: aiLoading, // Assuming it's disabled if aiLoading is true
+      messagesCount: msgsRef.current?.length || 0
+    });
+
     if (cmd.length > 0 && cmd.length < 3) {
       setAiError("Please enter a clearer instruction.");
       console.log("[AI Suggest Validation]", { status: "failed", errorMessage: "Instruction too short", commandInput: aiInstruction });
@@ -1902,8 +1910,9 @@ export default function CRMChat({ token, onAuthFailed }) {
     } catch(e) { 
       console.error("AI:", e) 
       setAiError("Network error connecting to AI service.")
+    } finally {
+      setAiLoading(false)
     }
-    setAiLoading(false)
   }
 
   // Right-click context menu
