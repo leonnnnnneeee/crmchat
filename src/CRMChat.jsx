@@ -1179,6 +1179,7 @@ export default function CRMChat({ token, onAuthFailed }) {
   const [aiSuggestions,setAiSuggestions]=useState([])
   const [aiAnalysis, setAiAnalysis] = useState('')
   const [aiAlt, setAiAlt] = useState('')
+  const [aiLoading, setAiLoading] = useState(false)
   const [aiError, setAiError] = useState(null)
   const [aiInstruction,setAiInstruction]=useState("")
   const msgsRef = useRef([])
