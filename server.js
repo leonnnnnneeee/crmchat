@@ -849,6 +849,26 @@ app.post('/api/chat/edit', requireAuth, async (req,res) => {
 app.get('/api/health', (req,res) => res.json({ ok: true, tgConnected: _session.length > 10 }))
 app.get('/api/logs', requireAuth, (req,res) => res.json(logs))
 
+// ── MARK CHAT AS READ ──
+app.post('/api/chat/read', requireAuth, async (req,res) => {
+  if(!_session) return res.status(401).json({error:'Not connected'})
+  const { chatId, username, maxId } = req.body
+  if(!chatId) return res.status(400).json({error:'Missing chatId'})
+  try {
+    const client = await withTimeout(getClient(), 10000, 'getClient')
+    const entity = await withTimeout(resolveEntity(client, chatId, username), 8000, 'resolve')
+    
+    // Telegram markAsRead logic
+    // Using simple client.markAsRead which handles most cases
+    await withTimeout(client.markAsRead(entity, { maxId }), 5000, 'markAsRead')
+    log('Marked as read: ' + chatId)
+    res.json({ ok: true })
+  } catch(e) {
+    log('markRead error: ' + e.message)
+    res.status(500).json({error: e.message})
+  }
+})
+
 
 
 

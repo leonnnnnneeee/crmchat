@@ -1123,6 +1123,8 @@ export default function CRMChat({ token, onAuthFailed }) {
   const [showScrollBtn,setShowScrollBtn]=useState(false)
   const firstUnreadRef=useRef(null)
   const [readChats,setReadChats]=useState(new Set())
+  const [localReadState,setLocalReadState]=useState(() => JSON.parse(localStorage.getItem('crm_read_state') || '{}'))
+  useEffect(() => { localStorage.setItem('crm_read_state', JSON.stringify(localReadState)) }, [localReadState])
   const [chatFolders,setChatFolders]=useState({})   // {chatId: folderName}
   const [confirmLeave,setConfirmLeave]=useState(null) // chat to confirm leave
   const [previewChat,setPreviewChat]=useState(null)   // chat preview modal // chatIds marked as read this session
@@ -1265,11 +1267,20 @@ export default function CRMChat({ token, onAuthFailed }) {
         else if (!append) setHasMoreChats(true)
         
         setChats(prev => {
+          let updatedData = d
           if (append) {
              const newChats = d.filter(c1 => !prev.some(c2 => c2.id === c1.id))
-             return [...prev, ...newChats]
+             updatedData = [...prev, ...newChats]
           }
-          return d
+          
+          // Override unread with localReadState if applicable
+          return updatedData.map(c => {
+             const readTime = localReadState[c.id];
+             if (readTime && (!c.lastMessageAt || c.lastMessageAt * 1000 <= readTime)) {
+                return { ...c, unread: 0 }
+             }
+             return c;
+          })
         })
         
         setSel(prevSel => {
@@ -1306,6 +1317,39 @@ export default function CRMChat({ token, onAuthFailed }) {
     }
   }, [chats])
 
+  const markChatAsRead = useCallback((chatId, topicId = null, maxMsgId = 0) => {
+    const readKey = chatId + (topicId ? '_' + topicId : '')
+    setReadChats(prev => new Set(prev).add(readKey))
+    
+    const now = Date.now()
+    setLocalReadState(prev => ({...prev, [chatId]: now}))
+    
+    setChats(prev => prev.map(c => {
+      if (c.id === chatId) {
+        // Only zero out unread if it's the main chat or we are reading the forum (simplified)
+        return { ...c, unread: 0 }
+      }
+      return c
+    }))
+    
+    setSel(prev => {
+      if (prev && prev.id === chatId) {
+        return { ...prev, unread: 0 }
+      }
+      return prev
+    })
+    
+    if (topicId) {
+      setSelTopic(prev => prev && prev.id === topicId ? { ...prev, unread: 0 } : prev)
+    }
+
+    fetch('/api/chat/read', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'x-auth-token': token},
+      body: JSON.stringify({ chatId, maxId: maxMsgId })
+    }).catch(err => console.error("Auto read error", err))
+  }, [token])
+
   const handleScroll = (e) => {
     const { scrollTop, scrollHeight, clientHeight } = e.target
     isNearBottom.current = scrollHeight - scrollTop - clientHeight < 150
@@ -1321,12 +1365,15 @@ export default function CRMChat({ token, onAuthFailed }) {
     const unreadCount = selTopic ? (selTopic.unread || 0) : (sel?.unread || 0)
     const readKey = sel?.id + (selTopic ? '_' + selTopic.id : '')
     if (unreadCount > 0 && !readChats.has(readKey)) {
+      const maxMsgId = msgsRef.current.length > 0 ? Math.max(...msgsRef.current.map(m => m.id)) : 0;
       if (isNearBottom.current) {
-        setReadChats(prev => new Set(prev).add(readKey))
+        console.log(`[Unread Debug] Marking ${sel.id} as read. Old count: ${unreadCount}, maxId: ${maxMsgId}`);
+        markChatAsRead(sel.id, selTopic?.id, maxMsgId)
       } else if (firstUnreadRef.current) {
         const rect = firstUnreadRef.current.getBoundingClientRect()
         if (rect.top < window.innerHeight) {
-          setReadChats(prev => new Set(prev).add(readKey))
+          console.log(`[Unread Debug] Marking ${sel.id} as read (scrolled past). Old count: ${unreadCount}, maxId: ${maxMsgId}`);
+          markChatAsRead(sel.id, selTopic?.id, maxMsgId)
         }
       }
     }
@@ -1392,6 +1439,17 @@ export default function CRMChat({ token, onAuthFailed }) {
       const unreadCount = selTopic ? (selTopic.unread || 0) : (sel?.unread || 0)
       if(firstUnreadRef.current && unreadCount > 0) {
         firstUnreadRef.current.scrollIntoView({behavior:"auto", block:"center"})
+        
+        // Wait a tick for layout, then check if the unread divider is visible
+        setTimeout(() => {
+           if (firstUnreadRef.current) {
+             const rect = firstUnreadRef.current.getBoundingClientRect()
+             if (rect.top < window.innerHeight) {
+               const maxMsgId = msgsRef.current.length > 0 ? Math.max(...msgsRef.current.map(m => m.id)) : 0;
+               markChatAsRead(sel.id, selTopic?.id, maxMsgId)
+             }
+           }
+        }, 100)
       } else {
         const scrollKey = sel?.id + (selTopic ? '_' + selTopic.id : '')
         const savedScroll = scrollPositions.current[scrollKey]
@@ -1400,6 +1458,17 @@ export default function CRMChat({ token, onAuthFailed }) {
           if (container) container.scrollTop = savedScroll
         } else {
           endRef.current?.scrollIntoView({behavior:"auto"})
+        }
+        
+        // If unreadCount > 0 but we scrolled to the bottom (or no unread separator), mark as read
+        if (unreadCount > 0) {
+           setTimeout(() => {
+             const container = document.querySelector('.msgs')
+             if (!container || container.scrollHeight - container.scrollTop - container.clientHeight < 150) {
+               const maxMsgId = msgsRef.current.length > 0 ? Math.max(...msgsRef.current.map(m => m.id)) : 0;
+               markChatAsRead(sel.id, selTopic?.id, maxMsgId)
+             }
+           }, 100)
         }
       }
     } else if(!loadingMore && isNearBottom.current) {
@@ -1496,11 +1565,7 @@ export default function CRMChat({ token, onAuthFailed }) {
 
               // Mark as read immediately if window has focus and message is incoming
               if (!msg.fromMe && document.hasFocus()) {
-                fetch('/api/chat/read', {
-                  method: 'POST',
-                  headers: {'Content-Type': 'application/json', 'x-auth-token': token},
-                  body: JSON.stringify({ chatId: msg.chatId })
-                }).catch(err => console.error("Auto read error", err))
+                markChatAsRead(msg.chatId, msg.topicId, msg.id)
               }
             }
           }
