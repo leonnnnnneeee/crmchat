@@ -1449,6 +1449,14 @@ export default function CRMChat({ token, onAuthFailed }) {
     }
   }, [msgs]);
 
+  // Clear AI suggestions when command input changes
+  useEffect(() => {
+    if (aiSuggestions.length > 0 || aiText) {
+      setAiSuggestions([]);
+      setAiText('');
+    }
+  }, [aiInstruction]);
+
 
   useEffect(()=>{
     if(!msgs.length) return
@@ -1838,7 +1846,7 @@ export default function CRMChat({ token, onAuthFailed }) {
       topicId: selTopic?.id || null
     };
 
-    console.log("[AI Suggest Debug]", {
+    console.log("[AI Suggest Request Payload]", {
       selectedChatId: aiPayload.chatId,
       selectedTopicId: aiPayload.topicId,
       messagesSentCount: aiPayload.messages.length,
@@ -1853,6 +1861,14 @@ export default function CRMChat({ token, onAuthFailed }) {
         body: JSON.stringify(aiPayload)
       })
       const d = await r.json()
+      
+      console.log("[AI Suggest API Response]", {
+        responseSource: d.source || "unknown",
+        normalizedIntent: d.normalizedIntent,
+        finalPromptPreview: d.finalPromptPreview,
+        suggestionsCount: d.suggestions?.length || 0
+      });
+
       if (d.suggestions) setAiSuggestions(d.suggestions)
       else if (d.suggestion) setAiText(d.suggestion)
     } catch(e) { console.error("AI:", e) }
