@@ -1101,7 +1101,7 @@ export default function CRMChat({token}) {
       if (append && chatsRef.current.length > 0) {
         const lastChat = chatsRef.current[chatsRef.current.length - 1]
         if (lastChat && lastChat.date) {
-           url += "&offsetDate=" + lastChat.date
+           url += `&offsetDate=${lastChat.date}&offsetId=${lastChat.msgId || 0}&offsetPeer=${lastChat.id}`
         }
       }
       const r = await fetch(url,{headers:{"x-auth-token":token}})
@@ -1123,8 +1123,11 @@ export default function CRMChat({token}) {
            // If selected chat exists but not in new fetch, keep it active (pagination/search handling)
            return prevSel
         })
+      } else {
+        // Handle server error returning non-array
+        console.error("fetchChats invalid response:", d)
       }
-    } catch(e) { console.error("chats:",e) }
+    } catch(e) { console.error("fetchChats error:", e) }
     
     if (!append) setLoadChats(false)
     loadingChatsRef.current = false
@@ -1495,7 +1498,7 @@ export default function CRMChat({token}) {
     setNoteInp("");setAddNote(false)
   }
 
-  const filtered = chats
+  const filtered = [...chats]
     .sort((a,b) => {
       const ap = (a.isPinned || pinnedChats.has(a.id)) ? 1 : 0
       const bp = (b.isPinned || pinnedChats.has(b.id)) ? 1 : 0
@@ -2014,7 +2017,12 @@ export default function CRMChat({token}) {
                   <div style={{marginBottom: 8}}>No chats in this folder</div>
                   <button onClick={() => setFolder('all')} style={{background: 'none', border: '1px solid #3d1f6a', padding: '6px 12px', borderRadius: 16, color: '#a78bfa', cursor: 'pointer'}}>View All</button>
                 </>
-              ) : "No chats found"}
+              ) : (
+                <>
+                  <div style={{marginBottom: 8}}>No chats found</div>
+                  <button onClick={() => fetchChats()} style={{background: 'none', border: '1px solid #3d1f6a', padding: '6px 12px', borderRadius: 16, color: '#a78bfa', cursor: 'pointer'}}>Retry Loading</button>
+                </>
+              )}
             </div>
           )}
           {hasMoreChats && chats.length > 0 && !search && (

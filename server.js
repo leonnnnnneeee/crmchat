@@ -245,9 +245,15 @@ app.get('/api/chat/list', requireAuth, async (req,res) => {
     const client = await getClient()
     const limit = parseInt(req.query.limit) || 40
     const offsetDate = parseInt(req.query.offsetDate) || 0
+    const offsetId = parseInt(req.query.offsetId) || 0
+    const offsetPeerId = req.query.offsetPeer || null
+    
     const opts = { limit }
     if (offsetDate > 0) opts.offsetDate = offsetDate
-    const dialogs = await withTimeout(client.getDialogs(opts), 15000, 'getDialogs')
+    if (offsetId > 0) opts.offsetId = offsetId
+    if (offsetPeerId) opts.offsetPeer = await resolveEntity(client, offsetPeerId)
+    
+    const dialogs = await withTimeout(client.getDialogs(opts), 60000, 'getDialogs')
     const chats = dialogs.map(d => ({
       id: d.id.toString(),
       name: d.title || d.name || 'Unknown',
@@ -259,7 +265,7 @@ app.get('/api/chat/list', requireAuth, async (req,res) => {
       isChannel: d.isChannel || false,
       isForum: d.entity?.forum === true || false,
       isPinned: d.pinned || false,
-      isForum: !!d.entity?.forum,
+      msgId: d.message?.id || 0,
       username: d.entity?.username || null,
       accessHash: d.entity?.accessHash?.toString() || null,
       memberCount: d.entity?.participantsCount || d.entity?.membersCount || null,
