@@ -954,6 +954,30 @@ export default function CRMChat({ token, onAuthFailed }) {
   const [topicCtxMenu,setTopicCtxMenu]=useState(null)
   const [msgs,setMsgs]=useState([])
   const [search,setSearch]=useState(() => localStorage.getItem('crm_search') || '')
+  const [globalMatches, setGlobalMatches] = useState([])
+  const [isGlobalSearching, setIsGlobalSearching] = useState(false)
+
+  useEffect(() => {
+    setGlobalMatches([])
+    if (!search.trim()) return;
+
+    const delay = setTimeout(async () => {
+      setIsGlobalSearching(true)
+      try {
+        const url = `${URL_BASE}/api/telegram/search?q=${encodeURIComponent(search.trim())}`
+        const res = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } })
+        if (res.ok) {
+          const data = await res.json()
+          setGlobalMatches(data)
+        }
+      } catch (e) {
+        console.error('Global search error', e)
+      } finally {
+        setIsGlobalSearching(false)
+      }
+    }, 600)
+    return () => clearTimeout(delay)
+  }, [search, token])
 
   useEffect(() => {
     if (sel) localStorage.setItem('crm_sel', JSON.stringify(sel))
@@ -1590,10 +1614,17 @@ export default function CRMChat({ token, onAuthFailed }) {
       return true
     });
 
-  const filtered = preSearchFiltered.filter(c => {
+  const localFiltered = preSearchFiltered.filter(c => {
     if (!searchLower) return true;
     return getSearchableText(c).includes(searchLower);
   });
+
+  const filtered = useMemo(() => {
+    if (!searchLower) return localFiltered;
+    const localIds = new Set(localFiltered.map(c => c.id));
+    const uniqueGlobals = globalMatches.filter(g => !localIds.has(g.id));
+    return [...localFiltered, ...uniqueGlobals];
+  }, [localFiltered, globalMatches, searchLower]);
 
   useEffect(() => {
     // 2. Log exactly what was requested
@@ -2078,7 +2109,7 @@ export default function CRMChat({ token, onAuthFailed }) {
             value={search} onChange={e=>setSearch(e.target.value)}/>
           {search.trim() && (
             <div style={{fontSize: 11, color: TG.textMuted, marginTop: 8, textAlign: 'center'}}>
-              Searching only loaded chats...
+              {isGlobalSearching ? 'Searching all chats...' : null}
             </div>
           )}
         </div>
@@ -2130,11 +2161,11 @@ export default function CRMChat({ token, onAuthFailed }) {
               </div>
             )
           })}
-          {!loadChats&&filtered.length===0&&(
+          {!loadChats&&filtered.length===0&&!isGlobalSearching&&(
             <div style={{padding:32,textAlign:"center",color:TG.textMuted,fontSize:13}}>
               {search.trim() ? (
                 <>
-                  <div style={{marginBottom: 8}}>No matches for "{search.trim()}" in loaded chats</div>
+                  <div style={{marginBottom: 8}}>No matches for "{search.trim()}"</div>
                   <button onClick={() => setSearch('')} style={{background: 'none', border: '1px solid #3d1f6a', padding: '6px 12px', borderRadius: 16, color: '#a78bfa', cursor: 'pointer'}}>Clear Search</button>
                 </>
               ) : folder !== 'all' ? (

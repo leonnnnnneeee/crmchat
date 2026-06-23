@@ -293,6 +293,56 @@ app.get('/api/chat/list', requireAuth, async (req,res) => {
   }
 })
 
+// ── GLOBAL SEARCH ──
+app.get('/api/telegram/search', requireAuth, async (req, res) => {
+  if (!_session) return res.json([])
+  const q = req.query.q
+  if (!q) return res.json([])
+  try {
+    const client = await getClient()
+    const { Api } = require('telegram/tl')
+    const result = await client.invoke(new Api.contacts.Search({
+      q: q,
+      limit: 20
+    }))
+    
+    const mapped = []
+    
+    for (const d of (result.chats || [])) {
+      mapped.push({
+        id: d.id.toString(),
+        name: d.title || 'Unknown',
+        lastMsg: 'Found in global search',
+        unread: 0,
+        date: null,
+        isUser: false,
+        isGroup: !!d.participantsCount || d.className === 'Chat',
+        isChannel: d.broadcast || false,
+        username: d.username || null,
+        isForum: d.forum || false,
+      })
+    }
+    for (const d of (result.users || [])) {
+      mapped.push({
+        id: d.id.toString(),
+        name: d.firstName ? (d.firstName + (d.lastName ? ' ' + d.lastName : '')).trim() : (d.username || 'Unknown'),
+        lastMsg: 'Found in global search',
+        unread: 0,
+        date: null,
+        isUser: true,
+        isGroup: false,
+        isChannel: false,
+        username: d.username || null,
+      })
+    }
+    
+    res.json(mapped)
+  } catch(e) {
+    log('global search error: ' + e.message)
+    res.json([])
+  }
+})
+
 // ── MESSAGES ──
 app.get('/api/chat/messages/:id', requireAuth, async (req,res) => {
   if (!_session) return res.json([])
