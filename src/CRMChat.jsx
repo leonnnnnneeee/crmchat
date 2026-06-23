@@ -743,11 +743,11 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
             <div style={{width:40,height:40,borderRadius:'50%',background:'rgba(124,58,237,.2)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18}}>💬</div>
             <span style={{fontSize:12}}>Message</span>
           </div>
-          <div onClick={()=>alert('Mute feature coming soon')} style={{display:'flex', flexDirection:'column', alignItems:'center', cursor:'pointer', color:'#e0d4f5', gap:4}}>
+          <div style={{display:'flex', flexDirection:'column', alignItems:'center', cursor:'not-allowed', color:'#e0d4f5', gap:4, opacity: 0.4}}>
             <div style={{width:40,height:40,borderRadius:'50%',background:'rgba(124,58,237,.2)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18}}>🔕</div>
             <span style={{fontSize:12}}>Mute</span>
           </div>
-          <div onClick={()=>alert('Call feature coming soon')} style={{display:'flex', flexDirection:'column', alignItems:'center', cursor:'pointer', color:'#e0d4f5', gap:4}}>
+          <div style={{display:'flex', flexDirection:'column', alignItems:'center', cursor:'not-allowed', color:'#e0d4f5', gap:4, opacity: 0.4}}>
             <div style={{width:40,height:40,borderRadius:'50%',background:'rgba(124,58,237,.2)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18}}>📞</div>
             <span style={{fontSize:12}}>Call</span>
           </div>
@@ -758,10 +758,10 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
             </div>
             {showMore && (
               <div style={{position:'absolute',top:'100%',right:0,marginTop:8,background:'#2a1b54',borderRadius:8,padding:8,minWidth:160,boxShadow:'0 4px 12px rgba(0,0,0,.5)',zIndex:10}}>
-                <div onClick={()=>{navigator.clipboard.writeText(data.id);setShowMore(false);alert('ID Copied')}} style={{padding:'8px 12px',cursor:'pointer',fontSize:13,color:'#fff',borderRadius:4}} onMouseEnter={e=>e.currentTarget.style.background='rgba(124,58,237,.4)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>Copy User ID</div>
-                {data.username && <div onClick={()=>{navigator.clipboard.writeText('@'+data.username);setShowMore(false);alert('Username Copied')}} style={{padding:'8px 12px',cursor:'pointer',fontSize:13,color:'#fff',borderRadius:4}} onMouseEnter={e=>e.currentTarget.style.background='rgba(124,58,237,.4)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>Copy Username</div>}
-                <div onClick={()=>{alert('Add to contacts pending');setShowMore(false)}} style={{padding:'8px 12px',cursor:'pointer',fontSize:13,color:'#fff',borderRadius:4}} onMouseEnter={e=>e.currentTarget.style.background='rgba(124,58,237,.4)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>Add to Contacts</div>
-                <div onClick={()=>{alert('CRM Note feature pending');setShowMore(false)}} style={{padding:'8px 12px',cursor:'pointer',fontSize:13,color:'#fff',borderRadius:4}} onMouseEnter={e=>e.currentTarget.style.background='rgba(124,58,237,.4)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>Add CRM Note</div>
+                <div onClick={()=>{navigator.clipboard.writeText(data.id);setShowMore(false)}} style={{padding:'8px 12px',cursor:'pointer',fontSize:13,color:'#fff',borderRadius:4}} onMouseEnter={e=>e.currentTarget.style.background='rgba(124,58,237,.4)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>Copy User ID</div>
+                {data.username && <div onClick={()=>{navigator.clipboard.writeText('@'+data.username);setShowMore(false)}} style={{padding:'8px 12px',cursor:'pointer',fontSize:13,color:'#fff',borderRadius:4}} onMouseEnter={e=>e.currentTarget.style.background='rgba(124,58,237,.4)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>Copy Username</div>}
+                <div style={{padding:'8px 12px',cursor:'not-allowed',fontSize:13,color:'#fff',borderRadius:4,opacity:0.4}}>Add to Contacts</div>
+                <div style={{padding:'8px 12px',cursor:'not-allowed',fontSize:13,color:'#fff',borderRadius:4,opacity:0.4}}>Add CRM Note</div>
               </div>
             )}
           </div>
@@ -800,48 +800,68 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
           
           {/* Shared Media */}
           <div style={{width: 'calc(100% + 48px)', margin: '0 -24px', paddingBottom: 8}}>
-            <div onClick={()=>onOpenMedia('photos')} style={{display:'flex', alignItems:'center', padding:'12px 24px', cursor:'pointer'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.05)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-              <svg style={{width:24, height:24, fill:'none', stroke:'#9b7ec8', strokeWidth:1.5, strokeLinecap:'round', strokeLinejoin:'round', marginRight:24}} viewBox="0 0 24 24">
-                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
-              </svg>
-              <span style={{fontSize:15, color:'#e0d4f5'}}>{counts.loading ? 'Loading...' : `${counts.photos}${counts.hasMore ? '+' : ''} photo${counts.photos!==1?'s':''}`}</span>
-            </div>
-            
-            <div onClick={()=>onOpenMedia('videos')} style={{display:'flex', alignItems:'center', padding:'12px 24px', cursor:'pointer'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.05)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-              <svg style={{width:24, height:24, fill:'none', stroke:'#9b7ec8', strokeWidth:1.5, strokeLinecap:'round', strokeLinejoin:'round', marginRight:24}} viewBox="0 0 24 24">
-                <polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
-              </svg>
-              <span style={{fontSize:15, color:'#e0d4f5'}}>{counts.loading ? 'Loading...' : `${counts.videos}${counts.hasMore ? '+' : ''} video${counts.videos!==1?'s':''}`}</span>
-            </div>
+            {counts.loading ? (
+              <div style={{padding:'12px 24px', color:'#9b7ec8', fontSize: 13, textAlign: 'center'}}>Loading media...</div>
+            ) : (
+              <>
+                {counts.photos > 0 && (
+                  <div onClick={()=>onOpenMedia('photos')} style={{display:'flex', alignItems:'center', padding:'12px 24px', cursor:'pointer'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.05)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+                    <svg style={{width:24, height:24, fill:'none', stroke:'#9b7ec8', strokeWidth:1.5, strokeLinecap:'round', strokeLinejoin:'round', marginRight:24}} viewBox="0 0 24 24">
+                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
+                    </svg>
+                    <span style={{fontSize:15, color:'#e0d4f5'}}>{counts.photos}{counts.hasMore ? '+' : ''} photo{counts.photos!==1?'s':''}</span>
+                  </div>
+                )}
+                
+                {counts.videos > 0 && (
+                  <div onClick={()=>onOpenMedia('videos')} style={{display:'flex', alignItems:'center', padding:'12px 24px', cursor:'pointer'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.05)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+                    <svg style={{width:24, height:24, fill:'none', stroke:'#9b7ec8', strokeWidth:1.5, strokeLinecap:'round', strokeLinejoin:'round', marginRight:24}} viewBox="0 0 24 24">
+                      <polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+                    </svg>
+                    <span style={{fontSize:15, color:'#e0d4f5'}}>{counts.videos}{counts.hasMore ? '+' : ''} video{counts.videos!==1?'s':''}</span>
+                  </div>
+                )}
 
-            <div onClick={()=>onOpenMedia('files')} style={{display:'flex', alignItems:'center', padding:'12px 24px', cursor:'pointer'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.05)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-              <svg style={{width:24, height:24, fill:'none', stroke:'#9b7ec8', strokeWidth:1.5, strokeLinecap:'round', strokeLinejoin:'round', marginRight:24}} viewBox="0 0 24 24">
-                <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/>
-              </svg>
-              <span style={{fontSize:15, color:'#e0d4f5'}}>{counts.loading ? 'Loading...' : `${counts.files}${counts.hasMore ? '+' : ''} file${counts.files!==1?'s':''}`}</span>
-            </div>
+                {counts.files > 0 && (
+                  <div onClick={()=>onOpenMedia('files')} style={{display:'flex', alignItems:'center', padding:'12px 24px', cursor:'pointer'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.05)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+                    <svg style={{width:24, height:24, fill:'none', stroke:'#9b7ec8', strokeWidth:1.5, strokeLinecap:'round', strokeLinejoin:'round', marginRight:24}} viewBox="0 0 24 24">
+                      <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/>
+                    </svg>
+                    <span style={{fontSize:15, color:'#e0d4f5'}}>{counts.files}{counts.hasMore ? '+' : ''} file{counts.files!==1?'s':''}</span>
+                  </div>
+                )}
 
-            <div onClick={()=>onOpenMedia('links')} style={{display:'flex', alignItems:'center', padding:'12px 24px', cursor:'pointer'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.05)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-              <svg style={{width:24, height:24, fill:'none', stroke:'#9b7ec8', strokeWidth:1.5, strokeLinecap:'round', strokeLinejoin:'round', marginRight:24}} viewBox="0 0 24 24">
-                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
-              </svg>
-              <span style={{fontSize:15, color:'#e0d4f5'}}>{counts.loading ? 'Loading...' : `${counts.links}${counts.hasMore ? '+' : ''} shared link${counts.links!==1?'s':''}`}</span>
-            </div>
+                {counts.links > 0 && (
+                  <div onClick={()=>onOpenMedia('links')} style={{display:'flex', alignItems:'center', padding:'12px 24px', cursor:'pointer'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.05)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+                    <svg style={{width:24, height:24, fill:'none', stroke:'#9b7ec8', strokeWidth:1.5, strokeLinecap:'round', strokeLinejoin:'round', marginRight:24}} viewBox="0 0 24 24">
+                      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+                    </svg>
+                    <span style={{fontSize:15, color:'#e0d4f5'}}>{counts.links}{counts.hasMore ? '+' : ''} shared link{counts.links!==1?'s':''}</span>
+                  </div>
+                )}
 
-            <div onClick={()=>onOpenMedia('gifs')} style={{display:'flex', alignItems:'center', padding:'12px 24px', cursor:'pointer'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.05)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-              <svg style={{width:24, height:24, fill:'none', stroke:'#9b7ec8', strokeWidth:1.5, strokeLinecap:'round', strokeLinejoin:'round', marginRight:24}} viewBox="0 0 24 24">
-                <rect x="2" y="6" width="20" height="12" rx="2" ry="2"/><text x="12" y="15" fill="none" stroke="#9b7ec8" strokeWidth="1" textAnchor="middle" fontSize="9" fontWeight="bold">GIF</text>
-              </svg>
-              <span style={{fontSize:15, color:'#e0d4f5'}}>{counts.loading ? 'Loading...' : `${counts.gifs}${counts.hasMore ? '+' : ''} GIF${counts.gifs!==1?'s':''}`}</span>
-            </div>
+                {counts.gifs > 0 && (
+                  <div onClick={()=>onOpenMedia('gifs')} style={{display:'flex', alignItems:'center', padding:'12px 24px', cursor:'pointer'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.05)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+                    <svg style={{width:24, height:24, fill:'none', stroke:'#9b7ec8', strokeWidth:1.5, strokeLinecap:'round', strokeLinejoin:'round', marginRight:24}} viewBox="0 0 24 24">
+                      <rect x="2" y="6" width="20" height="12" rx="2" ry="2"/><text x="12" y="15" fill="none" stroke="#9b7ec8" strokeWidth="1" textAnchor="middle" fontSize="9" fontWeight="bold">GIF</text>
+                    </svg>
+                    <span style={{fontSize:15, color:'#e0d4f5'}}>{counts.gifs}{counts.hasMore ? '+' : ''} GIF{counts.gifs!==1?'s':''}</span>
+                  </div>
+                )}
 
-            {!isGroupProfile && (
-              <div onClick={()=>onOpenMedia('groups')} style={{display:'flex', alignItems:'center', padding:'12px 24px', cursor:'pointer'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.05)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-                <svg style={{width:24, height:24, fill:'none', stroke:'#9b7ec8', strokeWidth:1.5, strokeLinecap:'round', strokeLinejoin:'round', marginRight:24}} viewBox="0 0 24 24">
-                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-                </svg>
-                <span style={{fontSize:15, color:'#e0d4f5'}}>{data?.commonGroups === undefined ? 'Groups in common (Unavailable)' : `${counts.groups} Groups in common`}</span>
-              </div>
+                {!isGroupProfile && data?.commonGroups !== undefined && counts.groups > 0 && (
+                  <div onClick={()=>onOpenMedia('groups')} style={{display:'flex', alignItems:'center', padding:'12px 24px', cursor:'pointer'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.05)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+                    <svg style={{width:24, height:24, fill:'none', stroke:'#9b7ec8', strokeWidth:1.5, strokeLinecap:'round', strokeLinejoin:'round', marginRight:24}} viewBox="0 0 24 24">
+                      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                    </svg>
+                    <span style={{fontSize:15, color:'#e0d4f5'}}>{counts.groups} Groups in common</span>
+                  </div>
+                )}
+                
+                {counts.photos === 0 && counts.videos === 0 && counts.files === 0 && counts.links === 0 && counts.gifs === 0 && (!data?.commonGroups || counts.groups === 0) && (
+                  <div style={{padding:'12px 24px', color:'#9b7ec8', fontSize: 13, textAlign: 'center'}}>No shared media found.</div>
+                )}
+              </>
             )}
           </div>
         </div>
