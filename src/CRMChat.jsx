@@ -1885,6 +1885,15 @@ export default function CRMChat({ token, onAuthFailed }) {
   }, []);
 
 
+  const handleKeyDown = useCallback((e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      if (input.trim()) {
+        send();
+      }
+    }
+  }, [input, send]);
+
   const chatProps = {
     sel, selTopic, setSelTopic, TG, setProfilePreview, setShowMembers, onlineStatus, setChatSearchOpen, showProfile, setShowProfile,
     topics, loadingTopics, topicSearch, setTopicSearch, topicError, setTopicCtxMenu, topicCtxMenu, setSel,

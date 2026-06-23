@@ -65,9 +65,7 @@ export default function Composer(props) {
                 onChange={e=>{
                   setInput(e.target.value)
                 }}
-                onKeyDown={e=>{
-                  if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send()}
-                }}
+                onKeyDown={handleKeyDown}
                 style={{height:"auto"}}/>
               <button className={`ib g${showTmpl?" on":""}`} onClick={()=>setShowTmpl(v=>!v)} title="Templates" style={{fontSize:17}}>
                 📋
