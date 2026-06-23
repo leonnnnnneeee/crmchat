@@ -648,11 +648,6 @@ app.post('/api/ai/suggest', requireAuth, async (req,res) => {
 
   // Rule-based fallback (when no Groq key or Groq fails)
   function ruleBased() {
-    if (instruction) {
-      return [
-        { label: "Error", text: "Failed to generate custom reply. Please try rephrasing your command." }
-      ];
-    }
     return [
       { label: "Soft", text: "Got it. When would be a better time to reconnect?" },
       { label: "Value", text: "CMC News puts your content directly on CoinMarketCap for instant credibility. Want me to send the rate card?" },
@@ -743,18 +738,27 @@ Return EXACTLY this JSON structure.
       }
       res.json({ 
         ok: true, 
-        suggestions: parsed.suggestions || ruleBased(),
+        suggestions: parsed.suggestions || (instruction ? null : ruleBased()),
+        error: (!parsed.suggestions && instruction) ? "Failed to generate custom reply. Please try rephrasing your command." : null,
         source: "fresh",
         normalizedIntent: parsed.normalizedIntent || null,
         finalPromptPreview: userPrompt
       })
     } catch(err) {
       log('Groq JSON parse error: ' + err.message + ' | Raw: ' + rawText)
-      res.json({ ok: true, suggestions: ruleBased(), source: "fallback_error" })
+      if (instruction) {
+        res.json({ ok: false, error: "Failed to generate custom reply. Please try rephrasing your command.", source: "fallback_error" })
+      } else {
+        res.json({ ok: true, suggestions: ruleBased(), source: "fallback_error" })
+      }
     }
   } catch(e) {
     log('groq suggest error: ' + (e.response?.data?.error?.message || e.message))
-    res.json({ ok: true, suggestions: ruleBased(), source: "fallback_error" })
+    if (instruction) {
+      res.json({ ok: false, error: "Failed to generate custom reply. Please try rephrasing your command.", source: "fallback_error" })
+    } else {
+      res.json({ ok: true, suggestions: ruleBased(), source: "fallback_error" })
+    }
   }
 })
 

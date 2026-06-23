@@ -291,11 +291,11 @@ function ContextMenu({x,y,msg,onDelete,onCopy,onReply,onClose,onDeleteAll,onSele
 
 
 // ── AI Suggest Panel ──
-function AISuggestPanel({text,suggestions,analysis,alternative,messages,loading,onUse,onUseAlt,onUseAll,onRegenerate,onClose,hasResearch,aiInstruction,setAiInstruction}) {
+function AISuggestPanel({text,suggestions,analysis,alternative,messages,loading,onUse,onUseAlt,onUseAll,onRegenerate,onClose,hasResearch,aiInstruction,setAiInstruction,aiError}) {
   const [editIdx,setEditIdx] = useState(null)
   const [edited,setEdited]   = useState({})
 
-  if(!text && !loading && (!suggestions || suggestions.length === 0)) return null
+  if(!text && !loading && (!suggestions || suggestions.length === 0) && !aiError) return null
 
   // Support both new suggestions array and old text/alternative format
   let msgs = []
@@ -333,7 +333,7 @@ function AISuggestPanel({text,suggestions,analysis,alternative,messages,loading,
             type="text" 
             placeholder="Tell AI what you want to reply, e.g. offer commission, ask budget, mention CMC..."
             value={aiInstruction||""}
-            onChange={(e)=>setAiInstruction&&setAiInstruction(e.target.value)}
+            onChange={(e)=>{setAiInstruction&&setAiInstruction(e.target.value);}}
             onKeyDown={(e)=>{if(e.key==='Enter'&&!loading) onRegenerate()}}
             style={{flex:1, background:"rgba(0,0,0,.2)", border:"1px solid rgba(124,58,237,.3)", borderRadius:6, padding:"6px 10px", color:"#f0e6ff", fontSize:13, outline:"none"}}
           />
@@ -358,7 +358,18 @@ function AISuggestPanel({text,suggestions,analysis,alternative,messages,loading,
         </div>
       </div>
 
-      {loading ? (
+      {/* Error State */}
+      {aiError && (
+        <div style={{padding:"16px", background:"rgba(229,57,53,.1)", display:"flex", flexDirection:"column", alignItems:"center", gap:12}}>
+          <div style={{color:"#f87171", fontSize:13, fontWeight:600, textAlign:"center"}}>{aiError}</div>
+          <button onClick={onRegenerate} disabled={loading} style={{background:"#ef4444", color:"#fff", border:"none", borderRadius:6, padding:"6px 16px", fontSize:13, fontWeight:600, cursor:loading?"not-allowed":"pointer", opacity:loading?0.5:1}}>
+            {loading ? "Retrying..." : "Retry"}
+          </button>
+        </div>
+      )}
+
+      {/* Reply Options */}
+      {!aiError && (loading ? (
         <div style={{padding:"12px 14px",display:"flex",gap:8,alignItems:"center",color:"#9b7ec8",fontSize:13}}>
           <span style={{animation:"spin 1s linear infinite",display:"inline-block"}}>⏳</span>
           Generating{hasResearch?' & researching':''} options...
@@ -412,7 +423,7 @@ function AISuggestPanel({text,suggestions,analysis,alternative,messages,loading,
             </button>
           </div>
         </div>
-      )}
+      ))}
     </div>
   )
 }
@@ -1166,9 +1177,9 @@ export default function CRMChat({ token, onAuthFailed }) {
   const [tmplCat,setTmplCat]=useState("all")
   const [aiText,setAiText]=useState("")
   const [aiSuggestions,setAiSuggestions]=useState([])
-  const [aiAnalysis,setAiAnalysis]=useState("")
-  const [aiAlt,setAiAlt]=useState("")
-  const [aiLoading,setAiLoading]=useState(false)
+  const [aiAnalysis, setAiAnalysis] = useState('')
+  const [aiAlt, setAiAlt] = useState('')
+  const [aiError, setAiError] = useState(null)
   const [aiInstruction,setAiInstruction]=useState("")
   const msgsRef = useRef([])
   useEffect(()=>{ msgsRef.current = msgs },[msgs])
@@ -1398,7 +1409,7 @@ export default function CRMChat({ token, onAuthFailed }) {
     }
 
     if (chatOrTopicChanged) {
-      setMsgs([]); setAiText(""); setAiSuggestions([]); setAiAnalysis(""); setAiAlt(""); setReplyTo(null)
+      setMsgs([]); setAiText(""); setAiSuggestions([]); setAiAnalysis(""); setAiAlt(""); setReplyTo(null); setAiError(null)
       setMessagesLoaded(false)
       hasRestoredScroll.current = false
     } else {
@@ -1451,9 +1462,10 @@ export default function CRMChat({ token, onAuthFailed }) {
 
   // Clear AI suggestions when command input changes
   useEffect(() => {
-    if (aiSuggestions.length > 0 || aiText) {
+    if (aiSuggestions.length > 0 || aiText || aiError) {
       setAiSuggestions([]);
       setAiText('');
+      setAiError(null);
     }
   }, [aiInstruction]);
 
@@ -1783,7 +1795,7 @@ export default function CRMChat({ token, onAuthFailed }) {
   // AI Summarize
   async function getSummary() {
     if(!sel||!msgs.length) return
-    setAiLoading(true); setAiText(''); setAiSuggestions([]); setAiAlt(''); setAiAnalysis('')
+    setAiLoading(true); setAiText(''); setAiSuggestions([]); setAiAlt(''); setAiAnalysis(''); setAiError(null)
     try {
       const r = await fetch('/api/ai/summarize',{
         method:'POST',
@@ -1798,9 +1810,9 @@ export default function CRMChat({ token, onAuthFailed }) {
   }
 
   // AI Extract Lead Info
-  async function getExtract() {
-    if(!sel||!msgs.length) return
-    setAiLoading(true); setAiText(''); setAiSuggestions([]); setAiAlt(''); setAiAnalysis('')
+  const getExtract = async () => {
+    if(!sel) return
+    setAiLoading(true); setAiText(''); setAiSuggestions([]); setAiAlt(''); setAiAnalysis(''); setAiError(null)
     try {
       const r = await fetch('/api/ai/extract',{
         method:'POST',
@@ -1822,7 +1834,16 @@ export default function CRMChat({ token, onAuthFailed }) {
   // AI Suggest — always reads latest msgs from ref
   async function getAI(){
     if(!sel) return
-    setAiText(""); setAiSuggestions([]); setAiLoading(true)
+
+    const cmd = (aiInstruction||"").trim();
+    if (cmd.length > 0 && cmd.length < 3) {
+      setAiError("Please enter a clearer instruction.");
+      console.log("[AI Suggest Validation]", { status: "failed", errorMessage: "Instruction too short", commandInput: aiInstruction });
+      return;
+    }
+    console.log("[AI Suggest Validation]", { status: "passed", commandInput: aiInstruction });
+
+    setAiText(""); setAiSuggestions([]); setAiLoading(true); setAiError(null)
 
     // Use msgsRef to get absolute latest messages (not stale closure)
     const allMsgs = (msgsRef.current||[]).filter(m => m.text && !m.deleted && !m.pending)
@@ -1866,12 +1887,21 @@ export default function CRMChat({ token, onAuthFailed }) {
         responseSource: d.source || "unknown",
         normalizedIntent: d.normalizedIntent,
         finalPromptPreview: d.finalPromptPreview,
-        suggestionsCount: d.suggestions?.length || 0
+        suggestionsCount: d.suggestions?.length || 0,
+        errorMessage: d.error || null
       });
 
-      if (d.suggestions) setAiSuggestions(d.suggestions)
-      else if (d.suggestion) setAiText(d.suggestion)
-    } catch(e) { console.error("AI:", e) }
+      if (d.ok === false || d.error) {
+        setAiError(d.error || "Failed to generate custom reply. Please try rephrasing your command.");
+      } else if (d.suggestions) {
+        setAiSuggestions(d.suggestions)
+      } else if (d.suggestion) {
+        setAiText(d.suggestion)
+      }
+    } catch(e) { 
+      console.error("AI:", e) 
+      setAiError("Network error connecting to AI service.")
+    }
     setAiLoading(false)
   }
 
@@ -2385,7 +2415,7 @@ export default function CRMChat({ token, onAuthFailed }) {
     AISuggestPanel, aiText, setAiText, aiSuggestions, setAiSuggestions, aiAnalysis, setAiAnalysis,
     aiAlt, setAiAlt, setAiLoading, tmplCats, setTmplCat,
     tmplCat, TEMPLATES, setMsgs, setSelectMode, lightbox, StageBadge, gifOpen, setGifOpen,
-    gifQuery, setGifQuery, searchGifs, gifs, loadingRef, showScrollBtn
+    gifQuery, setGifQuery, searchGifs, gifs, loadingRef, showScrollBtn, aiError
   };
 
   return (<>
