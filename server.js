@@ -646,15 +646,6 @@ app.post('/api/ai/suggest', requireAuth, async (req,res) => {
 
   log('AI suggest — last: "' + lastClientMsg + '" stage: ' + stage)
 
-  // Rule-based fallback (when no Groq key or Groq fails and no instruction is present)
-  function ruleBased() {
-    return [
-      { label: "Soft", text: "Got it. When would be a better time to reconnect?" },
-      { label: "Value", text: "CMC News puts your content directly on CoinMarketCap for instant credibility. Want me to send the rate card?" },
-      { label: "Question", text: "What's the main goal right now — awareness, credibility, or user growth?" }
-    ];
-  }
-
   // Local intent fallback for simple Vietnamese commands if AI fails
   function localFallback(cmd) {
     if (!cmd) return null;
@@ -714,7 +705,7 @@ app.post('/api/ai/suggest', requireAuth, async (req,res) => {
     ];
   }
 
-  if (!GROQ_KEY) return res.json({ suggestions: ruleBased() })
+  if (!GROQ_KEY) return res.json({ ok: false, error: "AI API key not configured." })
 
   const SYSTEM_PROMPT = `You are Coincu's BD Sales Assistant.
 
@@ -830,8 +821,8 @@ Return EXACTLY this JSON structure.
 
       res.json({ 
         ok: true, 
-        suggestions: safeSuggestions || (instruction ? null : ruleBased()),
-        error: (!safeSuggestions && instruction) ? "Failed to generate custom reply. Please try rephrasing your command." : null,
+        suggestions: safeSuggestions || null,
+        error: !safeSuggestions ? (instruction ? "Failed to generate custom reply. Please try rephrasing your command." : "Failed to generate contextual replies. Please provide a custom instruction.") : null,
         source: "fresh",
         normalizedIntent: parsed.normalizedIntent || null,
         finalPromptPreview: userPrompt
@@ -846,7 +837,7 @@ Return EXACTLY this JSON structure.
           res.json({ ok: false, error: "Failed to generate custom reply. Please try rephrasing your command.", source: "fallback_error", apiError: err.message });
         }
       } else {
-        res.json({ ok: true, suggestions: ruleBased(), source: "fallback_error", apiError: err.message });
+        res.json({ ok: false, error: "AI failed to generate contextual replies. Please try adding a custom instruction.", source: "fallback_error", apiError: err.message });
       }
     }
   } catch(e) {
@@ -859,7 +850,7 @@ Return EXACTLY this JSON structure.
         res.json({ ok: false, error: "Failed to generate custom reply. Please try rephrasing your command.", source: "fallback_error", apiError: e.message });
       }
     } else {
-      res.json({ ok: true, suggestions: ruleBased(), source: "fallback_error", apiError: e.message });
+      res.json({ ok: false, error: "AI failed to generate contextual replies. Please try adding a custom instruction.", source: "fallback_error", apiError: e.message });
     }
   }
 })

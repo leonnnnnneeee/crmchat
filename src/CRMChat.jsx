@@ -1448,18 +1448,23 @@ export default function CRMChat({ token, onAuthFailed }) {
     loadMessages(sel, currentTopic?.id || null)
   },[sel, selTopic, token, forceNormalView])
 
-  // Clear AI suggestions if the last customer message changes
-  useEffect(() => {
-    const allMsgs = msgs.filter(m => m.text && !m.deleted && !m.pending);
-    const lastClientMsg = [...allMsgs].reverse().find(m => !m.fromMe)?.text || "";
-    if (lastClientMsg) {
-      // Only clear if we actually have AI suggestions to clear, to avoid unnecessary re-renders
-      if (aiSuggestions.length > 0 || aiText) {
-        setAiSuggestions([]);
-        setAiText('');
-      }
+  const activeAiRequest = useRef(null);
+
+  // Clear AI suggestions when chat or context changes
+  const clientMsgsCount = (msgs||[]).filter(m => !m.fromMe && !m.deleted).length;
+  const lastClientMsgText = clientMsgsCount > 0 ? (msgs||[]).filter(m => !m.fromMe && !m.deleted).pop().text : "";
+
+  useEffect(()=>{
+    setAiSuggestions([]); setAiText(""); setAiError(null); setAiInstruction("");
+    activeAiRequest.current = null;
+  },[sel?.id, selTopic?.id])
+
+  useEffect(()=>{
+    // Don't clear instruction, just clear the suggestions/error because the context changed
+    if (aiSuggestions.length > 0 || aiError || aiText) {
+      setAiSuggestions([]); setAiText(""); setAiError(null);
     }
-  }, [msgs]);
+  },[msgs?.length, lastClientMsgText])
 
   // Clear AI error when command input changes, but keep suggestions until Generate is clicked
   useEffect(() => {
@@ -1834,21 +1839,28 @@ export default function CRMChat({ token, onAuthFailed }) {
   async function getAI(){
     if(!sel) return
 
+    const allMsgs = (msgsRef.current||[]).filter(m => m.text && !m.deleted && !m.pending)
+    
+    if (!messagesLoaded || allMsgs.length === 0) {
+      setAiError("Context not loaded. Please wait for messages to load before generating.");
+      return;
+    }
+
     let cmd = (aiInstruction||"").normalize('NFC').trim();
     // Remove accidental mid-word punctuation like "đang. làm"
     cmd = cmd.replace(/([a-zA-Z\p{L}])[.,]([a-zA-Z\p{L}])/gu, '$1 $2');
     cmd = cmd.replace(/\s+/g, ' ');
     
     const attemptId = Math.random().toString(36).substring(2, 8);
+    activeAiRequest.current = attemptId;
 
     console.log("[AI Suggest Generate Click]", {
       generateAttemptId: attemptId,
       rawCommand: aiInstruction,
       normalizedCommand: cmd,
       isGenerating: aiLoading,
-      isGenerateDisabled: aiLoading, // Assuming it's disabled if aiLoading is true
       selectedChatId: sel.id,
-      messagesCount: msgsRef.current?.length || 0
+      messagesCount: allMsgs.length
     });
 
     if (cmd.length > 0 && cmd.length < 3) {
@@ -1860,16 +1872,8 @@ export default function CRMChat({ token, onAuthFailed }) {
 
     setAiText(""); setAiSuggestions([]); setAiLoading(true); setAiError(null)
 
-    // Use msgsRef to get absolute latest messages (not stale closure)
-    const allMsgs = (msgsRef.current||[]).filter(m => m.text && !m.deleted && !m.pending)
-    
-    if (allMsgs.length === 0 || !messagesLoaded) {
-      setAiText("Context not loaded. Please wait for messages to load.");
-      setAiLoading(false);
-      return;
-    }
-
-    const lastClientMsg = [...allMsgs].reverse().find(m => !m.fromMe)?.text || ""
+    const clientMsgs = allMsgs.filter(m => !m.fromMe)
+    const lastClientMsg = clientMsgs.length > 0 ? clientMsgs[clientMsgs.length-1].text : ""
 
     const aiPayload = {
       contactName: sel.name,
@@ -1898,6 +1902,12 @@ export default function CRMChat({ token, onAuthFailed }) {
       })
       const d = await r.json()
       
+      // Ignore if a newer request was started
+      if (activeAiRequest.current !== attemptId) {
+        console.log(`[AI Suggest API Response - ${attemptId}] Ignored (stale request)`);
+        return;
+      }
+
       console.log(`[AI Suggest API Response - ${attemptId}]`, {
         responseSource: d.source || "unknown",
         normalizedIntent: d.normalizedIntent,
