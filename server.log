@@ -55,3 +55,135 @@ Error: Not connected
 [33m[2026-06-23T10:19:14.794] [INFO] - [Handling reconnect!][0m
 [33m[2026-06-23T10:19:14.822] [INFO] - [Connection to 91.108.56.102:80/TCPFull complete!][0m
 [33m[2026-06-23T10:19:14.822] [INFO] - [Handling reconnect!][0m
+[33m[2026-06-23T10:20:45.354] [INFO] - [connection closed][0m
+[35m[2026-06-23T10:20:45.359] [WARN] - [Connection closed while receiving data][0m
+Error: Not connected
+    at ConnectionTCPFull.recv (/Users/linh/Downloads/crmchat_latest/node_modules/telegram/network/connection/Connection.js:71:15)
+    at async MTProtoSender._recvLoop (/Users/linh/Downloads/crmchat_latest/node_modules/telegram/network/MTProtoSender.js:373:24)
+[33m[2026-06-23T10:20:45.365] [INFO] - [connection closed][0m
+[35m[2026-06-23T10:20:45.365] [WARN] - [Connection closed while receiving data][0m
+Error: Not connected
+    at ConnectionTCPFull.recv (/Users/linh/Downloads/crmchat_latest/node_modules/telegram/network/connection/Connection.js:71:15)
+    at async MTProtoSender._recvLoop (/Users/linh/Downloads/crmchat_latest/node_modules/telegram/network/MTProtoSender.js:373:24)
+[33m[2026-06-23T10:20:46.364] [INFO] - [Started reconnecting][0m
+[35m[2026-06-23T10:20:46.364] [WARN] - [[Reconnect] Closing current connection...][0m
+[33m[2026-06-23T10:20:46.366] [INFO] - [Disconnecting from 91.108.56.102:80/TCPFull...][0m
+[33m[2026-06-23T10:20:46.369] [INFO] - [Connecting to 91.108.56.102:80/TCPFull...][0m
+[33m[2026-06-23T10:20:46.371] [INFO] - [Started reconnecting][0m
+[35m[2026-06-23T10:20:46.371] [WARN] - [[Reconnect] Closing current connection...][0m
+[33m[2026-06-23T10:20:46.373] [INFO] - [Disconnecting from 91.108.56.102:80/TCPFull...][0m
+[33m[2026-06-23T10:20:46.378] [INFO] - [Connecting to 91.108.56.102:80/TCPFull...][0m
+[33m[2026-06-23T10:20:46.429] [INFO] - [Connection to 91.108.56.102:80/TCPFull complete!][0m
+[33m[2026-06-23T10:20:46.430] [INFO] - [Handling reconnect!][0m
+[33m[2026-06-23T10:20:46.434] [INFO] - [Connection to 91.108.56.102:80/TCPFull complete!][0m
+[33m[2026-06-23T10:20:46.434] [INFO] - [Handling reconnect!][0m
+[33m[2026-06-23T10:22:16.775] [INFO] - [connection closed][0m
+[35m[2026-06-23T10:22:16.877] [WARN] - [Connection closed while receiving data][0m
+Error: Not connected
+    at ConnectionTCPFull.recv (/Users/linh/Downloads/crmchat_latest/node_modules/telegram/network/connection/Connection.js:71:15)
+    at async MTProtoSender._recvLoop (/Users/linh/Downloads/crmchat_latest/node_modules/telegram/network/MTProtoSender.js:373:24)
+[33m[2026-06-23T10:22:16.972] [INFO] - [connection closed][0m
+[35m[2026-06-23T10:22:16.972] [WARN] - [Connection closed while receiving data][0m
+Error: Not connected
+    at ConnectionTCPFull.recv (/Users/linh/Downloads/crmchat_latest/node_modules/telegram/network/connection/Connection.js:71:15)
+    at async MTProtoSender._recvLoop (/Users/linh/Downloads/crmchat_latest/node_modules/telegram/network/MTProtoSender.js:373:24)
+[33m[2026-06-23T10:22:17.966] [INFO] - [Started reconnecting][0m
+[35m[2026-06-23T10:22:17.966] [WARN] - [[Reconnect] Closing current connection...][0m
+[33m[2026-06-23T10:22:17.968] [INFO] - [Disconnecting from 91.108.56.102:80/TCPFull...][0m
+[33m[2026-06-23T10:22:17.984] [INFO] - [Connecting to 91.108.56.102:80/TCPFull...][0m
+[33m[2026-06-23T10:22:17.991] [INFO] - [Started reconnecting][0m
+[35m[2026-06-23T10:22:17.991] [WARN] - [[Reconnect] Closing current connection...][0m
+[33m[2026-06-23T10:22:17.991] [INFO] - [Disconnecting from 91.108.56.102:80/TCPFull...][0m
+[33m[2026-06-23T10:22:17.991] [INFO] - [Connecting to 91.108.56.102:80/TCPFull...][0m
+[33m[2026-06-23T10:22:18.052] [INFO] - [Connection to 91.108.56.102:80/TCPFull complete!][0m
+[33m[2026-06-23T10:22:18.053] [INFO] - [Handling reconnect!][0m
+[33m[2026-06-23T10:22:18.058] [INFO] - [Connection to 91.108.56.102:80/TCPFull complete!][0m
+[33m[2026-06-23T10:22:18.058] [INFO] - [Handling reconnect!][0m
+[33m[2026-06-23T10:23:48.224] [INFO] - [connection closed][0m
+[35m[2026-06-23T10:23:48.233] [WARN] - [Connection closed while receiving data][0m
+Error: Not connected
+    at ConnectionTCPFull.recv (/Users/linh/Downloads/crmchat_latest/node_modules/telegram/network/connection/Connection.js:71:15)
+    at async MTProtoSender._recvLoop (/Users/linh/Downloads/crmchat_latest/node_modules/telegram/network/MTProtoSender.js:373:24)
+[33m[2026-06-23T10:23:48.241] [INFO] - [connection closed][0m
+[35m[2026-06-23T10:23:48.241] [WARN] - [Connection closed while receiving data][0m
+Error: Not connected
+    at ConnectionTCPFull.recv (/Users/linh/Downloads/crmchat_latest/node_modules/telegram/network/connection/Connection.js:71:15)
+    at async MTProtoSender._recvLoop (/Users/linh/Downloads/crmchat_latest/node_modules/telegram/network/MTProtoSender.js:373:24)
+[33m[2026-06-23T10:23:49.242] [INFO] - [Started reconnecting][0m
+[35m[2026-06-23T10:23:49.243] [WARN] - [[Reconnect] Closing current connection...][0m
+[33m[2026-06-23T10:23:49.248] [INFO] - [Disconnecting from 91.108.56.102:80/TCPFull...][0m
+[33m[2026-06-23T10:23:49.292] [INFO] - [Connecting to 91.108.56.102:80/TCPFull...][0m
+[33m[2026-06-23T10:23:49.296] [INFO] - [Started reconnecting][0m
+[35m[2026-06-23T10:23:49.297] [WARN] - [[Reconnect] Closing current connection...][0m
+[33m[2026-06-23T10:23:49.297] [INFO] - [Disconnecting from 91.108.56.102:80/TCPFull...][0m
+[33m[2026-06-23T10:23:49.298] [INFO] - [Connecting to 91.108.56.102:80/TCPFull...][0m
+[33m[2026-06-23T10:23:49.351] [INFO] - [Connection to 91.108.56.102:80/TCPFull complete!][0m
+[33m[2026-06-23T10:23:49.352] [INFO] - [Handling reconnect!][0m
+[33m[2026-06-23T10:23:49.355] [INFO] - [Connection to 91.108.56.102:80/TCPFull complete!][0m
+[33m[2026-06-23T10:23:49.355] [INFO] - [Handling reconnect!][0m
+[33m[2026-06-23T10:25:19.422] [INFO] - [connection closed][0m
+[35m[2026-06-23T10:25:19.426] [WARN] - [Connection closed while receiving data][0m
+Error: Not connected
+    at ConnectionTCPFull.recv (/Users/linh/Downloads/crmchat_latest/node_modules/telegram/network/connection/Connection.js:71:15)
+    at async MTProtoSender._recvLoop (/Users/linh/Downloads/crmchat_latest/node_modules/telegram/network/MTProtoSender.js:373:24)
+[33m[2026-06-23T10:25:19.433] [INFO] - [connection closed][0m
+[35m[2026-06-23T10:25:19.433] [WARN] - [Connection closed while receiving data][0m
+Error: Not connected
+    at ConnectionTCPFull.recv (/Users/linh/Downloads/crmchat_latest/node_modules/telegram/network/connection/Connection.js:71:15)
+    at async MTProtoSender._recvLoop (/Users/linh/Downloads/crmchat_latest/node_modules/telegram/network/MTProtoSender.js:373:24)
+[33m[2026-06-23T10:25:20.436] [INFO] - [Started reconnecting][0m
+[35m[2026-06-23T10:25:20.443] [WARN] - [[Reconnect] Closing current connection...][0m
+[33m[2026-06-23T10:25:20.444] [INFO] - [Disconnecting from 91.108.56.102:80/TCPFull...][0m
+[33m[2026-06-23T10:25:20.556] [INFO] - [Connecting to 91.108.56.102:80/TCPFull...][0m
+[33m[2026-06-23T10:25:20.569] [INFO] - [Started reconnecting][0m
+[35m[2026-06-23T10:25:20.569] [WARN] - [[Reconnect] Closing current connection...][0m
+[33m[2026-06-23T10:25:20.569] [INFO] - [Disconnecting from 91.108.56.102:80/TCPFull...][0m
+[33m[2026-06-23T10:25:20.570] [INFO] - [Connecting to 91.108.56.102:80/TCPFull...][0m
+[33m[2026-06-23T10:25:20.624] [INFO] - [Connection to 91.108.56.102:80/TCPFull complete!][0m
+[33m[2026-06-23T10:25:20.625] [INFO] - [Handling reconnect!][0m
+[33m[2026-06-23T10:25:20.631] [INFO] - [Connection to 91.108.56.102:80/TCPFull complete!][0m
+[33m[2026-06-23T10:25:20.633] [INFO] - [Handling reconnect!][0m
+[33m[2026-06-23T10:26:50.684] [INFO] - [connection closed][0m
+[35m[2026-06-23T10:26:50.685] [WARN] - [Connection closed while receiving data][0m
+Error: Not connected
+    at ConnectionTCPFull.recv (/Users/linh/Downloads/crmchat_latest/node_modules/telegram/network/connection/Connection.js:71:15)
+    at async MTProtoSender._recvLoop (/Users/linh/Downloads/crmchat_latest/node_modules/telegram/network/MTProtoSender.js:373:24)
+[33m[2026-06-23T10:26:50.688] [INFO] - [connection closed][0m
+[35m[2026-06-23T10:26:50.688] [WARN] - [Connection closed while receiving data][0m
+Error: Not connected
+    at ConnectionTCPFull.recv (/Users/linh/Downloads/crmchat_latest/node_modules/telegram/network/connection/Connection.js:71:15)
+    at async MTProtoSender._recvLoop (/Users/linh/Downloads/crmchat_latest/node_modules/telegram/network/MTProtoSender.js:373:24)
+[33m[2026-06-23T10:26:51.691] [INFO] - [Started reconnecting][0m
+[35m[2026-06-23T10:26:51.692] [WARN] - [[Reconnect] Closing current connection...][0m
+[33m[2026-06-23T10:26:51.696] [INFO] - [Disconnecting from 91.108.56.102:80/TCPFull...][0m
+[33m[2026-06-23T10:26:51.740] [INFO] - [Connecting to 91.108.56.102:80/TCPFull...][0m
+[33m[2026-06-23T10:26:51.743] [INFO] - [Started reconnecting][0m
+[35m[2026-06-23T10:26:51.744] [WARN] - [[Reconnect] Closing current connection...][0m
+[33m[2026-06-23T10:26:51.744] [INFO] - [Disconnecting from 91.108.56.102:80/TCPFull...][0m
+[33m[2026-06-23T10:26:51.744] [INFO] - [Connecting to 91.108.56.102:80/TCPFull...][0m
+[33m[2026-06-23T10:26:51.797] [INFO] - [Connection to 91.108.56.102:80/TCPFull complete!][0m
+[33m[2026-06-23T10:26:51.799] [INFO] - [Handling reconnect!][0m
+[33m[2026-06-23T10:26:51.803] [INFO] - [Connection to 91.108.56.102:80/TCPFull complete!][0m
+[33m[2026-06-23T10:26:51.803] [INFO] - [Handling reconnect!][0m
+[33m[2026-06-23T10:28:21.886] [INFO] - [connection closed][0m
+[35m[2026-06-23T10:28:21.910] [WARN] - [Connection closed while receiving data][0m
+Error: Not connected
+    at ConnectionTCPFull.recv (/Users/linh/Downloads/crmchat_latest/node_modules/telegram/network/connection/Connection.js:71:15)
+    at async MTProtoSender._recvLoop (/Users/linh/Downloads/crmchat_latest/node_modules/telegram/network/MTProtoSender.js:373:24)
+[33m[2026-06-23T10:28:21.915] [INFO] - [connection closed][0m
+[35m[2026-06-23T10:28:21.916] [WARN] - [Connection closed while receiving data][0m
+Error: Not connected
+    at ConnectionTCPFull.recv (/Users/linh/Downloads/crmchat_latest/node_modules/telegram/network/connection/Connection.js:71:15)
+    at async MTProtoSender._recvLoop (/Users/linh/Downloads/crmchat_latest/node_modules/telegram/network/MTProtoSender.js:373:24)
+[33m[2026-06-23T10:28:22.916] [INFO] - [Started reconnecting][0m
+[35m[2026-06-23T10:28:22.917] [WARN] - [[Reconnect] Closing current connection...][0m
+[33m[2026-06-23T10:28:22.920] [INFO] - [Disconnecting from 91.108.56.102:80/TCPFull...][0m
+[33m[2026-06-23T10:28:22.930] [INFO] - [Connecting to 91.108.56.102:80/TCPFull...][0m
+[33m[2026-06-23T10:28:22.933] [INFO] - [Started reconnecting][0m
+[35m[2026-06-23T10:28:22.933] [WARN] - [[Reconnect] Closing current connection...][0m
+[33m[2026-06-23T10:28:22.933] [INFO] - [Disconnecting from 91.108.56.102:80/TCPFull...][0m
+[33m[2026-06-23T10:28:22.934] [INFO] - [Connecting to 91.108.56.102:80/TCPFull...][0m
+[33m[2026-06-23T10:28:22.981] [INFO] - [Connection to 91.108.56.102:80/TCPFull complete!][0m
+[33m[2026-06-23T10:28:22.982] [INFO] - [Handling reconnect!][0m
+[33m[2026-06-23T10:28:22.989] [INFO] - [Connection to 91.108.56.102:80/TCPFull complete!][0m
+[33m[2026-06-23T10:28:22.989] [INFO] - [Handling reconnect!][0m

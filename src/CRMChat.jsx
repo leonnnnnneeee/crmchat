@@ -517,6 +517,11 @@ const isDocMsg = (m) => !!(m.isDoc || m.document || m.file || m.media?.type === 
 const isGifMsg = (m) => !!(m.isGif || m.gif || m.media?.type === 'gif' || m.attachments?.some?.(a => a.type === 'gif'));
 const isLinkMsg = (m) => !!(m.url || m.links?.length > 0 || m.entities?.some?.(e => e.type === 'url' || e.className === 'MessageEntityTextUrl' || e.className === 'MessageEntityUrl') || (m.text && /(https?:\/\/[^\s]+)/.test(m.text)));
 
+const removeDiacritics = (str) => {
+  if (!str) return "";
+  return str.toString().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+};
+
 function SharedMediaModal({ initialTab, msgs, data, onClose, token, setLightbox, jumpToMessage, chats }) {
   const [activeTab, setActiveTab] = useState(initialTab || 'photos');
 
@@ -1545,6 +1550,8 @@ export default function CRMChat({ token, onAuthFailed }) {
     setNoteInp("");setAddNote(false)
   }
 
+  const searchLower = removeDiacritics(search.trim());
+
   const filtered = [...chats]
     .sort((a,b) => {
       const ap = (a.isPinned || pinnedChats.has(a.id)) ? 1 : 0
@@ -1564,11 +1571,16 @@ export default function CRMChat({ token, onAuthFailed }) {
       if(folder === 'personal') return c.isUser === true
       return true
     })
-    .filter(c => !search.trim() || c.name?.toLowerCase().includes(search.trim().toLowerCase()))
+    .filter(c => {
+      if (!searchLower) return true;
+      return removeDiacritics(c.name).includes(searchLower) ||
+             removeDiacritics(c.username).includes(searchLower) ||
+             removeDiacritics(c.lastMsg).includes(searchLower);
+    })
 
   useEffect(() => {
     // Debug Logging
-    console.log("[ChatSync Debug]", { total: chats.length, filtered: filtered.length, folder, search, selId: sel?.id, msgsCount: msgs.length, loadMsgs, messagesLoaded })
+    console.log("[ChatSync Debug]", { total: chats.length, filtered: filtered.length, matchedChats: filtered.length, folder, searchQuery: search.trim(), selId: sel?.id, msgsCount: msgs.length, loadMsgs, messagesLoaded })
 
     if (chats.length > 0 && !sel) {
       setSel(filtered.length > 0 ? filtered[0] : chats[0])
