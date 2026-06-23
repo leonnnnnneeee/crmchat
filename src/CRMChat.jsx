@@ -444,7 +444,7 @@ function ChatPhoto({msg, chatId, authToken, onImageClick}) {
     const fetchMedia = async () => {
       setStatus('loading')
       try {
-        const url = `/api/chat/media/${chatId}/${msgId}?t=${authToken}&r=${retryCnt}`
+        const url = `/api/chat/media/${chatId}/${msgId}?token=${authToken}&r=${retryCnt}`
         console.log(`[ChatPhoto] Fetching media for msgId=${msgId}, url=${url}`)
         const res = await fetch(url)
         
