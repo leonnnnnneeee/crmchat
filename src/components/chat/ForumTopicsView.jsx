@@ -7,7 +7,7 @@ export default function ForumTopicsView(props) {
     loadMsgs, messagesLoaded, msgs, hasMore, loadMessages, handleScroll, handleCtx, selectMode, setSelectedMsgs, selectedMsgs,
     fmtDateSep, isPhotoMsg, isVideoMsg, isDocMsg, setLightbox, token, reactions, setReactions, editedMsgs, fmtMsgTime,
     editingMsg, setEditingMsg, input, setInput, replyTo, setReplyTo, forwardMsg, setForwardMsg, inputRef, handleKeyDown, send, aiLoading, getAI,
-    emojiOpen, setEmojiOpen, showTmpl, setShowTmpl, recording, recordSecs, fileInput, stopRecording, startRecording, mediaRecRef, recordTimerRef, setRecording, setRecordSecs,
+    emojiOpen, setEmojiOpen, showTmpl, setShowTmpl, recording, recordSecs, fileInputRef, handleFileChange, stopRecording, startRecording, mediaRecRef, recordTimerRef, setRecording, setRecordSecs,
     cStage, stages, setStages, tags, cProb, probs, setProbs, cDeal, deals, setDeals, leadSource,
     fups, setFups, notes, saveNote, addNote, setAddNote, noteInp, setNoteInp,
     LinkPreview, ChatPhoto, Avatar, fmtTime

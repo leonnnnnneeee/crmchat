@@ -963,6 +963,7 @@ export default function CRMChat({ token, onAuthFailed }) {
   }, [search])
   const [input,setInput]=useState("")
   const inputRef = useRef(null)
+  const fileInputRef = useRef(null)
   const leftColScrollRef = useRef(null)
   const hasRestoredSidebarScroll = useRef(false)
   const [sending,setSending]=useState(false)
@@ -1894,13 +1895,24 @@ export default function CRMChat({ token, onAuthFailed }) {
     }
   }, [input, send]);
 
+  const handleFileChange = useCallback((e) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      alert('File upload not connected yet: ' + file.name)
+      // TODO: Implement backend file upload API
+    }
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }, [])
+
   const chatProps = {
     sel, selTopic, setSelTopic, TG, setProfilePreview, setShowMembers, onlineStatus, setChatSearchOpen, showProfile, setShowProfile,
     topics, loadingTopics, topicSearch, setTopicSearch, topicError, setTopicCtxMenu, topicCtxMenu, setSel,
     loadMsgs, messagesLoaded, msgs, hasMore, loadMessages, handleScroll, handleCtx, selectMode, setSelectedMsgs, selectedMsgs,
     fmtDateSep, isPhotoMsg, isVideoMsg, isDocMsg, setLightbox, token, reactions, setReactions, editedMsgs, fmtMsgTime,
     editingMsg, setEditingMsg, input, setInput, replyTo, setReplyTo, forwardMsg, setForwardMsg, inputRef, handleKeyDown, send, aiLoading, getAI,
-    emojiOpen, setEmojiOpen, showTmpl, setShowTmpl, recording, recordSecs, fileInput, stopRecording, startRecording, mediaRecRef, recordTimerRef, setRecording, setRecordSecs,
+    emojiOpen, setEmojiOpen, showTmpl, setShowTmpl, recording, recordSecs, fileInputRef, handleFileChange, stopRecording, startRecording, mediaRecRef, recordTimerRef, setRecording, setRecordSecs,
     cStage, stages, setStages, tags, cProb, probs, setProbs, cDeal, deals, setDeals, leadSource,
     fups, setFups, notes, saveNote, addNote, setAddNote, noteInp, setNoteInp,
     LinkPreview, ChatPhoto, Avatar, fmtTime

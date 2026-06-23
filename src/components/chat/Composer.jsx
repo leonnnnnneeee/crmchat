@@ -7,7 +7,7 @@ export default function Composer(props) {
     loadMsgs, messagesLoaded, msgs, hasMore, loadMessages, handleScroll, handleCtx, selectMode, setSelectedMsgs, selectedMsgs,
     fmtDateSep, isPhotoMsg, isVideoMsg, isDocMsg, setLightbox, token, reactions, setReactions, editedMsgs, fmtMsgTime,
     editingMsg, setEditingMsg, input, setInput, replyTo, setReplyTo, forwardMsg, setForwardMsg, inputRef, handleKeyDown, send, aiLoading, getAI,
-    emojiOpen, setEmojiOpen, showTmpl, setShowTmpl, recording, recordSecs, fileInput, stopRecording, startRecording, mediaRecRef, recordTimerRef, setRecording, setRecordSecs,
+    emojiOpen, setEmojiOpen, showTmpl, setShowTmpl, recording, recordSecs, fileInputRef, handleFileChange, stopRecording, startRecording, mediaRecRef, recordTimerRef, setRecording, setRecordSecs,
     cStage, stages, setStages, tags, cProb, probs, setProbs, cDeal, deals, setDeals, leadSource,
     fups, setFups, notes, saveNote, addNote, setAddNote, noteInp, setNoteInp,
     LinkPreview, ChatPhoto, Avatar, fmtTime
@@ -59,7 +59,8 @@ export default function Composer(props) {
               <button className="ib" onClick={()=>setEmojiOpen(p=>!p)} title="Emoji"
                 style={{background:emojiOpen?"#2d1155":"transparent",fontSize:17}}>😊</button>
               <button className="ib g" title="Attach file"
-                onClick={()=>document.getElementById('fileInput').click()} style={{fontSize:17}}>📎</button>
+                onClick={()=>fileInputRef.current?.click()} style={{fontSize:17}}>📎</button>
+              <input type="file" ref={fileInputRef} style={{display:'none'}} onChange={handleFileChange} />
               <textarea className="message-input" placeholder="Type a message..."
                 ref={inputRef} value={input} rows={1}
                 onChange={e=>{
