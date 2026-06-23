@@ -291,16 +291,23 @@ function ContextMenu({x,y,msg,onDelete,onCopy,onReply,onClose,onDeleteAll,onSele
 
 
 // ── AI Suggest Panel ──
-function AISuggestPanel({text,analysis,alternative,messages,loading,onUse,onUseAlt,onUseAll,onRegenerate,onClose,hasResearch}) {
+function AISuggestPanel({text,suggestions,analysis,alternative,messages,loading,onUse,onUseAlt,onUseAll,onRegenerate,onClose,hasResearch}) {
   const [editIdx,setEditIdx] = useState(null)
   const [edited,setEdited]   = useState({})
 
-  if(!text && !loading) return null
+  if(!text && !loading && (!suggestions || suggestions.length === 0)) return null
 
-  const msgs = (messages && messages.length > 0) ? messages : [
-    ...(text ? [{text}] : []),
-    ...(alternative ? [{text:alternative}] : [])
-  ]
+  // Support both new suggestions array and old text/alternative format
+  let msgs = []
+  if (suggestions && suggestions.length > 0) {
+    msgs = suggestions
+  } else {
+    msgs = (messages && messages.length > 0) ? messages.map(m => ({ text: m.text, label: 'MSG' })) : [
+      ...(text ? [{text, label: 'SUGGESTION 1'}] : []),
+      ...(alternative ? [{text:alternative, label: 'SUGGESTION 2'}] : [])
+    ]
+  }
+
   const getMsg = i => edited[i] !== undefined ? edited[i] : (msgs[i]?.text || '')
 
   return (
@@ -322,7 +329,7 @@ function AISuggestPanel({text,analysis,alternative,messages,loading,onUse,onUseA
       {loading ? (
         <div style={{padding:"12px 14px",display:"flex",gap:8,alignItems:"center",color:"#9b7ec8",fontSize:13}}>
           <span style={{animation:"spin 1s linear infinite",display:"inline-block"}}>⏳</span>
-          Analyzing{hasResearch?' & researching project':''}...
+          Generating{hasResearch?' & researching':''} options...
         </div>
       ) : (
         <div style={{padding:"8px 10px",display:"flex",flexDirection:"column",gap:6}}>
@@ -331,8 +338,8 @@ function AISuggestPanel({text,analysis,alternative,messages,loading,onUse,onUseA
               border:"1px solid rgba(124,58,237,.2)",overflow:"hidden"}}>
               <div style={{padding:"3px 10px 0",display:"flex",alignItems:"center",
                 justifyContent:"space-between"}}>
-                <span style={{fontSize:10,color:"#7c3aed",fontWeight:700,letterSpacing:.5}}>
-                  MSG {i+1}
+                <span style={{fontSize:10,color:"#7c3aed",fontWeight:700,letterSpacing:.5,textTransform:"uppercase"}}>
+                  {msg.label || `OPTION ${i+1}`}
                 </span>
                 <button onClick={()=>setEditIdx(editIdx===i?null:i)}
                   style={{background:"none",border:"none",color:"#6b7280",cursor:"pointer",fontSize:11}}>
@@ -366,18 +373,10 @@ function AISuggestPanel({text,analysis,alternative,messages,loading,onUse,onUseA
             </div>
           ))}
           <div style={{display:"flex",gap:6,marginTop:2}}>
-            {msgs.length>1&&onUseAll&&(
-              <button onClick={()=>onUseAll(msgs.map((_,i)=>getMsg(i)))}
-                style={{flex:1,padding:"6px",background:"rgba(124,58,237,.2)",color:"#c4a8e8",
-                  border:"1px solid rgba(124,58,237,.35)",borderRadius:8,cursor:"pointer",
-                  fontSize:12,fontWeight:600}}>
-                📨 Send all in sequence
-              </button>
-            )}
             <button onClick={onRegenerate}
               style={{padding:"6px 12px",background:"transparent",color:"#6b7280",
                 border:"1px solid #374151",borderRadius:8,cursor:"pointer",fontSize:11}}>
-              ↻ Retry
+              ↻ Regenerate
             </button>
           </div>
         </div>
@@ -1126,6 +1125,7 @@ export default function CRMChat({ token, onAuthFailed }) {
   const [showTmpl,setShowTmpl]=useState(false)
   const [tmplCat,setTmplCat]=useState("all")
   const [aiText,setAiText]=useState("")
+  const [aiSuggestions,setAiSuggestions]=useState([])
   const [aiAnalysis,setAiAnalysis]=useState("")
   const [aiAlt,setAiAlt]=useState("")
   const [aiLoading,setAiLoading]=useState(false)
@@ -1293,7 +1293,7 @@ export default function CRMChat({ token, onAuthFailed }) {
 
   useEffect(()=>{
     if(sel && sel.isForum && selTopic) {
-      setMsgs([]); setAiText(""); setAiAnalysis(""); setAiAlt(""); setReplyTo(null)
+      setMsgs([]); setAiText(""); setAiSuggestions([]); setAiAnalysis(""); setAiAlt(""); setReplyTo(null)
       hasRestoredScroll.current = false
       loadMessages(sel, selTopic.id)
     }
@@ -1310,7 +1310,7 @@ export default function CRMChat({ token, onAuthFailed }) {
        setTopicError(false)
     }
 
-    setMsgs([]); setAiText(""); setAiAnalysis(""); setAiAlt(""); setReplyTo(null)
+    setMsgs([]); setAiText(""); setAiSuggestions([]); setAiAnalysis(""); setAiAlt(""); setReplyTo(null)
     setMessagesLoaded(false)
     hasRestoredScroll.current = false
     
@@ -1536,7 +1536,7 @@ export default function CRMChat({ token, onAuthFailed }) {
   // AI Summarize
   async function getSummary() {
     if(!sel||!msgs.length) return
-    setAiLoading(true); setAiText(''); setAiAlt(''); setAiAnalysis('')
+    setAiLoading(true); setAiText(''); setAiSuggestions([]); setAiAlt(''); setAiAnalysis('')
     try {
       const r = await fetch('/api/ai/summarize',{
         method:'POST',
@@ -1553,7 +1553,7 @@ export default function CRMChat({ token, onAuthFailed }) {
   // AI Extract Lead Info
   async function getExtract() {
     if(!sel||!msgs.length) return
-    setAiLoading(true); setAiText(''); setAiAlt(''); setAiAnalysis('')
+    setAiLoading(true); setAiText(''); setAiSuggestions([]); setAiAlt(''); setAiAnalysis('')
     try {
       const r = await fetch('/api/ai/extract',{
         method:'POST',
@@ -1575,7 +1575,7 @@ export default function CRMChat({ token, onAuthFailed }) {
   // AI Suggest — always reads latest msgs from ref
   async function getAI(){
     if(!sel) return
-    setAiText(""); setAiLoading(true)
+    setAiText(""); setAiSuggestions([]); setAiLoading(true)
 
     // Use msgsRef to get absolute latest messages (not stale closure)
     const allMsgs = (msgsRef.current||[]).filter(m => m.text && !m.deleted && !m.pending)
@@ -1594,7 +1594,8 @@ export default function CRMChat({ token, onAuthFailed }) {
         })
       })
       const d = await r.json()
-      if (d.suggestion) setAiText(d.suggestion)
+      if (d.suggestions) setAiSuggestions(d.suggestions)
+      else if (d.suggestion) setAiText(d.suggestion)
     } catch(e) { console.error("AI:", e) }
     setAiLoading(false)
   }
@@ -2102,7 +2103,7 @@ export default function CRMChat({ token, onAuthFailed }) {
     globalSearchOpen, setGlobalSearchOpen, globalSearch, setGlobalSearch,
     chats, sending, setForceNormalView, loadingMore, readChats,
     firstUnreadRef, renderMessageText, chatSearch, endRef,
-    AISuggestPanel, aiText, setAiText, aiAnalysis, setAiAnalysis,
+    AISuggestPanel, aiText, setAiText, aiSuggestions, setAiSuggestions, aiAnalysis, setAiAnalysis,
     aiAlt, setAiAlt, setAiLoading, tmplCats, setTmplCat,
     tmplCat, TEMPLATES, setMsgs, setSelectMode, lightbox, StageBadge, gifOpen, setGifOpen,
     gifQuery, setGifQuery, searchGifs, gifs, loadingRef, showScrollBtn

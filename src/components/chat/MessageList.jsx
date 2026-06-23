@@ -38,7 +38,7 @@ export default function MessageList(props) {
     globalSearchOpen, setGlobalSearchOpen, globalSearch, setGlobalSearch,
     chats, sending, setForceNormalView, loadingMore, readChats,
     firstUnreadRef, renderMessageText, chatSearch, endRef,
-    AISuggestPanel, aiText, setAiText, aiAnalysis, setAiAnalysis,
+    AISuggestPanel, aiText, setAiText, aiSuggestions, setAiSuggestions, aiAnalysis, setAiAnalysis,
     aiAlt, setAiAlt, setAiLoading, tmplCats, setTmplCat,
     tmplCat, TEMPLATES, setMsgs, setSelectMode, lightbox, StageBadge, gifOpen, setGifOpen,
     gifQuery, setGifQuery, searchGifs, gifs, loadingRef, showScrollBtn
@@ -223,11 +223,11 @@ export default function MessageList(props) {
 
           {/* AI Suggest panel */}
           <AISuggestPanel
-            text={aiText} analysis={aiAnalysis} alternative={aiAlt} loading={aiLoading}
-            onUse={()=>{setInput(aiText);setAiText("");setAiAnalysis("");setAiAlt("")}}
-            onUseAlt={()=>{setInput(aiAlt);setAiText("");setAiAnalysis("");setAiAlt("")}}
+            text={aiText} suggestions={aiSuggestions} analysis={aiAnalysis} alternative={aiAlt} loading={aiLoading}
+            onUse={(txt)=>{setInput(txt);setAiText("");setAiSuggestions([]);setAiAnalysis("");setAiAlt("")}}
+            onUseAlt={()=>{setInput(aiAlt);setAiText("");setAiSuggestions([]);setAiAnalysis("");setAiAlt("")}}
             onRegenerate={()=>getAI(false)}
-            onClose={()=>{setAiText("");setAiAnalysis("");setAiAlt("");setAiLoading(false)}}
+            onClose={()=>{setAiText("");setAiSuggestions([]);setAiAnalysis("");setAiAlt("");setAiLoading(false)}}
           />
 
           {/* Reply bar */}
