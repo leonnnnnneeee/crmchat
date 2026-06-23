@@ -1,6 +1,6 @@
 // v-edit2-083448
 // v035029
-import { useState, useEffect, useRef, useCallback, useMemo } from "react"
+import { useState, useEffect, useRef, useMemo, useCallback, useDeferredValue } from "react"
 import ForumTopicsView from './components/chat/ForumTopicsView';
 import ChatHeader from './components/chat/ChatHeader';
 import MessageList from './components/chat/MessageList';
@@ -1247,7 +1247,8 @@ export default function CRMChat({ token, onAuthFailed }) {
   const fetchChats = useCallback(async (append=false) => {
     if (loadingChatsRef.current) return
     loadingChatsRef.current = true
-    if (!append) setLoadChats(true)
+    if (!append && chatsRef.current.length === 0) setLoadChats(true)
+    console.time('fetchChats')
     
     try {
       let url = "/api/chat/list?limit=50"
@@ -1283,7 +1284,7 @@ export default function CRMChat({ token, onAuthFailed }) {
         console.error("fetchChats invalid response:", d)
       }
     } catch(e) { console.error("fetchChats error:", e) }
-    
+    console.timeEnd('fetchChats')
     if (!append) setLoadChats(false)
     loadingChatsRef.current = false
   }, [token])
@@ -1292,6 +1293,7 @@ export default function CRMChat({ token, onAuthFailed }) {
 
   // Load messages when chat selected
   const prevSelId = useRef(sel?.id || null)
+  const prevSelTopicId = useRef(selTopic?.id || null)
   const hasRestoredScroll = useRef(false)
   const isNearBottom = useRef(true)
   const scrollPositions = useRef(JSON.parse(localStorage.getItem('crm_scroll_positions') || '{}'))
@@ -1331,27 +1333,28 @@ export default function CRMChat({ token, onAuthFailed }) {
   }
 
   useEffect(()=>{
-    if(sel && sel.isForum && selTopic) {
-      setMsgs([]); setAiText(""); setAiSuggestions([]); setAiAnalysis(""); setAiAlt(""); setReplyTo(null)
-      hasRestoredScroll.current = false
-      loadMessages(sel, selTopic.id)
-    }
-  },[selTopic, token])
-
-  useEffect(()=>{
     if(!sel) return
     let currentTopic = selTopic
+    let chatOrTopicChanged = false
+    
     if (prevSelId.current !== sel.id) {
        currentTopic = null
        setSelTopic(null)
        prevSelId.current = sel.id
+       prevSelTopicId.current = null
        setForceNormalView(false)
        setTopicError(false)
+       chatOrTopicChanged = true
+    } else if (prevSelTopicId.current !== selTopic?.id) {
+       prevSelTopicId.current = selTopic?.id
+       chatOrTopicChanged = true
     }
 
-    setMsgs([]); setAiText(""); setAiSuggestions([]); setAiAnalysis(""); setAiAlt(""); setReplyTo(null)
-    setMessagesLoaded(false)
-    hasRestoredScroll.current = false
+    if (chatOrTopicChanged) {
+      setMsgs([]); setAiText(""); setAiSuggestions([]); setAiAnalysis(""); setAiAlt(""); setReplyTo(null)
+      setMessagesLoaded(false)
+      hasRestoredScroll.current = false
+    }
     
     if (sel.isForum && !currentTopic && !forceNormalView) {
       setLoadingTopics(true)
@@ -1418,7 +1421,8 @@ export default function CRMChat({ token, onAuthFailed }) {
   const loadingRef = useRef(false)
   const loadingMoreRef = useRef(false)
   const selRef = useRef(sel)
-  useEffect(() => { selRef.current = sel }, [sel])
+  const selTopicRef = useRef(selTopic)
+  useEffect(() => { selRef.current = sel; selTopicRef.current = selTopic }, [sel, selTopic])
 
   // Real-time SSE Connection
   useEffect(() => {
@@ -1476,7 +1480,10 @@ export default function CRMChat({ token, onAuthFailed }) {
             })
 
             // 2. Append to msgs if in active chat
-            if (selRef.current?.id === msg.chatId) {
+            const isSameChat = selRef.current?.id === msg.chatId;
+            const isSameTopic = !selRef.current?.isForum || (msg.topicId && selTopicRef.current?.id === msg.topicId) || (!msg.topicId && !selTopicRef.current);
+            
+            if (isSameChat && isSameTopic) {
               setMsgs(prev => {
                 if (prev.some(m => m.id === msg.id)) return prev
                 const updated = [...prev, msg]
@@ -1534,9 +1541,10 @@ export default function CRMChat({ token, onAuthFailed }) {
       setLoadingMore(true)
     } else {
       loadingRef.current = true
-      setLoadMsgs(true)
+      if (msgsRef.current.length === 0) setLoadMsgs(true)
       setHasMore(true)
     }
+    console.time('loadMessages')
     
     try {
       let url, qs = chat.username ? '?username='+encodeURIComponent(chat.username) : ''
@@ -1572,6 +1580,7 @@ export default function CRMChat({ token, onAuthFailed }) {
         if (typeof onAuthFailed === 'function') onAuthFailed()
       }
     } catch(e) { console.error("loadMsgs:",e) }
+    console.timeEnd('loadMessages')
     
     if(append) {
       loadingMoreRef.current = false
@@ -1836,17 +1845,21 @@ export default function CRMChat({ token, onAuthFailed }) {
       return true
     });
 
-  const localFiltered = preSearchFiltered.filter(c => {
-    if (!searchLower) return true;
-    return getSearchableText(c).includes(searchLower);
-  });
+  const deferredSearchLower = useDeferredValue(searchLower);
+
+  const localFiltered = useMemo(() => {
+    return preSearchFiltered.filter(c => {
+      if (!deferredSearchLower) return true;
+      return getSearchableText(c).includes(deferredSearchLower);
+    });
+  }, [preSearchFiltered, deferredSearchLower]);
 
   const filtered = useMemo(() => {
-    if (!searchLower) return localFiltered;
+    if (!deferredSearchLower) return localFiltered;
     const localIds = new Set(localFiltered.map(c => c.id));
     const uniqueGlobals = globalMatches.filter(g => !localIds.has(g.id));
     return [...localFiltered, ...uniqueGlobals];
-  }, [localFiltered, globalMatches, searchLower]);
+  }, [localFiltered, globalMatches, deferredSearchLower]);
 
   useEffect(() => {
     // 2. Log exactly what was requested

@@ -919,7 +919,8 @@ async function startTGListener() {
             replyToMsgId: m.replyTo?.replyToMsgId,
             action: m.action ? true : false,
             // Try to resolve sender info if possible
-            senderId: m.senderId ? m.senderId.toString() : null
+            senderId: m.senderId ? m.senderId.toString() : null,
+            topicId: (m.replyTo?.forumTopic ? m.replyTo.replyToMsgId : m.replyTo?.replyToTopId) || null
           }
           
           if (m.media) {
