@@ -669,7 +669,13 @@ app.post('/api/ai/suggest', requireAuth, async (req,res) => {
       ];
     }
     
-    return null;
+    // Generic fallback for any other command if AI completely fails
+    log('AI Suggest Fallback: Used generic fallback for unrecognized command');
+    return [
+      { label: "Acknowledged", text: "Got it. How would you like to proceed?" },
+      { label: "Follow up", text: "Understood. Can you share more details?" },
+      { label: "Alternative", text: "Noted! When is a good time to discuss this further?" }
+    ];
   }
 
   if (!GROQ_KEY) return res.json({ suggestions: ruleBased() })

@@ -1461,11 +1461,9 @@ export default function CRMChat({ token, onAuthFailed }) {
     }
   }, [msgs]);
 
-  // Clear AI suggestions when command input changes
+  // Clear AI error when command input changes, but keep suggestions until Generate is clicked
   useEffect(() => {
-    if (aiSuggestions.length > 0 || aiText || aiError) {
-      setAiSuggestions([]);
-      setAiText('');
+    if (aiError) {
       setAiError(null);
     }
   }, [aiInstruction]);
@@ -1841,11 +1839,15 @@ export default function CRMChat({ token, onAuthFailed }) {
     cmd = cmd.replace(/([a-zA-Z\p{L}])[.,]([a-zA-Z\p{L}])/gu, '$1 $2');
     cmd = cmd.replace(/\s+/g, ' ');
     
+    const attemptId = Math.random().toString(36).substring(2, 8);
+
     console.log("[AI Suggest Generate Click]", {
+      generateAttemptId: attemptId,
       rawCommand: aiInstruction,
       normalizedCommand: cmd,
       isGenerating: aiLoading,
       isGenerateDisabled: aiLoading, // Assuming it's disabled if aiLoading is true
+      selectedChatId: sel.id,
       messagesCount: msgsRef.current?.length || 0
     });
 
@@ -1896,7 +1898,7 @@ export default function CRMChat({ token, onAuthFailed }) {
       })
       const d = await r.json()
       
-      console.log("[AI Suggest API Response]", {
+      console.log(`[AI Suggest API Response - ${attemptId}]`, {
         responseSource: d.source || "unknown",
         normalizedIntent: d.normalizedIntent,
         finalPromptPreview: d.finalPromptPreview,
