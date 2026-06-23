@@ -696,13 +696,8 @@ app.post('/api/ai/suggest', requireAuth, async (req,res) => {
       ];
     }
     
-    // Generic fallback for any other command if AI completely fails
-    log('AI Suggest Fallback: Used generic fallback for unrecognized command');
-    return [
-      { label: "Clarify", text: "Could you tell me a bit more about that?" },
-      { label: "Question", text: "Just to be sure, could you clarify what you mean?" },
-      { label: "Alternative", text: "I see. What's the best way to move forward?" }
-    ];
+    // If no explicit keywords match, return null to allow proper API error handling
+    return null;
   }
 
   if (!GROQ_KEY) return res.json({ ok: false, error: "AI API key not configured." })
@@ -720,6 +715,8 @@ CRITICAL RULES FOR INSTRUCTION:
 - If instruction says "don't sell" or similar, ONLY qualify with one soft question, do not pitch.
 - Preserve speaker direction: "bạn/your/anh/chị" means the CUSTOMER. "tôi/mình/I/me" means YOU (the sender).
 - If the instruction is in Vietnamese, understand the intent, but OUTPUT THE REPLY IN ENGLISH unless the conversation context is entirely in Vietnamese.
+- You are a translator and BD assistant. You MUST support ANY free-text instruction. Translate the core intent of the command into natural English Telegram replies.
+- Even if the command is not in the examples, you MUST process it and generate 2-3 options.
 - DO NOT invent wrong context like podcasts, partnerships, rate cards, or budgets unless the instruction explicitly asks for it or it exists in chat.
 - DO NOT reply to the instruction itself. Create a message intended for the customer.
 - If intent confidence is low, ask a clarification internally or generate a safe direct question based on the command, DO NOT fall back to generic sales pitches.
@@ -805,8 +802,18 @@ Return EXACTLY this JSON structure.
         log('AI Intent: ' + parsed.normalizedIntent)
       }
 
-      // Safety parsing for plain text or flat objects if the LLM didn't return an array
-      let safeSuggestions = parsed.suggestions;
+      // Safety parsing for plain text or flat objects if the LLM didn't return an array under "suggestions"
+      let safeSuggestions = parsed.suggestions || parsed.options || parsed.replies;
+      
+      // If the LLM returned an array directly instead of an object
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        if (typeof parsed[0] === 'object' && parsed[0].text) {
+          safeSuggestions = parsed;
+        } else if (typeof parsed[0] === 'string') {
+          safeSuggestions = parsed.map((val, i) => ({ label: `Option ${i + 1}`, text: val }));
+        }
+      }
+
       if (!safeSuggestions || !Array.isArray(safeSuggestions)) {
         // Collect string values from the flat object, excluding normalizedIntent
         const stringValues = Object.entries(parsed)
@@ -816,6 +823,8 @@ Return EXACTLY this JSON structure.
         if (stringValues.length > 0) {
           safeSuggestions = stringValues;
           log('AI Safety Parse: Extracted ' + safeSuggestions.length + ' flat string suggestions.');
+        } else {
+          safeSuggestions = null;
         }
       }
 
