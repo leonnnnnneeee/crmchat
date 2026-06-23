@@ -997,16 +997,21 @@ export default function CRMChat({ token, onAuthFailed }) {
   const [search,setSearch]=useState(() => localStorage.getItem('crm_search') || '')
   const [globalMatches, setGlobalMatches] = useState([])
   const [isGlobalSearching, setIsGlobalSearching] = useState(false)
+  const [hasSearchedGlobal, setHasSearchedGlobal] = useState(true)
 
   useEffect(() => {
     setGlobalMatches([])
-    if (!search.trim()) return;
+    if (!search.trim()) {
+       setHasSearchedGlobal(true)
+       return
+    }
+    setHasSearchedGlobal(false)
 
     const delay = setTimeout(async () => {
       setIsGlobalSearching(true)
       try {
-        const url = `${URL_BASE}/api/telegram/search?q=${encodeURIComponent(search.trim())}`
-        const res = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } })
+        const url = `/api/telegram/search?q=${encodeURIComponent(search.trim())}`
+        const res = await fetch(url, { headers: { 'x-auth-token': token } })
         if (res.ok) {
           const data = await res.json()
           setGlobalMatches(data)
@@ -1015,6 +1020,7 @@ export default function CRMChat({ token, onAuthFailed }) {
         console.error('Global search error', e)
       } finally {
         setIsGlobalSearching(false)
+        setHasSearchedGlobal(true)
       }
     }, 600)
     return () => clearTimeout(delay)
@@ -2343,7 +2349,10 @@ export default function CRMChat({ token, onAuthFailed }) {
               </div>
             )
           })}
-          {!loadChats&&filtered.length===0&&!isGlobalSearching&&(
+          {search.trim() && !hasSearchedGlobal && (
+             <div style={{padding:20,textAlign:"center",color:TG.textMuted,fontSize:13}}>Waiting for global search...</div>
+          )}
+          {!loadChats&&filtered.length===0&&!isGlobalSearching&&hasSearchedGlobal&&(
             <div style={{padding:32,textAlign:"center",color:TG.textMuted,fontSize:13}}>
               {search.trim() ? (
                 <>
