@@ -708,6 +708,16 @@ SCENARIO SPECIFIC RULES
 - If silent: send light non-pushy follow-up.
 
 ---
+COMMAND INSTRUCTION RULES (CRITICAL)
+---
+If a USER INSTRUCTION is provided:
+- Treat it as the core direction for WHAT TO SAY to the customer. DO NOT reply to the instruction itself.
+- Preserve speaker direction: "bạn/your/anh/chị" means the CUSTOMER. "tôi/mình/I/me" means YOU (the Coincu BD sender).
+- Example: "cho tôi link dự án của bạn đang làm đi" means "generate a message asking the customer to send their project link to me". Do NOT invent a project of your own.
+- If the instruction is in Vietnamese, understand the intent, but OUTPUT THE REPLY IN ENGLISH unless the conversation context is entirely in Vietnamese.
+- Do not invent wrong context like podcast, partnership, or our own project unless it exists in chat.
+
+---
 TASK: MULTIPLE SUGGESTIONS
 ---
 Based on the conversation context, generate exactly 2 to 3 distinct reply options.
@@ -717,6 +727,7 @@ Each option should have a specific angle.
 OUTPUT FORMAT:
 Return EXACTLY this JSON structure. Do not return markdown blocks like \`\`\`json.
 {
+  "normalizedIntent": "Your internal translation/understanding of the user instruction (e.g. 'Ask the customer to share their project link')",
   "suggestions": [
     { "label": "Soft", "text": "The actual message text" },
     { "label": "Value", "text": "Another text" },
@@ -738,8 +749,8 @@ Return EXACTLY this JSON structure. Do not return markdown blocks like \`\`\`jso
       '=== TASK ===',
       'Client just said: "' + lastClientMsg + '"',
       'Leon already said (do not repeat): ' + (leonSaid || '(nothing)'),
-      instruction ? '\n=== USER INSTRUCTION ===\nThe user specifically wants the AI to: "' + instruction + '". Follow this instruction strictly while maintaining the BD context.\n' : null,
-      'Generate 2 to 3 diverse, short, Telegram-style reply options in JSON format.'
+      instruction ? '\n=== USER INSTRUCTION (CRITICAL) ===\nConvert this instruction into a natural reply to the customer:\n"' + instruction + '"\n' : null,
+      'First, output "normalizedIntent" to confirm you understand the direction. Then generate 2 to 3 diverse, short, Telegram-style reply options in JSON format.'
     ].filter(Boolean).join('\n')
 
     const axios = require('axios')
@@ -756,6 +767,9 @@ Return EXACTLY this JSON structure. Do not return markdown blocks like \`\`\`jso
     const text = r.data.choices[0].message.content
     try {
       const parsed = JSON.parse(text)
+      if (parsed.normalizedIntent) {
+        log('AI Intent: ' + parsed.normalizedIntent)
+      }
       res.json({ ok: true, suggestions: parsed.suggestions || ruleBased() })
     } catch(err) {
       log('Groq JSON parse error: ' + err.message + ' | Raw: ' + text)
