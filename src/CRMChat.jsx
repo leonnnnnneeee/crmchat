@@ -1401,6 +1401,11 @@ export default function CRMChat({ token, onAuthFailed }) {
       setMsgs([]); setAiText(""); setAiSuggestions([]); setAiAnalysis(""); setAiAlt(""); setReplyTo(null)
       setMessagesLoaded(false)
       hasRestoredScroll.current = false
+    } else {
+      // If we didn't change chat/topic, but just received a new message, AI suggestions might be stale
+      // We clear them if we are already loaded. Wait, we already clear them on SSE new_message.
+      // So chatOrTopicChanged already clears them. We don't need additional clear logic unless we want to clear them when msgs.length changes.
+      // The SSE listener already clears them. We'll add an explicit effect to clear them when the last customer message changes.
     }
     
     if (sel.isForum && !currentTopic && !forceNormalView) {
@@ -1430,6 +1435,19 @@ export default function CRMChat({ token, onAuthFailed }) {
 
     loadMessages(sel, currentTopic?.id || null)
   },[sel, selTopic, token, forceNormalView])
+
+  // Clear AI suggestions if the last customer message changes
+  useEffect(() => {
+    const allMsgs = msgs.filter(m => m.text && !m.deleted && !m.pending);
+    const lastClientMsg = [...allMsgs].reverse().find(m => !m.fromMe)?.text || "";
+    if (lastClientMsg) {
+      // Only clear if we actually have AI suggestions to clear, to avoid unnecessary re-renders
+      if (aiSuggestions.length > 0 || aiText) {
+        setAiSuggestions([]);
+        setAiText('');
+      }
+    }
+  }, [msgs]);
 
 
   useEffect(()=>{
@@ -1800,20 +1818,39 @@ export default function CRMChat({ token, onAuthFailed }) {
 
     // Use msgsRef to get absolute latest messages (not stale closure)
     const allMsgs = (msgsRef.current||[]).filter(m => m.text && !m.deleted && !m.pending)
+    
+    if (allMsgs.length === 0 || !messagesLoaded) {
+      setAiText("Context not loaded. Please wait for messages to load.");
+      setAiLoading(false);
+      return;
+    }
+
     const lastClientMsg = [...allMsgs].reverse().find(m => !m.fromMe)?.text || ""
+
+    const aiPayload = {
+      contactName: sel.name,
+      lastMessage: lastClientMsg,
+      messages: allMsgs.slice(-40).map(m => ({text: m.text, fromMe: m.fromMe})),
+      stage: stages[sel.id] || "Contacted",
+      notes: (notes[sel.id]||[]).map(n=>n.content).join(" | "),
+      instruction: aiInstruction,
+      chatId: sel.id,
+      topicId: selTopic?.id || null
+    };
+
+    console.log("[AI Suggest Debug]", {
+      selectedChatId: aiPayload.chatId,
+      selectedTopicId: aiPayload.topicId,
+      messagesSentCount: aiPayload.messages.length,
+      latestCustomerMessage: aiPayload.lastMessage,
+      userCommand: aiPayload.instruction
+    });
 
     try {
       const r = await fetch("/api/ai/suggest", {
         method: "POST",
         headers: {"Content-Type":"application/json","x-auth-token":token},
-        body: JSON.stringify({
-          contactName: sel.name,
-          lastMessage: lastClientMsg,
-          messages: allMsgs.slice(-20).map(m => ({text: m.text, fromMe: m.fromMe})),
-          stage: stages[sel.id] || "Contacted",
-          notes: (notes[sel.id]||[]).map(n=>n.content).join(" | "),
-          instruction: aiInstruction
-        })
+        body: JSON.stringify(aiPayload)
       })
       const d = await r.json()
       if (d.suggestions) setAiSuggestions(d.suggestions)

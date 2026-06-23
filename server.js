@@ -637,8 +637,8 @@ app.post('/api/chat/send', requireAuth, async (req,res) => {
 
 // ── AI SUGGEST (Groq) ──
 app.post('/api/ai/suggest', requireAuth, async (req,res) => {
-  const { contactName, lastMessage, messages, stage, notes, instruction } = req.body
-  const history = (messages||[]).slice(-20)
+  const { contactName, lastMessage, messages, stage, notes, instruction, chatId, topicId } = req.body
+  const history = (messages||[]).slice(-40)
   const lastClientMsg = (lastMessage||'').trim()
   const leonLines = history.filter(m=>m.fromMe).map(m=>m.text).filter(Boolean)
   const leonSaid  = leonLines.join(' | ')
@@ -703,7 +703,8 @@ Return EXACTLY this JSON structure.
   try {
     const userPrompt = [
       '=== PRIORITY 3: CONVERSATION CONTEXT ===',
-      history.slice(-15).map(m=>(m.fromMe?'Leon':'Client')+': '+m.text).join('\n') || '(no messages yet)',
+      `Chat ID: ${chatId || 'Unknown'}, Topic ID: ${topicId || 'None'}`,
+      history.slice(-40).map(m=>(m.fromMe?'Leon':'Client')+': '+m.text).join('\n') || '(no messages yet)',
       '',
       'Client: ' + contactName,
       'CRM Stage: ' + (stage||'Contacted'),
@@ -726,15 +727,18 @@ Return EXACTLY this JSON structure.
       temperature: 0.7
     }, { headers: { 'Authorization': 'Bearer ' + GROQ_KEY }})
 
-    const text = r.data.choices[0].message.content
+    let rawText = r.data.choices[0].message.content;
+    // Strip markdown formatting if the LLM wraps the JSON in ```json ... ```
+    rawText = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
+
     try {
-      const parsed = JSON.parse(text)
+      const parsed = JSON.parse(rawText)
       if (parsed.normalizedIntent) {
         log('AI Intent: ' + parsed.normalizedIntent)
       }
       res.json({ ok: true, suggestions: parsed.suggestions || ruleBased() })
     } catch(err) {
-      log('Groq JSON parse error: ' + err.message + ' | Raw: ' + text)
+      log('Groq JSON parse error: ' + err.message + ' | Raw: ' + rawText)
       res.json({ ok: true, suggestions: ruleBased() })
     }
   } catch(e) {
