@@ -191,7 +191,19 @@ async function resolveEntity(client, idStr, username) {
 
 // ── AUTH: check status ──
 app.get('/api/tg/status', requireAuth, async (req,res) => {
-  res.json({ connected: _session.length > 10 })
+  if (!_session || _session.length <= 10) return res.json({ connected: false })
+  try {
+    const client = await getClient()
+    await withTimeout(client.getMe(), 5000, 'ping')
+    res.json({ connected: true })
+  } catch(e) {
+    if (e.message.includes('AUTH_KEY') || e.message.includes('SESSION')) {
+      _session = ''
+      res.json({ connected: false, error: 'Session expired' })
+    } else {
+      res.json({ connected: true, warning: e.message })
+    }
+  }
 })
 
 // ── AUTH: send OTP ──
@@ -271,7 +283,14 @@ app.get('/api/chat/list', requireAuth, async (req,res) => {
       memberCount: d.entity?.participantsCount || d.entity?.membersCount || null,
     }))
     res.json(chats)
-  } catch(e) { log('chatList: '+e.message); res.json([]) }
+  } catch(e) { 
+    log('chatList: '+e.message); 
+    if (e.message.includes('AUTH_KEY') || e.message.includes('SESSION')) {
+      _session = ''
+      return res.status(401).json({ error: 'AUTH_FAILED' })
+    }
+    res.json([]) 
+  }
 })
 
 // ── MESSAGES ──
@@ -310,7 +329,14 @@ app.get('/api/chat/messages/:id', requireAuth, async (req,res) => {
       .filter(m => m.text || m.isPhoto || m.isVideo || m.isDoc)
     log('messages loaded: ' + results.length + ' msgs in ' + (Date.now()-t0) + 'ms')
     res.json(results)
-  } catch(e) { log('messages error: '+e.message+' ('+(Date.now()-t0)+'ms)'); res.json([]) }
+  } catch(e) { 
+    log('messages error: '+e.message+' ('+(Date.now()-t0)+'ms)'); 
+    if (e.message.includes('AUTH_KEY') || e.message.includes('SESSION')) {
+      _session = ''
+      return res.status(401).json({ error: 'AUTH_FAILED' })
+    }
+    res.json([]) 
+  }
 })
 
 // ── SEND MESSAGE ──

@@ -1,13 +1,13 @@
-[09:12:42] 🚀 Coincu CRM Chat v16 — 20260619_071242
-[09:12:42] Listening on port 3002
-[09:12:43] ✅ Session loaded from Supabase
-[33m[2026-06-23T09:12:43.507] [INFO] - [Running gramJS version 2.26.21][0m
-[33m[2026-06-23T09:12:43.510] [INFO] - [Connecting to 91.108.56.102:80/TCPFull...][0m
-[33m[2026-06-23T09:12:43.566] [INFO] - [Connection to 91.108.56.102:80/TCPFull complete!][0m
-[33m[2026-06-23T09:12:43.566] [INFO] - [Using LAYER 198 for initial connect][0m
-[09:12:43] warmup: 406: AUTH_KEY_DUPLICATED (caused by InvokeWithLayer)
-[33m[2026-06-23T09:12:45.459] [INFO] - [Running gramJS version 2.26.21][0m
-[33m[2026-06-23T09:12:45.459] [INFO] - [Connecting to 91.108.56.102:80/TCPFull...][0m
-[33m[2026-06-23T09:12:45.503] [INFO] - [Connection to 91.108.56.102:80/TCPFull complete!][0m
-[33m[2026-06-23T09:12:45.503] [INFO] - [Using LAYER 198 for initial connect][0m
-[09:12:45] TG listener: 406: AUTH_KEY_DUPLICATED (caused by InvokeWithLayer)
+[09:27:29] 🚀 Coincu CRM Chat v16 — 20260619_071242
+[09:27:29] Listening on port 3002
+[09:27:30] ✅ Session loaded from Supabase
+[33m[2026-06-23T09:27:30.386] [INFO] - [Running gramJS version 2.26.21][0m
+[33m[2026-06-23T09:27:30.389] [INFO] - [Connecting to 91.108.56.102:80/TCPFull...][0m
+[33m[2026-06-23T09:27:30.446] [INFO] - [Connection to 91.108.56.102:80/TCPFull complete!][0m
+[33m[2026-06-23T09:27:30.447] [INFO] - [Using LAYER 198 for initial connect][0m
+[09:27:30] warmup: 406: AUTH_KEY_DUPLICATED (caused by InvokeWithLayer)
+[33m[2026-06-23T09:27:32.560] [INFO] - [Running gramJS version 2.26.21][0m
+[33m[2026-06-23T09:27:32.560] [INFO] - [Connecting to 91.108.56.102:80/TCPFull...][0m
+[33m[2026-06-23T09:27:32.612] [INFO] - [Connection to 91.108.56.102:80/TCPFull complete!][0m
+[33m[2026-06-23T09:27:32.612] [INFO] - [Using LAYER 198 for initial connect][0m
+[09:27:32] TG listener: 406: AUTH_KEY_DUPLICATED (caused by InvokeWithLayer)

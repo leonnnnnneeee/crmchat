@@ -1,6 +1,11 @@
 // v-edit2-083448
 // v035029
 import { useState, useEffect, useRef, useCallback, useMemo } from "react"
+import ForumTopicsView from './components/chat/ForumTopicsView';
+import ChatHeader from './components/chat/ChatHeader';
+import MessageList from './components/chat/MessageList';
+import Composer from './components/chat/Composer';
+import CRMRightPanel from './components/chat/CRMRightPanel';
 
 const TG = {
   bg:"#120929", panel:"#1a0533", surface:"#1e0a3c", elevated:"#2d1155",
@@ -907,7 +912,7 @@ function renderMessageText(text, searchStr) {
   return parts.map(renderPart);
 }
 
-export default function CRMChat({token}) {
+export default function CRMChat({ token, onAuthFailed }) {
   _authToken = token
   const [theme,setTheme]=useState(()=>localStorage.getItem('crm_theme')||'dark')
   useEffect(()=>{
@@ -1123,6 +1128,8 @@ export default function CRMChat({token}) {
            // If selected chat exists but not in new fetch, keep it active (pagination/search handling)
            return prevSel
         })
+      } else if (d && d.error === 'AUTH_FAILED') {
+        if (typeof onAuthFailed === 'function') onAuthFailed()
       } else {
         // Handle server error returning non-array
         console.error("fetchChats invalid response:", d)
@@ -1305,6 +1312,8 @@ export default function CRMChat({token}) {
             return [...d, ...stillPending]
           }
         })
+      } else if (d && d.error === 'AUTH_FAILED') {
+        if (typeof onAuthFailed === 'function') onAuthFailed()
       }
     } catch(e) { console.error("loadMsgs:",e) }
     
@@ -1519,21 +1528,14 @@ export default function CRMChat({token}) {
     })
     .filter(c => !search.trim() || c.name?.toLowerCase().includes(search.trim().toLowerCase()))
 
-  // Chat Sync & Fallback
   useEffect(() => {
     // Debug Logging
     console.log("[ChatSync Debug]", { total: chats.length, filtered: filtered.length, folder, search, selId: sel?.id, msgsCount: msgs.length, loadMsgs, messagesLoaded })
 
-    if (chats.length > 0 && sel) {
-      const existsInChats = chats.some(c => c.id === sel.id)
-      if (!existsInChats) {
-        // Fallback to first available chat if the currently selected chat is definitively gone
-        setSel(filtered.length > 0 ? filtered[0] : chats[0])
-      }
-    } else if (chats.length > 0 && !sel) {
+    if (chats.length > 0 && !sel) {
       setSel(filtered.length > 0 ? filtered[0] : chats[0])
     }
-  }, [chats, filtered, sel, folder, search, msgs.length, loadMsgs, messagesLoaded])
+  }, [chats, filtered, sel])
 
   const cStage=sel?stages[sel.id]||"Contacted":"New"
   const cProb=sel?probs[sel.id]??50:50
@@ -1882,6 +1884,19 @@ export default function CRMChat({token}) {
     }
   }, []);
 
+
+  const chatProps = {
+    sel, selTopic, setSelTopic, TG, setProfilePreview, setShowMembers, onlineStatus, setChatSearchOpen, showProfile, setShowProfile,
+    topics, loadingTopics, topicSearch, setTopicSearch, topicError, setTopicCtxMenu, topicCtxMenu, setSel,
+    loadMsgs, messagesLoaded, msgs, hasMore, loadMessages, handleScroll, handleCtx, selectMode, setSelectedMsgs, selectedMsgs,
+    fmtDateSep, isPhotoMsg, isVideoMsg, isDocMsg, setLightbox, token, reactions, setReactions, editedMsgs, fmtMsgTime,
+    editingMsg, setEditingMsg, input, setInput, replyTo, setReplyTo, forwardMsg, setForwardMsg, inputRef, handleKeyDown, send, aiLoading, getAI,
+    emojiOpen, setEmojiOpen, showTmpl, setShowTmpl, recording, recordSecs, fileInput, stopRecording, startRecording, mediaRecRef, recordTimerRef, setRecording, setRecordSecs,
+    cStage, stages, setStages, tags, cProb, probs, setProbs, cDeal, deals, setDeals, leadSource,
+    fups, setFups, notes, saveNote, addNote, setAddNote, noteInp, setNoteInp,
+    LinkPreview, ChatPhoto, Avatar, fmtTime
+  };
+
   return (<>
     <style>{STYLES}</style>
     <div className="crm-root">
@@ -2046,826 +2061,23 @@ export default function CRMChat({token}) {
         ): sel && sel.isForum && !selTopic && !forceNormalView ? (
           // ── FORUM TOPICS VIEW ──
           /* TODO(Refactor): Split out into <ForumTopicsView> component */
-          <div style={{display:"flex",flexDirection:"column",height:"100%",background:TG.bg}}>
-            <div style={{height:58,background:TG.panel,borderBottom:"1px solid "+TG.border,display:"flex",alignItems:"center",padding:"0 16px",gap:12,flexShrink:0}}>
-              <Avatar name={sel.name} chatId={sel.id} username={sel.username} size={38}/>
-              <div style={{flex:1}}>
-                <div style={{fontWeight:700,fontSize:15,color:TG.text}}>{sel.name}</div>
-                <div style={{fontSize:12,color:TG.textSec}}>{sel.memberCount} members · {topics[sel.id]?.length || 0} topics</div>
-              </div>
-              <div style={{position:"relative"}}>
-                <span style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:TG.textMuted,fontSize:12}}>🔍</span>
-                <input placeholder="Search topics..." value={topicSearch} onChange={e=>setTopicSearch(e.target.value)}
-                  style={{padding:"6px 12px 6px 30px",borderRadius:16,border:"none",background:TG.elevated,color:TG.text,fontSize:13,outline:"none",width:150}}/>
-              </div>
-            </div>
-            <div style={{flex:1,overflowY:"auto",padding:"8px 0"}} onClick={()=>setTopicCtxMenu(null)}>
-              {loadingTopics&&<div style={{padding:40,textAlign:"center",color:TG.textSec,fontSize:14}}>Loading topics...</div>}
-              {topicError&&!loadingTopics&&(
-                <div style={{padding:40,textAlign:"center",color:TG.textSec,fontSize:14,display:'flex',flexDirection:'column',alignItems:'center',gap:16}}>
-                  <div>Failed to load topics.</div>
-                  <button onClick={()=>{setForceNormalView(true);loadMessages(sel, null)}} style={{background:'rgba(124,58,237,.2)',border:'1px solid rgba(124,58,237,.5)',color:'#fff',padding:'8px 16px',borderRadius:8,cursor:'pointer'}}>
-                    Open normal chat
-                  </button>
-                </div>
-              )}
-              {!loadingTopics && topics[sel.id] && topics[sel.id].length === 0 && (
-                <div style={{padding:40,textAlign:"center",color:TG.textSec,fontSize:14,display:'flex',flexDirection:'column',alignItems:'center',gap:16}}>
-                  <div>No topics found.</div>
-                  <button onClick={()=>{setForceNormalView(true);loadMessages(sel, null)}} style={{background:'rgba(124,58,237,.2)',border:'1px solid rgba(124,58,237,.5)',color:'#fff',padding:'8px 16px',borderRadius:8,cursor:'pointer'}}>
-                    Open normal chat
-                  </button>
-                </div>
-              )}
-              {(Array.isArray(topics[sel.id]) ? topics[sel.id] : []).filter(t=>!topicSearch || t.title?.toLowerCase().includes(topicSearch.toLowerCase())).map(topic=>(
-                <div key={topic.id} onClick={()=>{setSelTopic(topic)}}
-                  onContextMenu={e=>{e.preventDefault();setTopicCtxMenu({x:e.clientX,y:e.clientY,topic})}}
-                  style={{display:"flex",gap:12,padding:"12px 16px",cursor:"pointer",borderBottom:"1px solid "+TG.border,transition:"background .1s",background:topicCtxMenu?.topic?.id===topic.id?TG.elevated:"transparent"}}
-                  onMouseEnter={e=>{if(topicCtxMenu?.topic?.id!==topic.id)e.currentTarget.style.background=TG.elevated}}
-                  onMouseLeave={e=>{if(topicCtxMenu?.topic?.id!==topic.id)e.currentTarget.style.background="transparent"}}>
-                  <div style={{width:46,height:46,borderRadius:"50%",background:TG.elevated,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0}}>
-                    {topic.id===1?"📌":"#"}
-                  </div>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:3}}>
-                      <span style={{fontWeight:600,fontSize:15,color:TG.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:200}}>{topic.title}</span>
-                      <span style={{fontSize:11,color:TG.textMuted,flexShrink:0,marginLeft:8}}>{fmtTime(topic.date)}</span>
-                    </div>
-                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                      <span style={{fontSize:13,color:TG.textSec,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{topic.lastMsg||"No messages"}</span>
-                      {topic.unread>0&&<div style={{background:TG.green,color:"#fff",fontSize:11,fontWeight:700,padding:"1px 6px",borderRadius:10,minWidth:20,textAlign:"center",flexShrink:0,marginLeft:6}}>{topic.unread}</div>}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-            {topicCtxMenu&&(
-              <div style={{position:"fixed",left:topicCtxMenu.x,top:topicCtxMenu.y,background:"#1e0a3c",border:"1px solid #3d1f6a",borderRadius:8,padding:"4px 0",boxShadow:"0 4px 12px rgba(0,0,0,.5)",zIndex:100,minWidth:160}}>
-                <div className="ctx-item" onClick={()=>{setSelTopic(topicCtxMenu.topic);setTopicCtxMenu(null)}}>Open</div>
-                <div className="ctx-item" onClick={()=>{alert("TODO: Mark as read");setTopicCtxMenu(null)}}>Mark as read</div>
-                <div className="ctx-item" onClick={()=>{alert("TODO: Mute topic");setTopicCtxMenu(null)}}>Mute</div>
-                <div className="ctx-item" onClick={()=>{alert("TODO: Pin topic");setTopicCtxMenu(null)}}>Pin to top</div>
-                <div className="ctx-item" onClick={()=>{alert("TODO: Archive topic");setTopicCtxMenu(null)}}>Archive / Hide</div>
-              </div>
-            )}
-          </div>
+          <ForumTopicsView {...chatProps} />
         ):<>
           {/* Chat header */}
           {/* TODO(Refactor): Split out into <ChatHeader> component */}
-          <div className="chdr" style={{ height: '60px', minHeight: '60px', padding: '0 16px', gap: '12px' }}>
-            {selTopic&&(
-              <button onClick={()=>setSelTopic(null)} style={{background:"none",border:"none",color:TG.textSec,cursor:"pointer",fontSize:22,padding:"0 4px",flexShrink:0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '36px', height: '36px', borderRadius: '50%', transition: 'background .15s'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.08)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>←</button>
-            )}
-            <div 
-              style={{cursor: 'pointer', display: 'flex', alignItems: 'center', flexShrink: 0}}
-              onClick={() => setProfilePreview({ id: sel.id, name: sel.name, username: sel.username, chatId: sel.id, isGroup: sel.isGroup || sel.isChannel })}
-            >
-              {selTopic ? (
-                <div style={{width: 42, height: 42, borderRadius: '50%', background: '#2b5278', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 20, fontWeight: 600}}>
-                  #
-                </div>
-              ) : (
-                <Avatar name={sel.name} chatId={sel.id} username={sel.username} size={42}/>
-              )}
-            </div>
-            <div style={{flex:1,minWidth:0,display:"flex",flexDirection:"column",justifyContent:"center",gap:"2px"}}>
-              <div 
-                style={{fontWeight:600,fontSize:16,color:TG.text,lineHeight:1.2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap", cursor: 'pointer'}}
-                onClick={() => setProfilePreview({ id: sel.id, name: sel.name, username: sel.username, chatId: sel.id, isGroup: sel.isGroup || sel.isChannel })}
-              >
-                {selTopic ? selTopic.title : sel.name}
-              </div>
-              <div style={{fontSize:13,color:TG.textSec,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap", lineHeight:1.2}}>
-                {selTopic ? (
-                   <span style={{cursor:"pointer",color:TG.textSec,transition:"color .15s"}} 
-                         onMouseEnter={e=>e.currentTarget.style.color="#fff"}
-                         onMouseLeave={e=>e.currentTarget.style.color=TG.textSec}
-                         onClick={()=>setSelTopic(null)}>
-                     In {sel.name}
-                   </span>
-                 ) : 
-                 (sel?.isGroup || sel?.isChannel) ? (
-                   <span style={{cursor:"pointer",color:TG.textSec,transition:"color .15s"}} 
-                         onMouseEnter={e=>e.currentTarget.style.color="#fff"}
-                         onMouseLeave={e=>e.currentTarget.style.color=TG.textSec}
-                         onClick={()=>setShowMembers(true)}>
-                     {sel.memberCount ? `${sel.memberCount} members` : "View members"}
-                   </span>
-                 ) :
-                 sel?.isUser ? (
-                   onlineStatus === 'online' ? <span style={{color: TG.blueLight}}>● online</span> :
-                   onlineStatus === 'unknown' ? 'status unavailable' :
-                   onlineStatus ? onlineStatus :
-                   'last seen recently'
-                 ) :
-                 'Group'}
-              </div>
-            </div>
-            <div style={{display:"flex",gap:8,marginLeft:16,flexShrink:0, alignItems: 'center'}}>
-              <button onClick={()=>setChatSearchOpen(p=>!p)} title="Search in chat" style={{background: 'none', border: 'none', color: TG.textSec, cursor: 'pointer', fontSize: 18, width: 40, height: 40, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background .15s'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.08)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-                🔍
-              </button>
-              <button onClick={()=>setShowProfile(p=>!p)} title="Toggle CRM Panel" style={{background: showProfile ? 'rgba(124,58,237,0.2)' : 'none', border: 'none', color: showProfile ? '#a78bfa' : TG.textSec, cursor: 'pointer', fontSize: 20, width: 40, height: 40, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all .15s'}} onMouseEnter={e=>e.currentTarget.style.background=showProfile?'rgba(124,58,237,0.3)':'rgba(255,255,255,0.08)'} onMouseLeave={e=>e.currentTarget.style.background=showProfile?'rgba(124,58,237,0.2)':'transparent'}>
-                {showProfile ? '▶' : '◀'}
-              </button>
-              <button title="More Actions" style={{background: 'none', border: 'none', color: TG.textSec, cursor: 'pointer', fontSize: 20, width: 40, height: 40, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background .15s'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.08)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-                ⋮
-              </button>
-            </div>
-          </div>
-
-          {/* Translate Bar */}
-          <div style={{
-            height: '34px', minHeight: '34px', flexShrink: 0,
-            background: '#23153d', borderBottom: '1px solid #0d0618',
-            display: 'flex', alignItems: 'center', padding: '0 16px', gap: '8px',
-            color: '#a78bfa', fontSize: '13px', cursor: 'pointer',
-            transition: 'background .15s'
-          }} onMouseEnter={e=>e.currentTarget.style.background='#2d1155'} onMouseLeave={e=>e.currentTarget.style.background='#23153d'}
-            onClick={()=>alert("Translation backend not configured yet.")}
-          >
-            <span style={{fontSize: '15px'}}>A文</span>
-            <span style={{flex: 1, fontWeight: 500}}>Translate to English</span>
-            <button style={{background: 'none', border: 'none', color: '#a78bfa', cursor: 'pointer', fontSize: '15px', padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px'}}
-              onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.1)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}
-              onClick={(e)=>{e.stopPropagation(); alert("Translation Settings TODO")}}
-            >
-              ⚙️
-            </button>
-            <button style={{background: 'none', border: 'none', color: '#a78bfa', cursor: 'pointer', fontSize: '15px', padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px'}}
-              onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.1)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}
-              onClick={(e)=>{e.stopPropagation(); alert("Hide Translate Bar TODO")}}
-            >
-              ✕
-            </button>
-          </div>
-
+          <ChatHeader {...chatProps} />
           {/* Messages */}
           {/* TODO(Refactor): Split out into <MessageList> and <MessageBubble> components */}
-          {/* Handles scroll restoration, grouping, reactions, and media rendering */}
-          <div className="msgs" onScroll={handleScroll}>
-            {hasMore && msgs.length > 0 && !loadMsgs && (
-              <div style={{textAlign:'center', margin:'10px 0'}}>
-                <button onClick={() => loadMessages(sel, selTopic?.id || null, true)} disabled={loadingMore}
-                  style={{padding:'6px 14px', borderRadius:20, background:TG.elevated, border:'none', color:TG.textSec, cursor:'pointer', fontSize:12}}>
-                  {loadingMore ? 'Loading...' : 'Load older messages'}
-                </button>
-              </div>
-            )}
-            {loadMsgs&&<div style={{textAlign:"center",color:TG.textMuted,fontSize:13,marginTop:40}}>Loading messages...</div>}
-            {!loadMsgs&&messagesLoaded&&msgs.length===0&&(
-              <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8,color:TG.textSec,marginTop:60}}>
-                <div style={{fontSize:36}}>👋</div>
-                <div style={{fontSize:14}}>No messages yet</div>
-                <div style={{fontSize:12,color:TG.textMuted}}>Start with a template or AI suggest</div>
-              </div>
-            )}
-            {msgs.map((msg,i)=>{
-              const prev=msgs[i-1]
-              const next=msgs[i+1]
-              
-              const getTime = (d) => typeof d === 'number' ? d * 1000 : new Date(d).getTime();
-              const msgTime = getTime(msg.date);
-
-              const showSep=i===0||(()=>{
-                try{
-                  const a=new Date(msgTime)
-                  const b=new Date(getTime(prev.date))
-                  return a.toDateString()!==b.toDateString()
-                }catch{return false}
-              })()
-              let nextShowSep = false;
-              if (next) {
-                try {
-                  const a=new Date(getTime(next.date))
-                  const b=new Date(msgTime)
-                  nextShowSep = a.toDateString()!==b.toDateString()
-                } catch {}
-              }
-              const isSameSenderAsPrev = prev && prev.fromMe === msg.fromMe && prev.senderId === msg.senderId
-              const isSameSenderAsNext = next && next.fromMe === msg.fromMe && next.senderId === msg.senderId
-
-              const isSameGroup = !!(isSameSenderAsPrev && (msgTime - getTime(prev.date)) < 300000 && !showSep)
-              const isLastInGroup = !(isSameSenderAsNext && (getTime(next.date) - msgTime) < 300000 && !nextShowSep)
-              const isFirstInGroup = !isSameGroup
-
-              let groupClass = ''
-              if (isFirstInGroup && isLastInGroup) groupClass = ' single'
-              else if (isFirstInGroup) groupClass = ' top'
-              else if (isLastInGroup) groupClass = ' bottom'
-              else groupClass = ' mid'
-              // Infer first unread: last N msgs where N = chat.unread count
-              const unreadCount = selTopic ? (selTopic.unread || 0) : (sel?.unread || 0)
-              const readKey = sel?.id + (selTopic ? '_' + selTopic.id : '')
-              const isFirstUnread = !readChats.has(readKey) &&
-                unreadCount > 0 &&
-                i === Math.max(0, msgs.length - unreadCount)
-              return(
-                <div key={i} ref={isFirstUnread?firstUnreadRef:null}>
-                  {isFirstUnread&&(
-                    <div ref={firstUnreadRef} style={{
-                      display:"flex",alignItems:"center",gap:10,
-                      margin:"12px 0 8px",
-                    }}>
-                      <div style={{flex:1,height:1,background:"rgba(124,58,237,.35)"}}/>
-                      <div style={{
-                        display:"flex",alignItems:"center",gap:6,
-                        background:"rgba(124,58,237,.18)",
-                        border:"1px solid rgba(124,58,237,.3)",
-                        borderRadius:20,padding:"3px 12px",
-                        fontSize:11,fontWeight:700,color:"#a78bfa",
-                        whiteSpace:"nowrap",
-                      }}>
-                        <span>●</span>
-                        <span>{unreadCount} new message{unreadCount>1?'s':''}</span>
-                      </div>
-                      <div style={{flex:1,height:1,background:"rgba(124,58,237,.35)"}}/>
-                    </div>
-                  )}
-                  {showSep&&<div className="dsep"><span>{fmtDateSep(msgTime)}</span></div>}
-                  <div id={'msg-'+msg.id} className={`msg-row${msg.fromMe?' out':' in'}${!isLastInGroup?' grouped':''}`}
-                    style={{cursor:selectMode?"pointer":"default"}}
-                    onClick={selectMode?()=>setSelectedMsgs(prev=>{const s=new Set(prev);s.has(i)?s.delete(i):s.add(i);return s}):undefined}>
-                  {selectMode&&<div style={{width:20,height:20,borderRadius:"50%",border:"2px solid #7c3aed",background:selectedMsgs.has(i)?"#7c3aed":"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,alignSelf:"center",fontSize:12,color:"#fff",cursor:"pointer"}}>
-                    {selectedMsgs.has(i)?"✓":""}
-                  </div>}
-                    {!msg.fromMe && (
-                      isLastInGroup
-                      ? <div className="msg-avatar" style={{cursor:'pointer'}} onClick={() => setProfilePreview({ id: msg.senderId||sel.id, name: msg.senderName||sel.name, chatId: sel.id })}><Avatar name={msg.senderName||sel.name} chatId={msg.senderId||sel.id} username={null} size={32}/></div>
-                      : <div className="msg-avatar-gap"/>
-                    )}
-                    <div className="msg-content" onContextMenu={e=>handleCtx(e,msg,i)}>
-                      <div className={`bbl msg-bubble ${msg.fromMe?"out":"in"}${msg.deleted?" del":""}${groupClass}`}>
-                        {!msg.fromMe && !sel?.isUser && msg.senderName && !isSameGroup && (
-                          <div style={{fontSize:12,fontWeight:600,color:"#7dd3fc",marginBottom:2,whiteSpace:"nowrap",cursor:'pointer'}} onClick={() => setProfilePreview({ id: msg.senderId||sel.id, name: msg.senderName||sel.name, chatId: sel.id })}>{msg.senderName}</div>
-                        )}
-                        {msg.replyTo&&(
-                          <div onClick={()=>{/* scroll to reply */}} style={{background:"rgba(255,255,255,.05)",borderLeft:`3px solid #7dd3fc`,padding:"2px 8px",borderRadius:"0 4px 4px 0",marginBottom:6,fontSize:13,color:"rgba(255,255,255,.7)",maxWidth:"100%",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",cursor:"pointer",display:"flex",flexDirection:"column"}}>
-                            <span style={{color:"#7dd3fc",fontWeight:500,fontSize:12}}>{msg.replyTo.fromMe?"You":sel.name}</span>
-                            <span>{msg.replyTo.text}</span>
-                          </div>
-                        )}
-                        {isPhotoMsg(msg) && <ChatPhoto msg={msg} chatId={sel.id} authToken={token} onImageClick={(src)=>setLightbox(src)}/>}
-                        {isVideoMsg(msg) && (
-                          <video controls style={{maxWidth:'100%',maxHeight:320,borderRadius:8,display:'block',marginBottom:4}}>
-                            <source src={`/api/chat/media/${sel.id}/${msg.id}?t=${token}`}/>
-                          </video>
-                        )}
-                        {(msg.isAudio || msg.audio || msg.voice || msg.media?.type === 'audio') && (
-                          <audio controls style={{width:'100%',marginBottom:4}}>
-                            <source src={`/api/chat/media/${sel.id}/${msg.id}?t=${token}`}/>
-                          </audio>
-                        )}
-                        {isDocMsg(msg) && <div style={{padding:'4px 0',color:TG.textSec,fontSize:13}}>📎 Document</div>}
-                        {/* Render poll messages nicely */}
-                        {msg.text?.startsWith('📊 ') && (
-                          <div style={{minWidth:200}}>
-                            <div style={{fontWeight:600,marginBottom:8,fontSize:14}}>{msg.text.split('\n')[0]}</div>
-                            {msg.text.split('\n').slice(1).filter(l=>l.trim()).map((opt,i)=>(
-                              <div key={i} style={{background:"rgba(255,255,255,.1)",borderRadius:8,
-                                padding:"7px 12px",marginBottom:4,fontSize:13,cursor:"pointer",
-                                border:"1px solid rgba(255,255,255,.1)"}}
-                                onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,.2)"}
-                                onMouseLeave={e=>e.currentTarget.style.background="rgba(255,255,255,.1)"}>
-                                {opt}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                        {(()=>{
-                          const displayText = editedMsgs[msg.id] || msg.text || ''
-                          return renderMessageText(displayText, chatSearch)
-                        })()}
-                        {/* Link preview */}
-                        {msg.text && (msg.text.includes('http://') || msg.text.includes('https://')) && (
-                          <LinkPreview url={(msg.text.match(/https?:\/\/\S+/)||[''])[0]}/>
-                        )}
-                        <div className="bfoot">
-                          {(msg.edited||editedMsgs[msg.id])&&(
-                            <span style={{fontSize:11,color:'rgba(255,255,255,.5)'}}>edited</span>
-                          )}
-                          <span style={{fontSize:11,color:'rgba(255,255,255,.5)'}}>{fmtMsgTime(msg.date)}</span>
-                          {msg.fromMe&&<span style={{fontSize:11,color:msg.pending?"rgba(255,255,255,.3)":"rgba(255,255,255,.5)"}}>{msg.pending?"⏳":"✓✓"}</span>}
-                        </div>
-                      </div>
-                      {reactions[msg.id]&&Object.keys(reactions[msg.id]).length>0&&(
-                        <div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:2,marginLeft: msg.fromMe?0:12,marginRight: msg.fromMe?12:0}}>
-                          {Object.entries(reactions[msg.id]).map(([e,n])=>(
-                            <span key={e} onClick={()=>setReactions(p=>({...p,[msg.id]:{...p[msg.id],[e]:(p[msg.id][e]||1)-1}}))}
-                              style={{background:"rgba(0,0,0,.2)",border:"1px solid rgba(255,255,255,.05)",
-                                borderRadius:12,padding:"3px 8px",fontSize:13,color:"rgba(255,255,255,.8)",cursor:"pointer",userSelect:"none"}}>
-                              {e}{n>1?` ${n}`:""}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
-            <div ref={endRef}/>
-          </div>
-
-          {/* AI Suggest panel */}
-          <AISuggestPanel
-            text={aiText} analysis={aiAnalysis} alternative={aiAlt} loading={aiLoading}
-            onUse={()=>{setInput(aiText);setAiText("");setAiAnalysis("");setAiAlt("")}}
-            onUseAlt={()=>{setInput(aiAlt);setAiText("");setAiAnalysis("");setAiAlt("")}}
-            onRegenerate={()=>getAI(false)}
-            onClose={()=>{setAiText("");setAiAnalysis("");setAiAlt("");setAiLoading(false)}}
-          />
-
-          {/* Reply bar */}
-          {replyTo&&(
-            <div className="rpl-bar" style={{margin:"0 16px 6px",flexShrink:0}}>
-              <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                ↩ Replying to: {replyTo.text}
-              </span>
-              <button onClick={()=>setReplyTo(null)} style={{background:"none",border:"none",color:TG.textMuted,cursor:"pointer",fontSize:15,flexShrink:0}}>✕</button>
-            </div>
-          )}
-
-          {/* Template picker */}
-          {showTmpl&&(
-            <div className="tp">
-              <div className="tpcat">
-                {tmplCats.map(cat=>(
-                  <button key={cat} className="tc" onClick={()=>setTmplCat(cat)}
-                    style={{background:tmplCat===cat?TG.blue:TG.elevated,color:tmplCat===cat?"#fff":TG.textSec}}>
-                    {cat==="all"?"All":cat}
-                  </button>
-                ))}
-                <button className="tc" onClick={()=>setShowTmpl(false)} style={{background:"none",color:TG.textMuted,marginLeft:"auto"}}>✕</button>
-              </div>
-              <div className="tlist">
-                {TEMPLATES.filter(t=>tmplCat==="all"||t.cat===tmplCat).map(t=>(
-                  <div key={t.id} className="ti" onClick={()=>{setInput(t.text);setShowTmpl(false)}}>
-                    <div style={{fontSize:13,fontWeight:600,color:TG.text,marginBottom:2}}>{t.label}</div>
-                    <div style={{fontSize:12,color:TG.textSec,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.text}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Select mode action bar */}
-          {selectMode&&(
-            <div style={{padding:"10px 16px",background:"#1a0533",borderTop:"1px solid #0d0618",display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
-              <span style={{fontSize:13,color:"#c4a8e8",flex:1}}>{selectedMsgs.size} selected</span>
-              <button onClick={()=>{
-                const toDelete = [...selectedMsgs].map(i=>msgs[i]).filter(m=>m&&m.fromMe&&m.id>0)
-                setMsgs(p=>p.map((m,i)=>selectedMsgs.has(i)?{...m,deleted:true,text:"This message was deleted"}:m))
-                toDelete.forEach(m=>fetch("/api/chat/delete",{method:"POST",headers:{"Content-Type":"application/json","x-auth-token":token},body:JSON.stringify({chatId:sel.id,messageId:m.id})}))
-                setSelectMode(false);setSelectedMsgs(new Set())
-              }} style={{padding:"7px 14px",background:"rgba(229,57,53,.15)",color:"#e53935",border:"1px solid rgba(229,57,53,.3)",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600}}>
-                🗑 Delete
-              </button>
-              <button onClick={()=>{setSelectMode(false);setSelectedMsgs(new Set())}}
-                style={{padding:"7px 14px",background:"#2d1155",color:"#9b7ec8",border:"1px solid #3d1f6a",borderRadius:8,cursor:"pointer",fontSize:13}}>
-                Cancel
-              </button>
-            </div>
-          )}
-          {/* GIF Picker */}
-          {gifOpen&&(
-            <div style={{height:220,background:TG.panel,borderTop:"1px solid "+TG.border,flexShrink:0,display:"flex",flexDirection:"column"}}>
-              <div style={{padding:"6px 10px",borderBottom:"1px solid "+TG.border}}>
-                <input value={gifQuery}
-                  onChange={e=>{setGifQuery(e.target.value);searchGifs(e.target.value)}}
-                  placeholder="Search GIFs..."
-                  style={{width:"100%",background:TG.elevated,border:"none",borderRadius:16,padding:"6px 12px",color:TG.text,fontSize:13,outline:"none",boxSizing:"border-box"}}
-                  autoFocus/>
-              </div>
-              <div style={{flex:1,overflowX:"auto",display:"flex",gap:6,padding:"8px 10px",alignItems:"center"}}>
-                {gifs.length===0&&<div style={{color:TG.textMuted,fontSize:13,padding:"0 10px"}}>Search for GIFs above</div>}
-                {gifs.map(g=>{
-                  const url = g.media_formats?.gif?.url || g.media_formats?.tinygif?.url
-                  if(!url) return null
-                  return (
-                    <img key={g.id} src={url} alt={g.title}
-                      style={{height:120,borderRadius:8,cursor:"pointer",flexShrink:0}}
-                      onClick={async()=>{
-                        setGifOpen(false)
-                        // Send GIF as a message with the URL
-                        await fetch("/api/chat/send",{method:"POST",
-                          headers:{"Content-Type":"application/json","x-auth-token":token},
-                          body:JSON.stringify({chatId:sel.id,text:url})
-                        })
-                        setTimeout(()=>{loadingRef.current=false;loadMessages(sel)},500)
-                      }}/>
-                  )
-                })}
-              </div>
-            </div>
-          )}
-          {/* Scroll to bottom button */}
-          {firstUnreadRef.current&&showScrollBtn&&(
-            <button onClick={()=>firstUnreadRef.current?.scrollIntoView({behavior:"smooth",block:"center"})}
-              style={{position:"absolute",bottom:130,right:20,padding:"4px 12px",borderRadius:20,
-                background:"rgba(124,58,237,.9)",border:"none",cursor:"pointer",
-                fontSize:12,color:"#fff",fontWeight:600,zIndex:10,boxShadow:"0 2px 8px rgba(0,0,0,.4)"}}>
-              ↑ Unread
-            </button>
-          )}
-          {showScrollBtn&&(
-            <button onClick={()=>endRef.current?.scrollIntoView({behavior:"smooth"})}
-              style={{position:"absolute",bottom:90,right:20,width:38,height:38,borderRadius:"50%",
-                background:TG.elevated,border:"1px solid #3d1f6a",cursor:"pointer",
-                fontSize:18,display:"flex",alignItems:"center",justifyContent:"center",
-                boxShadow:"0 2px 8px rgba(0,0,0,.4)",zIndex:10}}>
-              ↓
-            </button>
-          )}
-          {/* Voice recording indicator */}
-          {recording&&(
-            <div style={{padding:"8px 16px",background:"rgba(229,57,53,.1)",borderTop:"1px solid rgba(229,57,53,.2)",
-              display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
-              <div style={{width:8,height:8,borderRadius:"50%",background:"#e53935",animation:"pulse 1s infinite"}}/>
-              <span style={{fontSize:13,color:"#e53935",fontWeight:600}}>Recording... {recordSecs}s</span>
-              <span style={{fontSize:12,color:TG.textSec,flex:1}}>Release 🎤 to send, or swipe away to cancel</span>
-              <button onClick={()=>{mediaRecRef.current?.stop();clearInterval(recordTimerRef.current);setRecording(false);setRecordSecs(0)}}
-                style={{background:"none",border:"none",color:TG.textSec,cursor:"pointer",fontSize:13}}>Cancel</button>
-            </div>
-          )}
+          <MessageList {...chatProps} />
           {/* Input area */}
           {/* TODO(Refactor): Split out into <Composer> component */}
-          {/* Handles AI suggestions, templates, voice recording, typing indicator */}
-          <div className="ia">
-            {/* Editing bar */}
-            {editingMsg&&(
-              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,padding:'8px 16px',
-                background:'rgba(124,58,237,.15)',height:52,flexShrink:0}}>
-                <div style={{display:'flex',alignItems:'center',gap:12,flex:1,minWidth:0}}>
-                  <span style={{fontSize:20,color:'#7c3aed'}}>✏️</span>
-                  <div style={{flex:1,minWidth:0,display:'flex',flexDirection:'column',justifyContent:'center'}}>
-                    <div style={{fontSize:13,fontWeight:700,color:'#a78bfa',marginBottom:2}}>Edit message</div>
-                    <div style={{fontSize:13,color:'#9b7ec8',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
-                      {editingMsg.text}
-                    </div>
-                  </div>
-                </div>
-                <button onClick={()=>{setEditingMsg(null);setInput('')}}
-                  style={{background:'none',border:'none',color:'#a78bfa',cursor:'pointer',
-                    fontSize:20,lineHeight:1,padding:4,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}>
-                  ✕
-                </button>
-              </div>
-            )}
-            {/* Emoji popover — only show when open */}
-            {emojiOpen&&(
-              <div style={{display:"flex",gap:4,padding:"4px 2px",overflowX:"auto",flexShrink:0,
-                borderBottom:"1px solid #2d1155",marginBottom:2}}>
-                {["👍","❤️","😂","🔥","💪","✅","🙏","😎","🤔","👀","💯","🎯","🔑","💎","🚀","⭐"].map(e=>(
-                  <button key={e} style={{background:"none",border:"none",cursor:"pointer",fontSize:19,
-                    padding:"2px 4px",borderRadius:6,flexShrink:0,lineHeight:1}}
-                    onClick={()=>{setInput(p=>p+e)}}>
-                    {e}
-                  </button>
-                ))}
-                <button onClick={()=>setEmojiOpen(false)}
-                  style={{marginLeft:"auto",background:"none",border:"none",color:"#6b7280",cursor:"pointer",fontSize:14,flexShrink:0}}>
-                  ✕
-                </button>
-              </div>
-            )}
-            {/* Input row */}
-            <div className="ir">
-              <button className="ib" onClick={()=>setEmojiOpen(p=>!p)} title="Emoji"
-                style={{background:emojiOpen?"#2d1155":"transparent",fontSize:17}}>😊</button>
-              <button className="ib g" title="Attach file"
-                onClick={()=>document.getElementById('fileInput').click()} style={{fontSize:17}}>📎</button>
-              <textarea className="message-input" placeholder="Type a message..."
-                ref={inputRef} value={input} rows={1}
-                onChange={e=>{
-                  setInput(e.target.value)
-                }}
-                onKeyDown={e=>{
-                  if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send()}
-                }}
-                style={{height:"auto"}}/>
-              <button className={`ib g${showTmpl?" on":""}`} onClick={()=>setShowTmpl(v=>!v)} title="Templates" style={{fontSize:17}}>
-                📋
-              </button>
-              <button className="ib g" onClick={getAI} disabled={aiLoading} title="AI Suggest"
-                style={{background:aiLoading?"rgba(124,58,237,.25)":TG.elevated,fontSize:17}}>
-                {aiLoading?"⏳":"✨"}
-              </button>
-              <button className="ib s" onClick={send} disabled={!input.trim()||sending}
-                style={{opacity:input.trim()&&!sending?1:.4,fontSize:17,background:editingMsg?'#4caf50':'',color:editingMsg?'#fff':''}} title={editingMsg?"Save Edit":"Send"}>
-                {editingMsg?"✓":"➤"}
-              </button>
-            </div>
-          </div>
+          <Composer {...chatProps} />
         </>}
       </div>
 
       {/* RIGHT COL */}
       {/* TODO(Refactor): Split out into <CRMRightPanel> component */}
-      {showProfile&&(
-        <div className="rc">
-          {!sel?(
-            <div style={{padding:32,textAlign:"center",color:TG.textMuted,fontSize:13,marginTop:60}}>Select a chat</div>
-          ):(
-            <>
-              <div style={{padding:"22px 16px 16px",textAlign:"center",borderBottom:`1px solid ${TG.border}`}}>
-                <Avatar name={sel.name} chatId={sel.id} username={sel.username} size={70}/>
-                <div style={{fontWeight:700,fontSize:18,color:TG.text,marginTop:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                  {selTopic ? selTopic.title : sel.name}
-                </div>
-                <div style={{fontSize:12,color:TG.textSec,marginTop:3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                  {selTopic ? `Topic in ${sel.name}` : 
-                   sel.isGroup || sel.isChannel ? `Telegram · ${sel.memberCount ? sel.memberCount + ' members' : 'Group'}` :
-                   sel.isUser ? `Telegram · Contact · ${onlineStatus === 'online' ? 'Online' : onlineStatus === 'unknown' ? 'Status unavailable' : onlineStatus || 'Last seen recently'}` : 'Telegram'}
-                </div>
-                <div style={{marginTop:10,flexShrink:0}}><StageBadge stage={cStage}/></div>
-                <div style={{display:"flex",justifyContent:"center",gap:8,marginTop:12}}>
-                  {[["📱","Open in TG",null],["📧","Email",null],["🌐","Website",null],["📋","Copy ID",()=>navigator.clipboard?.writeText(sel.id)]].map(([icon,ttl,action])=>(
-                    <button key={ttl} title={ttl} onClick={action||undefined} style={{width:34,height:34,borderRadius:"50%",background:TG.elevated,border:"none",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:16}}>
-                      {icon}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="rs">
-                <div className="rl">Deal</div>
-                <select className="ri" value={cStage} onChange={e=>setStages(p=>({...p,[sel.id]:e.target.value}))}>
-                  {Object.keys(STAGES).map(s=><option key={s} value={s}>{s}</option>)}
-                </select>
-                <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:TG.textSec,marginBottom:4}}>
-                  <span>Win probability</span>
-                  <span style={{color:TG.blue,fontWeight:700}}>{cProb}%</span>
-                </div>
-                <input type="range" min={0} max={100} step={5} value={cProb}
-                  onChange={e=>setProbs(p=>({...p,[sel.id]:+e.target.value}))}
-                  style={{width:"100%",accentColor:TG.blue,marginBottom:6}}/>
-                <div style={{height:4,background:TG.elevated,borderRadius:99,overflow:"hidden",marginBottom:10}}>
-                  <div style={{height:"100%",width:cProb+"%",background:TG.blue,borderRadius:99,transition:"width .3s"}}/>
-                </div>
-                <div className="rr">
-                  <span style={{fontSize:15}}>💵</span>
-                  <input type="number" value={cDeal} onChange={e=>setDeals(p=>({...p,[sel.id]:+e.target.value||0}))}
-                    placeholder="Deal value USD" style={{background:"transparent",border:"none",color:TG.text,fontSize:13,outline:"none",width:"100%",fontFamily:"inherit"}}/>
-                </div>
-                <div className="rr">
-                  <span style={{fontSize:15}}>📅</span>
-                  <input type="date" value={cFup} onChange={e=>setFups(p=>({...p,[sel.id]:e.target.value}))}
-                    style={{background:"transparent",border:"none",color:TG.text,fontSize:13,outline:"none",fontFamily:"inherit"}}/>
-                </div>
-              </div>
-
-              <div className="rs">
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-                  <div className="rl" style={{marginBottom:0}}>Notes</div>
-                  <button onClick={()=>setAddNote(v=>!v)} style={{fontSize:11,padding:"3px 9px",background:TG.blue,border:"none",borderRadius:6,color:"#fff",cursor:"pointer",fontWeight:600,fontFamily:"inherit"}}>+ Add</button>
-                </div>
-                {addNote&&(
-                  <div style={{marginBottom:10}}>
-                    <textarea value={noteInp} onChange={e=>setNoteInp(e.target.value)} placeholder="Write a note..." rows={3}
-                      style={{width:"100%",background:TG.elevated,border:"1px solid #3d1f6a",borderRadius:8,padding:"8px 10px",color:TG.text,fontSize:13,outline:"none",fontFamily:"inherit",resize:"none",marginBottom:6,boxSizing:"border-box"}}/>
-                    <div style={{display:"flex",gap:6}}>
-                      <button onClick={saveNote} style={{flex:1,padding:"7px",background:TG.blue,color:"#fff",border:"none",borderRadius:7,cursor:"pointer",fontWeight:600,fontSize:13,fontFamily:"inherit"}}>Save</button>
-                      <button onClick={()=>setAddNote(false)} style={{padding:"7px 12px",background:TG.elevated,color:TG.textSec,border:"1px solid #3d1f6a",borderRadius:7,cursor:"pointer",fontSize:13,fontFamily:"inherit"}}>Cancel</button>
-                    </div>
-                  </div>
-                )}
-                {cNotes.length===0&&!addNote&&<div style={{fontSize:12,color:TG.textMuted,fontStyle:"italic"}}>No notes yet</div>}
-                {cNotes.map(n=>(
-                  <div key={n.id} style={{padding:"9px 10px",background:TG.bg,borderRadius:8,border:`1px solid ${TG.elevated}`,marginBottom:6}}>
-                    <div style={{fontSize:13,color:TG.text,lineHeight:1.5}}>{n.content}</div>
-                    <div style={{fontSize:10,color:TG.textMuted,marginTop:4}}>{n.date}</div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="rs" style={{border:"none"}}>
-                <div className="rl">Quick Actions</div>
-                <button className="qb d" onClick={()=>setStages(p=>({...p,[sel.id]:"Negotiating"}))}>🔥 Mark as Negotiating</button>
-                <button className="qb d" onClick={()=>setFups(p=>({...p,[sel.id]:new Date(Date.now()+172800000).toISOString().split("T")[0]}))}>📅 Follow-up in 2 days</button>
-                <button className="qb w" onClick={()=>{setStages(p=>({...p,[sel.id]:"Closed Won"}));setProbs(p=>({...p,[sel.id]:100}))}}>✅ Closed Won</button>
-                <button className="qb l" onClick={()=>{setStages(p=>({...p,[sel.id]:"Closed Lost"}));setProbs(p=>({...p,[sel.id]:0}))}}>✕ Mark as Lost</button>
-              </div>
-            </>
-          )}
-        </div>
-      )}
-
-      {/* Context menu */}
-
-
-
-
-
-      {/* Message Info Modal */}
-      {msgInfoOpen&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center"}}
-          onClick={()=>setMsgInfoOpen(null)}>
-          <div style={{background:TG.panel,borderRadius:16,padding:24,width:320}} onClick={e=>e.stopPropagation()}>
-            <div style={{fontWeight:700,fontSize:16,marginBottom:16,color:TG.text}}>ℹ️ Message Info</div>
-            <div style={{background:TG.elevated,borderRadius:10,padding:"10px 12px",marginBottom:16,fontSize:13,color:TG.text,lineHeight:1.5}}>
-              {msgInfoOpen.text}
-            </div>
-            <div style={{display:"flex",flexDirection:"column",gap:10}}>
-              <div style={{display:"flex",justifyContent:"space-between",fontSize:13}}>
-                <span style={{color:TG.textSec}}>Sent</span>
-                <span style={{color:TG.text}}>{new Date((msgInfoOpen.date||0)*1000).toLocaleString()}</span>
-              </div>
-              <div style={{display:"flex",justifyContent:"space-between",fontSize:13}}>
-                <span style={{color:TG.textSec}}>Status</span>
-                <span style={{color:TG.green}}>✓✓ Delivered</span>
-              </div>
-              <div style={{display:"flex",justifyContent:"space-between",fontSize:13}}>
-                <span style={{color:TG.textSec}}>Message ID</span>
-                <span style={{color:TG.textMuted,fontFamily:"monospace"}}>{msgInfoOpen.id}</span>
-              </div>
-            </div>
-            <button onClick={()=>setMsgInfoOpen(null)}
-              style={{width:"100%",marginTop:16,padding:"9px",background:TG.elevated,
-                color:TG.textSec,border:"none",borderRadius:8,cursor:"pointer",fontSize:13}}>
-              Close
-            </button>
-          </div>
-        </div>
-      )}
-      {/* Poll Modal */}
-      {pollOpen&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center"}}
-          onClick={()=>setPollOpen(false)}>
-          <div style={{background:TG.panel,borderRadius:16,padding:24,width:360}} onClick={e=>e.stopPropagation()}>
-            <div style={{fontWeight:700,fontSize:16,marginBottom:16,color:TG.text}}>📊 Create Poll</div>
-            <input value={pollQuestion} onChange={e=>setPollQuestion(e.target.value)}
-              placeholder="Ask a question..."
-              style={{width:"100%",background:TG.elevated,border:"1px solid #3d1f6a",borderRadius:8,
-                padding:"9px 12px",color:TG.text,fontSize:14,marginBottom:12,boxSizing:"border-box"}}/>
-            <div style={{marginBottom:8,fontSize:12,color:TG.textSec}}>Options:</div>
-            {pollOptions.map((opt,i)=>(
-              <div key={i} style={{display:"flex",gap:6,marginBottom:8}}>
-                <input value={opt} onChange={e=>{const o=[...pollOptions];o[i]=e.target.value;setPollOptions(o)}}
-                  placeholder={`Option ${i+1}`}
-                  style={{flex:1,background:TG.elevated,border:"1px solid #3d1f6a",borderRadius:8,
-                    padding:"7px 10px",color:TG.text,fontSize:13}}/>
-                {pollOptions.length>2&&<button onClick={()=>setPollOptions(p=>p.filter((_,j)=>j!==i))}
-                  style={{background:"none",border:"none",color:TG.textMuted,cursor:"pointer",fontSize:16}}>✕</button>}
-              </div>
-            ))}
-            {pollOptions.length<6&&(
-              <button onClick={()=>setPollOptions(p=>[...p,''])}
-                style={{width:"100%",padding:"7px",background:"transparent",border:"1px dashed #3d1f6a",
-                  borderRadius:8,color:TG.textSec,cursor:"pointer",fontSize:13,marginBottom:12}}>
-                + Add option
-              </button>
-            )}
-            <div style={{display:"flex",gap:8,marginTop:4}}>
-              <button onClick={async()=>{
-                if(!pollQuestion.trim()) return alert('Enter a question')
-                const validOpts = pollOptions.filter(o=>o.trim())
-                if(validOpts.length<2) return alert('Need at least 2 options')
-                const pollText = '📊 '+pollQuestion+'\n'+validOpts.map((o,i)=>`${i+1}. ${o}`).join('\n')
-                await fetch("/api/chat/send",{method:"POST",
-                  headers:{"Content-Type":"application/json","x-auth-token":token},
-                  body:JSON.stringify({chatId:sel.id,text:pollText})
-                })
-                setPollOpen(false);setPollQuestion('');setPollOptions(['',''])
-                setTimeout(()=>{loadingRef.current=false;loadMessages(sel)},500)
-              }} style={{flex:1,padding:"9px",background:TG.blue,color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontWeight:600}}>
-                Send Poll
-              </button>
-              <button onClick={()=>setPollOpen(false)}
-                style={{padding:"9px 16px",background:TG.elevated,color:TG.textSec,border:"none",borderRadius:8,cursor:"pointer"}}>
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      {/* Schedule Message Modal */}
-      {scheduleOpen&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center"}}
-          onClick={()=>setScheduleOpen(false)}>
-          <div style={{background:TG.panel,borderRadius:16,padding:24,width:300}} onClick={e=>e.stopPropagation()}>
-            <div style={{fontWeight:700,fontSize:16,marginBottom:16,color:TG.text}}>⏰ Schedule Message</div>
-            <div style={{fontSize:13,color:TG.textSec,marginBottom:8}}>"{input.slice(0,50)}{input.length>50?'...':''}"</div>
-            <input type="datetime-local" value={scheduleTime} onChange={e=>setScheduleTime(e.target.value)}
-              min={new Date().toISOString().slice(0,16)}
-              style={{width:"100%",background:TG.elevated,border:"1px solid #3d1f6a",borderRadius:8,
-                padding:"8px 12px",color:TG.text,fontSize:13,marginBottom:16,boxSizing:"border-box"}}/>
-            <div style={{display:"flex",gap:8}}>
-              <button onClick={sendScheduled} disabled={!scheduleTime}
-                style={{flex:1,padding:"9px",background:TG.blue,color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontWeight:600}}>
-                Schedule
-              </button>
-              <button onClick={()=>setScheduleOpen(false)}
-                style={{padding:"9px 16px",background:TG.elevated,color:TG.textSec,border:"none",borderRadius:8,cursor:"pointer"}}>
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      {/* Scheduled messages indicator */}
-      {scheduledMsgs.filter(m=>m.chatId===sel?.id).length>0&&(
-        <div style={{padding:"6px 16px",background:"rgba(245,158,11,.1)",borderTop:"1px solid rgba(245,158,11,.2)",
-          fontSize:12,color:"#f59e0b",flexShrink:0}}>
-          ⏰ {scheduledMsgs.filter(m=>m.chatId===sel.id).length} message(s) scheduled
-        </div>
-      )}
-
-      {/* Global Search */}
-      {globalSearchOpen&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.7)",zIndex:9998,display:"flex",alignItems:"flex-start",justifyContent:"center",paddingTop:60}}
-          onClick={()=>setGlobalSearchOpen(false)}>
-          <div style={{background:TG.panel,borderRadius:16,width:520,maxHeight:"70vh",display:"flex",flexDirection:"column",overflow:"hidden"}}
-            onClick={e=>e.stopPropagation()}>
-            <div style={{padding:"12px 16px",borderBottom:"1px solid "+TG.border}}>
-              <input value={globalSearch} onChange={e=>setGlobalSearch(e.target.value)}
-                placeholder="Search messages, chats..."
-                style={{width:"100%",background:TG.elevated,border:"none",borderRadius:20,padding:"9px 16px",
-                  color:TG.text,fontSize:14,outline:"none",boxSizing:"border-box"}}
-                autoFocus/>
-            </div>
-            <div style={{overflowY:"auto",flex:1}}>
-              {globalSearch.length>1 && chats.filter(c=>c.name?.toLowerCase().includes(globalSearch.toLowerCase())).map(c=>(
-                <div key={c.id} onClick={()=>{setSel(c);setSelTopic(null);setGlobalSearchOpen(false)}}
-                  style={{display:"flex",gap:12,padding:"10px 16px",cursor:"pointer",alignItems:"center"}}
-                  onMouseEnter={e=>e.currentTarget.style.background=TG.elevated}
-                  onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                  <Avatar name={c.name} chatId={c.id} username={c.username} size={38}/>
-                  <div>
-                    <div style={{fontSize:14,fontWeight:600,color:TG.text}}>{c.name}</div>
-                    <div style={{fontSize:12,color:TG.textSec}}>{c.lastMsg?.slice(0,50)}</div>
-                  </div>
-                </div>
-              ))}
-              {globalSearch.length>1 && chats.filter(c=>c.name?.toLowerCase().includes(globalSearch.toLowerCase())).length===0&&(
-                <div style={{padding:20,textAlign:"center",color:TG.textMuted,fontSize:13}}>No results for "{globalSearch}"</div>
-              )}
-              {globalSearch.length<=1&&(
-                <div style={{padding:20,textAlign:"center",color:TG.textMuted,fontSize:13}}>Type to search chats and messages</div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-      {/* Image Lightbox */}
-      {lightbox&&(
-        <div onClick={()=>setLightbox(null)}
-          style={{position:"fixed",inset:0,background:"rgba(0,0,0,.92)",zIndex:99999,
-            display:"flex",alignItems:"center",justifyContent:"center",cursor:"zoom-out"}}>
-          <img src={lightbox} alt="photo"
-            style={{maxWidth:"95vw",maxHeight:"95vh",objectFit:"contain",borderRadius:8}}
-            onClick={e=>e.stopPropagation()}/>
-          <button onClick={()=>setLightbox(null)}
-            style={{position:"absolute",top:16,right:16,background:"rgba(255,255,255,.15)",
-              border:"none",borderRadius:"50%",width:40,height:40,cursor:"pointer",
-              color:"#fff",fontSize:20,display:"flex",alignItems:"center",justifyContent:"center"}}>
-            ✕
-          </button>
-          <a href={lightbox} download target="_blank"
-            style={{position:"absolute",top:16,right:64,background:"rgba(255,255,255,.15)",
-              borderRadius:"50%",width:40,height:40,display:"flex",alignItems:"center",
-              justifyContent:"center",textDecoration:"none",fontSize:18}}
-            onClick={e=>e.stopPropagation()}>
-            ⬇️
-          </a>
-        </div>
-      )}
-      {/* Forward Message Modal */}
-      {forwardMsg&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.7)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center"}}
-          onClick={()=>setForwardMsg(null)}>
-          <div style={{background:TG.panel,borderRadius:16,padding:20,width:320,maxHeight:"70vh",overflow:"hidden",display:"flex",flexDirection:"column"}}
-            onClick={e=>e.stopPropagation()}>
-            <div style={{fontWeight:700,fontSize:16,marginBottom:12,color:TG.text}}>Forward to...</div>
-            <div style={{fontSize:12,color:TG.textSec,marginBottom:12,padding:"8px 10px",background:TG.elevated,borderRadius:8}}>
-              "{forwardMsg.text?.slice(0,60)}{forwardMsg.text?.length>60?'...':''}"
-            </div>
-            <div style={{overflowY:"auto",flex:1}}>
-              {chats.filter(c=>c.name).slice(0,20).map(c=>(
-                <div key={c.id} onClick={async()=>{
-                  try {
-                    await fetch("/api/chat/send",{method:"POST",
-                      headers:{"Content-Type":"application/json","x-auth-token":token},
-                      body:JSON.stringify({chatId:c.id,text:"↪️ "+forwardMsg.text})
-                    })
-                    alert("Forwarded to "+c.name)
-                  } catch(e){ alert("Failed: "+e.message) }
-                  setForwardMsg(null)
-                }} style={{display:"flex",gap:10,padding:"10px 8px",cursor:"pointer",borderRadius:8,alignItems:"center"}}
-                  onMouseEnter={e=>e.currentTarget.style.background=TG.elevated}
-                  onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                  <Avatar name={c.name} chatId={c.id} username={c.username} size={36}/>
-                  <span style={{fontSize:14,color:TG.text}}>{c.name}</span>
-                </div>
-              ))}
-            </div>
-            <button onClick={()=>setForwardMsg(null)}
-              style={{marginTop:12,padding:"8px",background:TG.elevated,border:"none",borderRadius:8,color:TG.textSec,cursor:"pointer",fontSize:13}}>
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
+          <CRMRightPanel {...chatProps} />
 
       {/* User Profile Preview Modal */}
       <UserProfileModal 
