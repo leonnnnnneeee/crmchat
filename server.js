@@ -343,6 +343,34 @@ app.get('/api/telegram/search', requireAuth, async (req, res) => {
   }
 })
 
+// ── CHAT MEMBERS ──
+app.get('/api/chat/members/:id', requireAuth, async (req, res) => {
+  if (!_session) return res.json({error: 'No session'})
+  try {
+    const client = await getClient()
+    const entity = await resolveEntity(client, req.params.id)
+    
+    // Some channels throw CHAT_ADMIN_REQUIRED if you request participants.
+    const participants = await client.getParticipants(entity, { limit: 200 })
+    
+    const members = participants.map(p => ({
+      id: p.id.toString(),
+      name: (p.firstName ? p.firstName + (p.lastName ? ' ' + p.lastName : '') : (p.title || 'Unknown')).trim(),
+      username: p.username || null,
+      isBot: p.bot || false,
+      isPremium: p.premium || false
+    }))
+    
+    res.json({ ok: true, members })
+  } catch(e) {
+    if (e.message.includes('CHAT_ADMIN_REQUIRED')) {
+      return res.status(403).json({ error: 'Unable to load members due to Telegram permission limits.' })
+    }
+    log('members error: ' + e.message)
+    res.status(500).json({ error: e.message })
+  }
+})
+
 // ── MESSAGES ──
 app.get('/api/chat/messages/:id', requireAuth, async (req,res) => {
   if (!_session) return res.json([])

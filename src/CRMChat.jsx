@@ -1049,6 +1049,37 @@ export default function CRMChat({ token, onAuthFailed }) {
   const [previewChat,setPreviewChat]=useState(null)   // chat preview modal // chatIds marked as read this session
   const [showMembers,setShowMembers]=useState(false)
   const [memberSearch,setMemberSearch]=useState("")
+  const [chatMembersCache, setChatMembersCache] = useState({})
+  const [loadingMembers, setLoadingMembers] = useState(false)
+  const [membersError, setMembersError] = useState(null)
+
+  useEffect(() => {
+    if (showMembers && sel && (sel.isGroup || sel.isChannel)) {
+      setMembersError(null)
+      const fetchMembers = async () => {
+        setLoadingMembers(true)
+        try {
+          const res = await fetch(`/api/chat/members/${sel.id}`, { headers: { "x-auth-token": token }})
+          if (res.status === 403) {
+            setMembersError("Unable to load members due to Telegram permission limits.")
+            return
+          }
+          const data = await res.json()
+          if (data.ok) {
+            setChatMembersCache(p => ({...p, [sel.id]: data.members}))
+          } else {
+            setMembersError(data.error || "Failed to load members")
+          }
+        } catch(e) {
+          setMembersError(e.message)
+        } finally {
+          setLoadingMembers(false)
+        }
+      }
+      fetchMembers()
+    }
+  }, [showMembers, sel, token])
+
   const [notifPerm,setNotifPerm]=useState(false)
   const [showTmpl,setShowTmpl]=useState(false)
   const [tmplCat,setTmplCat]=useState("all")
@@ -2303,27 +2334,58 @@ export default function CRMChat({ token, onAuthFailed }) {
                 style={{width:'100%',padding:'8px 12px',borderRadius:8,background:'#120929',border:'1px solid #2d1155',color:'#f0e6ff',outline:'none',fontSize:13}}/>
             </div>
             <div style={{flex:1,overflowY:'auto',padding:'8px 0'}}>
-              {(sel.members || sel.participants || sel.users || []).length === 0 ? (
-                <div style={{padding:32,textAlign:'center',color:'#9b7ec8',fontSize:13}}>
-                  <div style={{fontSize:32,marginBottom:12}}>👥</div>
-                  Members data not connected yet.
-                  <div style={{fontSize:11,color:'#6b4d94',marginTop:6}}>⚠️ TODO: Connect Telegram getParticipants API</div>
-                </div>
-              ) : (
-                (sel.members || sel.participants || sel.users || [])
-                  .filter(m => !memberSearch || m.name?.toLowerCase().includes(memberSearch.toLowerCase()) || m.username?.toLowerCase().includes(memberSearch.toLowerCase()))
-                  .map(m => (
+              {(() => {
+                const currentMembers = chatMembersCache[sel.id] || []
+                const filteredMembers = currentMembers.filter(m => !memberSearch || m.name?.toLowerCase().includes(memberSearch.toLowerCase()) || m.username?.toLowerCase().includes(memberSearch.toLowerCase()))
+
+                if (membersError) {
+                  return (
+                    <div style={{padding:32,textAlign:'center',color:'#e53935',fontSize:13}}>
+                      <div style={{fontSize:32,marginBottom:12}}>⚠️</div>
+                      {membersError}
+                    </div>
+                  )
+                }
+
+                if (loadingMembers && currentMembers.length === 0) {
+                  return (
+                    <div style={{padding:32,textAlign:'center',color:'#9b7ec8',fontSize:13}}>
+                      Loading members...
+                    </div>
+                  )
+                }
+
+                if (currentMembers.length === 0) {
+                  return (
+                    <div style={{padding:32,textAlign:'center',color:'#9b7ec8',fontSize:13}}>
+                      No members found.
+                    </div>
+                  )
+                }
+
+                if (filteredMembers.length === 0) {
+                  return (
+                    <div style={{padding:32,textAlign:'center',color:'#9b7ec8',fontSize:13}}>
+                      No members match your search.
+                    </div>
+                  )
+                }
+
+                return filteredMembers.map(m => (
                   <div key={m.id} style={{display:'flex',alignItems:'center',gap:12,padding:'10px 20px',cursor:'pointer'}}
                     onMouseEnter={e=>e.currentTarget.style.background='#2d1155'}
                     onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
                     <Avatar name={m.name} chatId={m.id} username={m.username} size={42}/>
                     <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontWeight:600,fontSize:14,color:'#f0e6ff',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{m.name}</div>
+                      <div style={{fontWeight:600,fontSize:14,color:'#f0e6ff',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
+                        {m.name} {m.isBot && <span style={{fontSize:10,background:'#7c3aed',color:'#fff',padding:'2px 6px',borderRadius:4,marginLeft:6,verticalAlign:'middle'}}>BOT</span>}
+                        {m.isPremium && <span style={{fontSize:12,marginLeft:4,verticalAlign:'middle'}} title="Premium">⭐</span>}
+                      </div>
                       <div style={{fontSize:12,color:'#9b7ec8',marginTop:2}}>{m.status || m.role || (m.username ? '@'+m.username : 'Member')}</div>
                     </div>
                   </div>
                 ))
-              )}
+              })()}
             </div>
           </div>
         </div>
