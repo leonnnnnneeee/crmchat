@@ -668,13 +668,40 @@ app.post('/api/ai/suggest', requireAuth, async (req,res) => {
         { label: "Option 3", text: "How many projects are you managing at the moment?" }
       ];
     }
+
+    if (norm.includes("dự án web3") || norm.includes("dự web3") || norm.includes("nào khác")) {
+      log('AI Suggest Fallback: Used local fallback for "other Web3 projects" intent');
+      return [
+        { label: "Option 1", text: "Are you currently supporting any other Web3 projects?" },
+        { label: "Option 2", text: "Just curious, are you working with any other Web3 projects at the moment?" },
+        { label: "Option 3", text: "Besides this, are you currently helping any other crypto/Web3 projects?" }
+      ];
+    }
+
+    if (norm.includes("link dự án") || norm.includes("cho xin link") || norm.includes("gửi link")) {
+      log('AI Suggest Fallback: Used local fallback for "project link" intent');
+      return [
+        { label: "Option 1", text: "Could you share the link to your project?" },
+        { label: "Option 2", text: "Do you mind sending over your project link so I can take a look?" },
+        { label: "Option 3", text: "Please drop your project link here when you have a moment." }
+      ];
+    }
+
+    if (norm.includes("commission") || norm.includes("hoa hồng") || norm.includes("giới thiệu")) {
+      log('AI Suggest Fallback: Used local fallback for "commission" intent');
+      return [
+        { label: "Option 1", text: "We offer a 20% commission per closed deal if you refer clients to us." },
+        { label: "Option 2", text: "Just so you know, we provide a 20% commission for any successful referrals." },
+        { label: "Option 3", text: "If you introduce any clients, we offer a 20% referral fee per closed deal." }
+      ];
+    }
     
     // Generic fallback for any other command if AI completely fails
     log('AI Suggest Fallback: Used generic fallback for unrecognized command');
     return [
-      { label: "Acknowledged", text: "Got it. How would you like to proceed?" },
-      { label: "Follow up", text: "Understood. Can you share more details?" },
-      { label: "Alternative", text: "Noted! When is a good time to discuss this further?" }
+      { label: "Clarify", text: "Could you tell me a bit more about that?" },
+      { label: "Question", text: "Just to be sure, could you clarify what you mean?" },
+      { label: "Alternative", text: "I see. What's the best way to move forward?" }
     ];
   }
 
@@ -692,10 +719,16 @@ CRITICAL RULES FOR INSTRUCTION:
 - If instruction asks to mention CMC, mention Coincu + CMC News softly.
 - If instruction says "don't sell" or similar, ONLY qualify with one soft question, do not pitch.
 - Preserve speaker direction: "bạn/your/anh/chị" means the CUSTOMER. "tôi/mình/I/me" means YOU (the sender).
-- Example: "cho tôi link dự án của bạn đang làm đi" means "generate a message asking the customer to send their project link to me".
 - If the instruction is in Vietnamese, understand the intent, but OUTPUT THE REPLY IN ENGLISH unless the conversation context is entirely in Vietnamese.
-- DO NOT invent wrong context like podcasts, partnerships, or rate cards unless the instruction explicitly asks for it or it exists in chat.
+- DO NOT invent wrong context like podcasts, partnerships, rate cards, or budgets unless the instruction explicitly asks for it or it exists in chat.
 - DO NOT reply to the instruction itself. Create a message intended for the customer.
+- If intent confidence is low, ask a clarification internally or generate a safe direct question based on the command, DO NOT fall back to generic sales pitches.
+
+VIETNAMESE INTENT EXAMPLES:
+- "bạn đang làm bao nhiêu dự án" -> intent is "ask how many projects customer is working on".
+- "cho tôi link dự án của bạn" -> intent is "ask customer to share their project link".
+- "bạn có hỗ trợ dự án web3 nào khác không" -> intent is "ask if customer supports other Web3 projects".
+- "offer commission nếu họ giới thiệu khách" -> intent is "mention 20% commission per closed deal".
 =========================================
 ` : ''}
 === PRIORITY 2: SCENARIO & BD KNOWLEDGE (Use ONLY to support the instruction, do not override it) ===
