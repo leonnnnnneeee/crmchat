@@ -1333,7 +1333,8 @@ export default function CRMChat({ token, onAuthFailed }) {
         })
         .catch(e=>{
           setLoadingTopics(false)
-          setTopicError(true)
+          setForceNormalView(true)
+          loadMessages(sel, null)
         })
       return
     }
