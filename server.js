@@ -791,7 +791,7 @@ function parseReactions(results) {
     return {
       emoticon: finalEmoji,
       count: r.count || 0,
-      chosen: r.chosenOrder !== undefined || r.chosen === true
+      chosen: typeof r.chosenOrder === 'number' || r.chosen === true
     };
   }).filter(Boolean);
 }

@@ -2145,6 +2145,7 @@ export default function CRMChat({ token, onAuthFailed }) {
     } catch (e) {
       console.log(`[Reaction Sync] Telegram API error:`, e.message);
       console.error(e)
+      alert('Lỗi thả emoji: ' + e.message);
       setMsgs(prevMsgs => {
         const idx = prevMsgs.findIndex(m => m.id === msgId)
         if (idx === -1) return prevMsgs;
