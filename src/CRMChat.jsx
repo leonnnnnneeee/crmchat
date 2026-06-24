@@ -39,6 +39,21 @@ const TEMPLATES = [
   {id:"t13", cat:"Closing",     label:"Closing",                  text:"Based on what we've discussed, I think a bundled Coincu PR + CMC News package makes the most sense. Want me to put together a quick proposal?"},
 ]
 
+// ── Global Keyboard/Paste Helpers ──
+export const allowShortcuts = (e) => {
+  if ((e.metaKey || e.ctrlKey) && ['v','c','x','a'].includes(e.key.toLowerCase())) {
+    e.stopPropagation()
+  }
+}
+
+export const handlePaste = (e) => {
+  const clipboardData = e.clipboardData || window.clipboardData
+  if (clipboardData && clipboardData.files && clipboardData.files.length > 0) {
+    e.preventDefault()
+    alert('TODO: Implement file/image upload from paste')
+  }
+}
+
 // ── Avatar — loads real TG photo, falls back to colored initials ──
 const photoCache = {}
 const linkCache = {}
@@ -337,7 +352,8 @@ function AISuggestPanel({text,suggestions,analysis,alternative,messages,loading,
             placeholder="Tell AI what you want to reply, e.g. offer commission, ask budget, mention CMC..."
             value={aiInstruction||""}
             onChange={(e)=>{setAiInstruction&&setAiInstruction(e.target.value);}}
-            onKeyDown={(e)=>{if(e.key==='Enter'&&!loading) onRegenerate()}}
+            onPaste={handlePaste}
+            onKeyDown={(e)=>{allowShortcuts(e); if(e.key==='Enter'&&!loading) onRegenerate()}}
             style={{flex:1, background:"rgba(0,0,0,.2)", border:"1px solid rgba(124,58,237,.3)", borderRadius:6, padding:"6px 10px", color:"#f0e6ff", fontSize:13, outline:"none"}}
           />
           <button onClick={onRegenerate} disabled={loading} style={{background:"#7c3aed", color:"#fff", border:"none", borderRadius:6, padding:"0 12px", fontSize:13, fontWeight:600, cursor:loading?"not-allowed":"pointer", opacity:loading?0.5:1}}>
@@ -395,6 +411,8 @@ function AISuggestPanel({text,suggestions,analysis,alternative,messages,loading,
               {editIdx===i ? (
                 <textarea value={getMsg(i)}
                   onChange={e=>setEdited(p=>({...p,[i]:e.target.value}))}
+                  onPaste={handlePaste}
+                  onKeyDown={allowShortcuts}
                   style={{width:"100%",background:"transparent",border:"none",
                     padding:"4px 10px 8px",color:"#f0e6ff",fontSize:13,
                     lineHeight:1.5,resize:"none",outline:"none",
@@ -2675,7 +2693,8 @@ export default function CRMChat({ token, onAuthFailed }) {
         </div>
         <div style={{padding:"12px 24px",borderBottom:`1px solid ${TG.border}`}}>
           <input type="text" placeholder="Search" style={{width:"100%",padding:"10px 16px",background:TG.elevated,border:"none",borderRadius:20,color:"#fff",fontSize:14,outline:"none",fontFamily:"inherit"}}
-            value={search} onChange={e=>setSearch(e.target.value)}/>
+            value={search} onChange={e=>setSearch(e.target.value)}
+            onPaste={handlePaste} onKeyDown={allowShortcuts} />
           {search.trim() && (
             <div style={{fontSize: 11, color: TG.textMuted, marginTop: 8, textAlign: 'center'}}>
               {isGlobalSearching ? 'Searching all chats...' : null}

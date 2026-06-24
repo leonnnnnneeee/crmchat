@@ -1,4 +1,5 @@
 import React from 'react';
+import { allowShortcuts, handlePaste } from '../../CRMChat';
 
 export default function Composer(props) {
   const { 
@@ -77,7 +78,11 @@ export default function Composer(props) {
                 onChange={e=>{
                   setInput(e.target.value)
                 }}
-                onKeyDown={handleKeyDown}
+                onPaste={handlePaste}
+                onKeyDown={(e) => {
+                  allowShortcuts(e);
+                  handleKeyDown(e);
+                }}
                 style={{height:"auto"}}/>
               <button className={`ib g${showTmpl?" on":""}`} onClick={()=>setShowTmpl(v=>!v)} title="Templates" style={{fontSize:17}}>
                 📋
