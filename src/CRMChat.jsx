@@ -742,7 +742,12 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
     if (!data?.chatId) return
     let isMounted = true
     fetch(`/api/chat/profile/${data.chatId}`, { headers: {'x-auth-token': token} })
-      .then(r => r.json())
+      .then(async r => {
+        const ct = r.headers.get('content-type');
+        if (ct && ct.includes('text/html')) throw new Error('API route not found or backend returned HTML');
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
       .then(d => { if(isMounted && d.ok && d.full) setFullProfile(d.full) })
       .catch(e => console.error(e))
     return () => { isMounted = false }
@@ -752,7 +757,12 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
     if (!data?.id) return
     let isMounted = true
     fetch(`/api/chat/status/${data.id}`, { headers: {'x-auth-token': token} })
-      .then(r => r.json())
+      .then(async r => {
+        const ct = r.headers.get('content-type');
+        if (ct && ct.includes('text/html')) throw new Error('API route not found or backend returned HTML');
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
       .then(d => { if(isMounted) setStatus(d.status) })
       .catch(e => { if(isMounted) setStatus('') })
     return () => { isMounted = false }
@@ -798,9 +808,11 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
       
       fetch(`/api/chat/common_groups/${data.id}${accessHashQuery}${usernameQuery}`, { headers: {'x-auth-token': token} })
         .then(async r => {
+          const ct = r.headers.get('content-type');
+          if (ct && ct.includes('text/html')) throw new Error('API route not found or backend returned HTML');
           if (!r.ok) {
             const err = await r.json().catch(()=>({}));
-            throw new Error(err.error || 'API Error');
+            throw new Error(err.error || `HTTP ${r.status}`);
           }
           return r.json()
         })
@@ -830,7 +842,12 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
     const fromUserQuery = isGroupUser ? `&fromUser=${data.id}` : '';
     
     fetch(`/api/chat/shared_media/${data.chatId}?type=${tab}${fromUserQuery}&offsetId=${tabOffsetId[tab]}&limit=30`, { headers: {'x-auth-token': token} })
-      .then(r => r.json())
+      .then(async r => {
+        const ct = r.headers.get('content-type');
+        if (ct && ct.includes('text/html')) throw new Error('API route not found or backend returned HTML');
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
       .then(d => {
         if (isMounted && d.ok) {
            setTabData(prev => {

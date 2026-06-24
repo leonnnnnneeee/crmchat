@@ -1222,21 +1222,6 @@ async function startTGListener() {
 // Start listener after session is loaded
 setTimeout(startTGListener, 3000)
 
-// ── STATIC FILES — must be LAST, after all API routes ──
-app.use(express.static(require('path').join(__dirname, 'dist')))
-app.get('*', (req,res) => res.sendFile(require('path').join(__dirname,'dist','index.html')))
-
-// Prevent crashes from unhandled rejections
-process.on('unhandledRejection', (reason) => {
-  log('Unhandled rejection: ' + (reason?.message || reason))
-})
-process.on('uncaughtException', (err) => {
-  log('Uncaught exception: ' + err.message)
-  // Don't exit — keep server running
-})
-
-app.listen(PORT, () => log('Listening on port ' + PORT))
-
 // ── COMMON GROUPS ──
 app.get('/api/chat/common_groups/:id', requireAuth, async (req, res) => {
   if (!_session) return res.json({error: 'No session'})
@@ -1297,3 +1282,18 @@ app.get('/api/chat/common_groups/:id', requireAuth, async (req, res) => {
     res.status(500).json({ error: e.message })
   }
 })
+
+// ── STATIC FILES — must be LAST, after all API routes ──
+app.use(express.static(require('path').join(__dirname, 'dist')))
+app.get('*', (req,res) => res.sendFile(require('path').join(__dirname,'dist','index.html')))
+
+// Prevent crashes from unhandled rejections
+process.on('unhandledRejection', (reason) => {
+  log('Unhandled rejection: ' + (reason?.message || reason))
+})
+process.on('uncaughtException', (err) => {
+  log('Uncaught exception: ' + err.message)
+  // Don't exit — keep server running
+})
+
+app.listen(PORT, () => log('Listening on port ' + PORT))
