@@ -2023,49 +2023,80 @@ export default function CRMChat({ token, onAuthFailed }) {
   const sendingRef = useRef(false)
 
   const toggleReaction = async (msgId, emoji) => {
-    const msgIndex = msgs.findIndex(m => m.id === msgId)
-    if (msgIndex === -1) return
-    const msg = msgs[msgIndex]
-    const oldReactions = msg.reactions || []
+    console.log('emojiClicked', {
+      chatId: sel?.chatId || sel?.id,
+      topicId: selTopic?.id,
+      messageId: msgId,
+      emoji: emoji,
+    });
     
-    const existing = oldReactions.find(r => r.emoticon === emoji)
-    let newReactions = [...oldReactions]
-    let apiEmoji = emoji
+    let newReactionsToLog = [];
     
-    if (existing && existing.chosen) {
-      if (existing.count <= 1) {
-        newReactions = newReactions.filter(r => r.emoticon !== emoji)
-      } else {
-        newReactions = newReactions.map(r => r.emoticon === emoji ? { ...r, count: r.count - 1, chosen: false } : r)
+    setMsgs(prevMsgs => {
+      const msgIndex = prevMsgs.findIndex(m => m.id === msgId)
+      if (msgIndex === -1) {
+        console.log('Reaction failed: Message not found in local msgs state', msgId);
+        return prevMsgs;
       }
-      apiEmoji = null
-    } else {
-      newReactions = newReactions.map(r => r.chosen ? { ...r, count: r.count - 1, chosen: false } : r).filter(r => r.count > 0)
-      const newExisting = newReactions.find(r => r.emoticon === emoji)
-      if (newExisting) {
-        newReactions = newReactions.map(r => r.emoticon === emoji ? { ...r, count: r.count + 1, chosen: true } : r)
+      const msg = prevMsgs[msgIndex]
+      const oldReactions = msg.reactions || []
+      
+      const existing = oldReactions.find(r => r.emoticon === emoji)
+      let newReactions = [...oldReactions]
+      
+      if (existing && existing.chosen) {
+        if (existing.count <= 1) {
+          newReactions = newReactions.filter(r => r.emoticon !== emoji)
+        } else {
+          newReactions = newReactions.map(r => r.emoticon === emoji ? { ...r, count: r.count - 1, chosen: false } : r)
+        }
       } else {
-        newReactions.push({ emoticon: emoji, count: 1, chosen: true })
+        newReactions = newReactions.map(r => r.chosen ? { ...r, count: r.count - 1, chosen: false } : r).filter(r => r.count > 0)
+        const newExisting = newReactions.find(r => r.emoticon === emoji)
+        if (newExisting) {
+          newReactions = newReactions.map(r => r.emoticon === emoji ? { ...r, count: r.count + 1, chosen: true } : r)
+        } else {
+          newReactions.push({ emoticon: emoji, count: 1, chosen: true })
+        }
       }
-    }
+      
+      newReactionsToLog = newReactions;
+      const updatedMsgs = [...prevMsgs]
+      updatedMsgs[msgIndex] = { ...msg, reactions: newReactions }
+      return updatedMsgs;
+    })
     
-    const updatedMsgs = [...msgs]
-    updatedMsgs[msgIndex] = { ...msg, reactions: newReactions }
-    setMsgs(updatedMsgs)
+    // We already know if it was removal or addition based on the old state, but to be simple, let's just determine apiEmoji here.
+    // To cleanly know if we removed it, we can just do the find again on the original `msgs` reference (it might be slightly stale but it's fine for determining the intent).
+    const msgForApi = msgs.find(m => m.id === msgId) || {};
+    const oldR = msgForApi.reactions || [];
+    const isRemoving = oldR.find(r => r.emoticon === emoji && r.chosen);
+    const apiEmoji = isRemoving ? null : emoji;
+    
+    console.log('updated reactions', newReactionsToLog);
     
     try {
+      const payload = { chatId: sel?.chatId || sel?.id, topicId: selTopic?.id, msgId, emoji: apiEmoji, username: sel?.username };
+      console.log('API request payload', payload);
+      
       const res = await fetch('/api/chat/react', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
-        body: JSON.stringify({ chatId: sel.chatId || sel.id, msgId, emoji: apiEmoji, username: sel.username })
+        body: JSON.stringify(payload)
       })
-      if (!res.ok) throw new Error('API failed')
+      console.log('API status/error', res.status, res.statusText);
+      if (!res.ok) throw new Error(`API failed: ${res.status}`)
       console.log(`[Reaction] success: ${msgId} ${apiEmoji}`)
     } catch (e) {
+      console.log('API status/error', e.message);
       console.error(e)
-      const revertMsgs = [...msgs]
-      revertMsgs[msgIndex] = { ...msg, reactions: oldReactions }
-      setMsgs(revertMsgs)
+      setMsgs(prevMsgs => {
+        const idx = prevMsgs.findIndex(m => m.id === msgId)
+        if (idx === -1) return prevMsgs;
+        const revertMsgs = [...prevMsgs]
+        revertMsgs[idx] = { ...prevMsgs[idx], reactions: msgForApi.reactions || [] }
+        return revertMsgs;
+      })
     }
   }
 
