@@ -868,14 +868,16 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
       })
       .then(d => {
         if (isMounted && d.ok) {
+           const items = d.items || d.media || [];
+           const nextCursor = d.nextCursor || d.nextOffsetId || 0;
            setTabData(prev => {
              // Deduplicate by id just in case
              const existingIds = new Set(prev[tab].map(m => m.id));
-             const newItems = d.media.filter(m => !existingIds.has(m.id));
+             const newItems = items.filter(m => !existingIds.has(m.id));
              return {...prev, [tab]: [...prev[tab], ...newItems]};
            });
            setTabHasMore(prev => ({...prev, [tab]: d.hasMore}));
-           setTabOffsetId(prev => ({...prev, [tab]: d.nextOffsetId}));
+           setTabOffsetId(prev => ({...prev, [tab]: nextCursor}));
         } else if (isMounted && !d.ok) {
            setTabError(prev => ({...prev, [tab]: d.error || 'Failed to fetch'}));
         }

@@ -549,9 +549,8 @@ app.get('/api/chat/shared_media/:id', requireAuth, async (req, res) => {
       }
     }
     
-    const msgs = await client.getMessages(entity, params)
-    
-    const results = msgs.map(m => {
+
+    const formatMediaResult = (m) => {
       const isPhoto = m.media?.className === 'MessageMediaPhoto'
       const isDoc   = m.media?.className === 'MessageMediaDocument'
       const isVideo = isDoc && m.media?.document?.mimeType?.startsWith('video/')
@@ -571,19 +570,73 @@ app.get('/api/chat/shared_media/:id', requireAuth, async (req, res) => {
         webpageUrl,
         webpageTitle
       }
-    })
-    
+    };
+
+    const matchesMediaFilter = (m, filterType) => {
+      const isPhoto = m.media?.className === 'MessageMediaPhoto'
+      const isDoc   = m.media?.className === 'MessageMediaDocument'
+      const isVideo = isDoc && m.media?.document?.mimeType?.startsWith('video/')
+      if (filterType === 'media') return isPhoto || isVideo
+      if (filterType === 'photos') return isPhoto
+      if (filterType === 'videos') return isVideo
+      if (filterType === 'files') return isDoc && !isVideo
+      if (filterType === 'links') return !!(m.media?.webpage?.url || m.media?.url)
+      if (filterType === 'gifs') return m.media?.document?.mimeType === 'video/mp4' // simplistic
+      return false
+    };
+
+    const msgs = await client.getMessages(entity, params)
+    const results = msgs.map(formatMediaResult)
     const nextOffsetId = results.length > 0 ? results[results.length - 1].id : null
     const hasMore = results.length === limit
 
-    log(`[Shared Media Debug] chatId=${req.params.id} userId=${fromUser} mediaType=${type} offsetId=${offsetId} loadedCount=${results.length} hasMore=${hasMore}`)
+    log(`[Shared Media Debug] chatId=${req.params.id} userId=${fromUser} mediaType=${type} offsetId=${offsetId} loadedCount=${results.length} hasMore=${hasMore} source=telegram_history`)
     
-    res.json({ ok: true, media: results, hasMore, nextOffsetId })
+    res.json({ ok: true, items: results, hasMore, nextCursor: nextOffsetId, source: 'telegram_history' })
+
   } catch(e) {
-    log('shared media error: ' + e.message)
-    res.json({ ok: false, error: e.message, code: e.errorMessage || e.code || 'API_ERROR' })
+    if (e.errorMessage === 'INPUT_FILTER_INVALID' && fromUser) {
+      log('shared media: INPUT_FILTER_INVALID caught. Falling back to manual history scan...')
+      try {
+        let currentOffsetId = parseInt(req.query.offsetId) || 0;
+        let matched = [];
+        let fetchedMsgs;
+        let attempts = 0;
+        const limit = parseInt(req.query.limit) || 30;
+        const type = req.query.type || 'photos';
+        
+        while (matched.length < limit && attempts < 5) {
+            fetchedMsgs = await client.getMessages(entity, { limit: 100, offsetId: currentOffsetId });
+            if (!fetchedMsgs || fetchedMsgs.length === 0) break;
+            
+            for (const m of fetchedMsgs) {
+                const sId = m.senderId ? m.senderId.toString() : (m.fromId?.userId ? m.fromId.userId.toString() : '');
+                if (sId === fromUser.toString() && matchesMediaFilter(m, type)) {
+                    matched.push(m);
+                }
+            }
+            currentOffsetId = fetchedMsgs[fetchedMsgs.length - 1].id;
+            attempts++;
+        }
+        
+        const results = matched.map(formatMediaResult).slice(0, limit);
+        const hasMore = fetchedMsgs && fetchedMsgs.length === 100;
+        const nextCursor = results.length > 0 ? results[results.length - 1].id : currentOffsetId;
+        
+        log(`[Shared Media Debug] fallback manual scan: chatId=${req.params.id} userId=${fromUser} mediaType=${type} returnedCount=${results.length} hasMore=${hasMore}`)
+        
+        res.json({ ok: true, items: results, hasMore, nextCursor, source: 'loaded_messages' });
+      } catch (innerErr) {
+        log('shared media fallback error: ' + innerErr.message)
+        res.json({ ok: false, error: innerErr.message, code: innerErr.errorMessage || innerErr.code || 'API_ERROR' })
+      }
+    } else {
+      log('shared media error: ' + e.message)
+      res.json({ ok: false, error: e.message, code: e.errorMessage || e.code || 'API_ERROR' })
+    }
   }
 })
+
 
 // ── PROFILE PHOTO DOWNLOAD ──
 app.get('/api/chat/photo/:id', requireAuth, async (req, res) => {
