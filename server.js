@@ -808,6 +808,10 @@ app.get('/api/chat/messages/:id', requireAuth, async (req,res) => {
             count: r.count || 0,
             chosen: r.chosenOrder !== undefined || r.chosen === true
           })) || [],
+          recentReactions: m.reactions?.recentReactions?.map(rr => ({
+            peerId: rr.peerId?.userId?.toString() || rr.peerId?.channelId?.toString() || null,
+            emoticon: rr.reaction?.emoticon || ''
+          })) || [],
         }
       })
       .filter(m => m.text || m.isPhoto || m.isVideo || m.isDoc)

@@ -283,7 +283,7 @@ function ContextMenu({x,y,msg,onDelete,onCopy,onReply,onClose,onDeleteAll,onSele
       display:'flex',flexDirection:'column',padding:'6px 0',minWidth:180
     }}>
       <div style={{display:'flex', gap:4, padding:'8px 12px', borderBottom:'1px solid rgba(124,58,237,.2)', flexWrap:'wrap', justifyContent:'center', marginBottom:4}}>
-        {['👍', '❤️', '😂', '🔥', '🙏', '😎'].map(emoji => (
+        {['👍', '❤️', '😂', '🔥', '🙏', '😎', '👎', '🥰'].map(emoji => (
           <div key={emoji} onClick={(e) => { 
             e.stopPropagation(); 
             e.preventDefault(); 
@@ -2577,6 +2577,11 @@ export default function CRMChat({ token, onAuthFailed }) {
       display: flex;
       flex-direction: column;
       gap: 0;
+      background-color: #0e1621;
+      background-image: url('https://web.telegram.org/a/chat-bg-pattern-dark.png');
+      background-size: 512px;
+      background-attachment: scroll;
+      background-blend-mode: overlay;
     }
     .msgs::-webkit-scrollbar { width: 4px; }
     .msgs::-webkit-scrollbar-thumb { background: #2d1155; border-radius: 2px; }
@@ -2626,8 +2631,8 @@ export default function CRMChat({ token, onAuthFailed }) {
       overflow-wrap: break-word;
       white-space: pre-wrap;
     }
-    .bbl.out { background: #8774e1; color: #fff; } /* softer purple */
-    .bbl.in { background: #182533; color: #fff; } /* telegram dark incoming */
+    .bbl.out { background: #8774e1; color: #fff; box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
+    .bbl.in { background: #212d3b; color: #fff; box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
     .bbl.del { opacity: .5; font-style: italic; }
     .bbl.rpl { border-left: 3px solid rgba(255,255,255,.5); padding-left: 10px; border-radius: 8px; margin-bottom: 4px; font-size: 13px; }
     .msg-link { color: #7dd3fc; text-decoration: none; word-break: break-word; overflow-wrap: anywhere; }

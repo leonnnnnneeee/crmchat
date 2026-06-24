@@ -205,14 +205,23 @@ export default function MessageList(props) {
                       {msg.reactions && msg.reactions.length > 0 && (
                         <div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:4,marginLeft: msg.fromMe?0:12,marginRight: msg.fromMe?12:0,justifyContent:msg.fromMe?"flex-end":"flex-start"}}>
                           {msg.reactions.map((r, idx)=>(
-                            <span key={`${r.emoticon}-${idx}`} onClick={()=>toggleReaction(msg.id, r.emoticon)}
+                            <span key={`${r.emoticon}-${idx}`} onClick={(e)=>{ e.stopPropagation(); toggleReaction(msg.id, r.emoticon); }}
                               style={{
-                                background: r.chosen ? "rgba(124,58,237,.3)" : "rgba(0,0,0,.2)",
+                                background: r.chosen ? "rgba(124,58,237,.3)" : "rgba(0,0,0,.4)",
                                 border: r.chosen ? "1px solid rgba(124,58,237,.5)" : "1px solid rgba(255,255,255,.05)",
-                                borderRadius:12,padding:"3px 8px",fontSize:13,color:"rgba(255,255,255,.8)",
-                                cursor:"pointer",userSelect:"none",display:"inline-flex",alignItems:"center",gap:4
+                                borderRadius:16,padding:"3px 8px 3px 6px",fontSize:13,color:"rgba(255,255,255,.8)",
+                                cursor:"pointer",userSelect:"none",display:"inline-flex",alignItems:"center",gap:6,
+                                boxShadow: "0 1px 2px rgba(0,0,0,.2)"
                               }}>
-                              {r.emoticon} {r.count > 0 ? r.count : ""}
+                              <span style={{display:'flex', alignItems:'center', gap:2}}>
+                                {msg.recentReactions?.filter(rr => rr.emoticon === r.emoticon).slice(0, 3).map((rr, rrIdx) => (
+                                  <span key={rrIdx} style={{display:'inline-flex', borderRadius:'50%', overflow:'hidden', width:16, height:16}}>
+                                    <Avatar chatId={rr.peerId} size={16} name="" />
+                                  </span>
+                                ))}
+                                {r.emoticon}
+                              </span>
+                              {r.count > 0 ? <span style={{fontSize:12, fontWeight:500}}>{r.count}</span> : ""}
                             </span>
                           ))}
                         </div>
