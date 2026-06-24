@@ -644,6 +644,16 @@ app.post('/api/ai/suggest', requireAuth, async (req,res) => {
   const leonSaid  = leonLines.join(' | ')
   const thread    = history.map(m=>(m.fromMe?'Leon':'Client')+': '+m.text).join('\n')
 
+  const normInstruction = instruction ? instruction.toLowerCase().normalize('NFC') : null;
+  log('[AI Suggest Request Payload]: ' + JSON.stringify({
+    rawCommand: instruction,
+    normalizedCommand: normInstruction,
+    contactName: contactName,
+    chatId: chatId,
+    topicId: topicId,
+    messagesCount: history?.length || 0
+  }, null, 2))
+
   log('AI suggest — last: "' + lastClientMsg + '" stage: ' + stage)
 
   // Local intent fallback for simple Vietnamese commands if AI fails
@@ -675,6 +685,24 @@ app.post('/api/ai/suggest', requireAuth, async (req,res) => {
         { label: "Option 1", text: "Hey, I noticed we're in the same group, so I wanted to reach out and see if there's any potential collaboration." },
         { label: "Option 2", text: "Hi, I saw we're both in the same community. Would be nice to connect and explore if there's any way to collaborate." },
         { label: "Option 3", text: "Hey, I noticed we share the same group here. Are you open to a quick chat about possible collaboration?" }
+      ];
+    }
+
+    if (norm.includes("ý tưởng") || norm.includes("trước đi") || norm.includes("chia sẻ ý tưởng")) {
+      log('AI Suggest Fallback: Used local fallback for "share idea first" intent');
+      return [
+        { label: "Option 1", text: "Sure, please share your idea first." },
+        { label: "Option 2", text: "Can you share your idea first so I can understand it better?" },
+        { label: "Option 3", text: "Please send me your idea first, then I'll see how we can align." }
+      ];
+    }
+
+    if (norm.includes("example") || norm.includes("done") || norm.includes("đã làm") || norm.includes("case study")) {
+      log('AI Suggest Fallback: Used local fallback for "share examples" intent');
+      return [
+        { label: "Option 1", text: "Could you share some examples of what you've done before?" },
+        { label: "Option 2", text: "Can you send me a few examples of your previous work?" },
+        { label: "Option 3", text: "Would you mind sharing some examples or case studies you've done?" }
       ];
     }
 
@@ -725,6 +753,8 @@ VIETNAMESE INTENT EXAMPLES:
 - "tôi thấy bạn trong group chung và muốn nhắn tìm cơ hội hợp tác" -> intent is "shared group outreach collaboration".
 - "bạn đang làm bao nhiêu dự án" -> intent is "ask how many projects customer is working on".
 - "cho tôi link dự án của bạn" -> intent is "ask customer to share their project link".
+- "chia sẻ ý tưởng của bạn trước đi" -> intent is "ask customer to share their idea first".
+- "bạn có thể đưa tôi example những gì bạn đã done không?" -> intent is "ask customer for examples of their past work".
 - "bạn có hỗ trợ dự án web3 nào khác không" -> intent is "ask if customer supports other Web3 projects".
 - "offer commission nếu họ giới thiệu khách" -> intent is "mention 20% commission per closed deal".
 =========================================
@@ -842,6 +872,16 @@ Return EXACTLY this JSON structure.
         }
       }
 
+      log('[AI Suggest Debug]', {
+        rawCommand: instruction,
+        normalizedCommand: normInstruction,
+        detectedIntent: parsed.normalizedIntent || null,
+        requestPayload: userPrompt,
+        apiError: null,
+        fallbackUsed: false,
+        finalSuggestions: safeSuggestions
+      });
+
       res.json({ 
         ok: true, 
         suggestions: safeSuggestions || null,
@@ -854,6 +894,17 @@ Return EXACTLY this JSON structure.
       log('Groq JSON parse error: ' + err.message + ' | Raw: ' + rawText)
       if (instruction) {
         const fallback = localFallback(instruction);
+        
+        log('[AI Suggest Debug]', {
+          rawCommand: instruction,
+          normalizedCommand: normInstruction,
+          detectedIntent: null,
+          requestPayload: userPrompt,
+          apiError: err.message,
+          fallbackUsed: !!fallback,
+          finalSuggestions: fallback || null
+        });
+
         if (fallback) {
           res.json({ ok: true, suggestions: fallback, source: "local_fallback", fallbackUsed: true, apiError: err.message });
         } else {
@@ -867,6 +918,17 @@ Return EXACTLY this JSON structure.
     log('groq suggest error: ' + (e.response?.data?.error?.message || e.message))
     if (instruction) {
       const fallback = localFallback(instruction);
+
+      log('[AI Suggest Debug]', {
+        rawCommand: instruction,
+        normalizedCommand: normInstruction,
+        detectedIntent: null,
+        requestPayload: userPrompt || null,
+        apiError: e.response?.data?.error?.message || e.message,
+        fallbackUsed: !!fallback,
+        finalSuggestions: fallback || null
+      });
+
       if (fallback) {
         res.json({ ok: true, suggestions: fallback, source: "local_fallback", fallbackUsed: true, apiError: e.message });
       } else {
