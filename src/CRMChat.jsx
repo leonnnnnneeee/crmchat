@@ -765,7 +765,8 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
   }
 
   const bio = fullProfile?.fullUser?.about || fullProfile?.fullChat?.about || data.bio || data.about;
-  const businessHours = fullProfile?.fullUser?.businessWorkHours;
+  const businessHoursObj = fullProfile?.fullUser?.businessWorkHours;
+  const businessHours = businessHoursObj ? `${businessHoursObj.timezoneId} (${businessHoursObj.openNow ? 'Open Now' : 'Closed'})` : null;
   const location = fullProfile?.fullUser?.businessLocation?.address;
 
   const tabs = [
