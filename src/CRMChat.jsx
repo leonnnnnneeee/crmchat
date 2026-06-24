@@ -925,7 +925,7 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
   const businessHours = businessHoursObj ? `${businessHoursObj.timezoneId} (${businessHoursObj.openNow ? 'Open Now' : 'Closed'})` : null;
   const location = fullProfile?.fullUser?.businessLocation?.address;
 
-  const isFallback = isGroupProfile && !!tabError[activeTab];
+  const isFallback = isGroupProfile && tabError[activeTab] === 'SENDER_NOT_FOUND';
 
   const tabs = [
     { id: 'media', label: `Media`, count: isFallback ? fallbackData.media.length : tabData.media.length, hasMore: !isFallback && tabHasMore.media },

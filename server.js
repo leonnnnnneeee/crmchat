@@ -595,8 +595,8 @@ app.get('/api/chat/shared_media/:id', requireAuth, async (req, res) => {
     res.json({ ok: true, items: results, hasMore, nextCursor: nextOffsetId, source: 'telegram_history' })
 
   } catch(e) {
-    if (e.errorMessage === 'INPUT_FILTER_INVALID' && fromUser) {
-      log('shared media: INPUT_FILTER_INVALID caught. Falling back to manual history scan...')
+    if (fromUser) {
+      log(`shared media: ${e.errorMessage || e.message} caught. Falling back to manual history scan...`)
       try {
         let currentOffsetId = parseInt(req.query.offsetId) || 0;
         let matched = [];
