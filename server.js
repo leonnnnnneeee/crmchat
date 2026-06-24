@@ -1177,7 +1177,30 @@ app.get('/api/chat/common_groups/:id', requireAuth, async (req, res) => {
   try {
     const client = await getClient()
     const { Api } = require('telegram/tl')
-    const entity = await resolveEntity(client, req.params.id)
+    
+    const userIdStr = req.params.id;
+    const username = req.query.username;
+    const accessHashStr = req.query.accessHash;
+    
+    let entity = await resolveEntity(client, userIdStr, username);
+    
+    // If resolveEntity returns a string (unresolved), try to manually construct InputUser
+    if (typeof entity === 'string' || typeof entity === 'number') {
+      if (accessHashStr) {
+        entity = new Api.InputUser({
+          userId: BigInt(userIdStr),
+          accessHash: BigInt(accessHashStr)
+        });
+      } else if (username) {
+        try {
+          entity = await client.getEntity(username);
+        } catch(e) {
+           throw new Error("Could not resolve user entity for common groups");
+        }
+      } else {
+        throw new Error("Could not resolve user entity. Missing accessHash.");
+      }
+    }
     
     const result = await client.invoke(new Api.messages.GetCommonChats({
       userId: entity,
@@ -1186,7 +1209,7 @@ app.get('/api/chat/common_groups/:id', requireAuth, async (req, res) => {
     }))
     
     if (!result || !result.chats) {
-      log(`[Common Groups Debug] userId=${req.params.id} loadedCount=0 API=success (No chats returned)`);
+      log(`[Common Groups Debug] userId=${userIdStr} username=${username} accessHash=${accessHashStr} loadedCount=0 API=success (No chats returned)`);
       return res.json({ ok: true, groups: [] })
     }
     
@@ -1198,7 +1221,7 @@ app.get('/api/chat/common_groups/:id', requireAuth, async (req, res) => {
       username: c.username
     }))
     
-    log(`[Common Groups Debug] userId=${req.params.id} loadedCount=${groups.length} API=success`);
+    log(`[Common Groups Debug] userId=${userIdStr} username=${username} accessHash=${accessHashStr} loadedCount=${groups.length} API=success`);
     
     res.json({ ok: true, groups })
   } catch(e) {

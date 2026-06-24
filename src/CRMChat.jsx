@@ -756,7 +756,10 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
     let isMounted = true;
 
     if (tab === 'groups') {
-      fetch(`/api/chat/common_groups/${data.id}`, { headers: {'x-auth-token': token} })
+      const accessHashQuery = data.accessHash ? `?accessHash=${data.accessHash}` : '';
+      const usernameQuery = data.username ? (data.accessHash ? `&username=${data.username}` : `?username=${data.username}`) : '';
+      
+      fetch(`/api/chat/common_groups/${data.id}${accessHashQuery}${usernameQuery}`, { headers: {'x-auth-token': token} })
         .then(r => r.json())
         .then(d => {
           if (isMounted && d.ok) {
