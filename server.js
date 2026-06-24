@@ -1,45 +1,18 @@
 require('dotenv').config()
 const express = require('express')
 const path = require('path')
-const fs = require('fs')
-const os = require('os')
 const axios = require('axios')
-const { TelegramClient } = require('telegram')
-const { StringSession } = require('telegram/sessions')
-const multer = require('multer')
-const upload = multer({ dest: os.tmpdir() })
-
 const app = express()
 const PORT = process.env.PORT || 3002
-
-const MEDIA_CACHE_DIR = path.join(__dirname, '.media_cache')
-if (!fs.existsSync(MEDIA_CACHE_DIR)) {
-  fs.mkdirSync(MEDIA_CACHE_DIR, { recursive: true })
-}
 
 app.use(express.json())
 // static files served after API routes (see bottom)
 
-const bcrypt = require('bcryptjs')
-const jwt = require('jsonwebtoken')
-const rateLimit = require('express-rate-limit')
-
-// JWT Secret: Nên lưu trong file .env, nếu không có sẽ tự động random mỗi lần restart (an toàn hơn static token)
-const JWT_SECRET = process.env.JWT_SECRET || require('crypto').randomBytes(32).toString('hex')
-
-// Tạm thời mã hóa password cứng lúc khởi động để bảo vệ trên bộ nhớ.
-// TODO: Tốt nhất nên lưu trực tiếp chuỗi hash (đã mã hóa) vào file .env thay vì plaintext.
+const VALID_TOKEN = process.env.AUTH_TOKEN || 'coincu_crm_2024'
 const USERS = [
-  { u: 'Leon',  hash: bcrypt.hashSync(process.env.LEON_PASSWORD  || 'coincu123', 10) },
-  { u: 'admin', hash: bcrypt.hashSync(process.env.ADMIN_PASSWORD || 'coincu2026', 10) },
+  { u: 'Leon',  p: process.env.LEON_PASSWORD  || 'coincu123'  },
+  { u: 'admin', p: process.env.ADMIN_PASSWORD || 'coincu2026' },
 ]
-
-// Rate Limiting: Chống brute-force (tối đa 5 lần thử mỗi 15 phút từ 1 IP)
-const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 5,
-  message: { ok: false, message: 'Bạn đã nhập sai quá nhiều lần. Vui lòng thử lại sau 15 phút.' }
-})
 const TG_API_ID   = parseInt(process.env.TG_API_ID   || '23444646')
 const TG_API_HASH =          process.env.TG_API_HASH  || '83816a4a3a3006b19549b2ba782acae0'
 const GROQ_KEY    =          process.env.GROQ_API_KEY || ''
@@ -49,30 +22,19 @@ const SBH         = { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, 'Conten
 
 const logs = []
 function log(m) { const l='['+new Date().toLocaleTimeString('vi-VN')+'] '+m; console.log(l); logs.push(l); if(logs.length>200)logs.shift() }
-log('🚀 Coincu CRM Chat v16 — 20260619_071242')
+log('🚀 Coincu CRM Chat v2 — standalone with TG auth')
 
 function requireAuth(req,res,next){
   const t=req.headers['x-auth-token']||req.query.token
-  if(!t)return res.status(401).json({ok: false, error:'TOKEN_EXPIRED'})
-  try {
-    const decoded = jwt.verify(t, JWT_SECRET)
-    req.user = decoded
-    return next()
-  } catch(err) {
-    return res.status(401).json({ok: false, error:'TOKEN_EXPIRED'})
-  }
+  if(t===VALID_TOKEN)return next()
+  res.status(401).json({error:'Unauthorized'})
 }
 
 // ── LOGIN ──
-app.post('/api/login', loginLimiter, (req,res)=>{
-  const {username,password}=req.body
-  const user = USERS.find(v=>v.u===username)
-  if(user && bcrypt.compareSync(password, user.hash)) {
-    const token = jwt.sign({ username: user.u }, JWT_SECRET, { expiresIn: '24h' })
-    res.json({ok:true,token})
-  } else {
-    res.json({ok:false,message:'Sai username hoặc password'})
-  }
+app.post('/api/login',(req,res)=>{
+  const{username,password}=req.body
+  if(USERS.some(v=>v.u===username&&v.p===password)) res.json({ok:true,token:VALID_TOKEN})
+  else res.json({ok:false,message:'Sai username hoặc password'})
 })
 
 // ── TELEGRAM SESSION (in-memory + env fallback) ──
@@ -87,7 +49,6 @@ async function loadSessionFromDB() {
     if (r.data && r.data[0] && r.data[0].value && r.data[0].value.length > 10) {
       _session = r.data[0].value
       log('✅ Session loaded from Supabase')
-    warmupClient()
     }
   } catch(e) { log('loadSession: ' + e.message) }
 }
@@ -105,117 +66,44 @@ async function saveSessionToDB(s) {
 
 loadSessionFromDB()
 
-// Persistent client — reconnect only when needed
+// Persistent client to avoid reconnecting every request
 let _client = null
-
-// Timeout wrapper — prevents any TG op from hanging forever
-function withTimeout(promise, ms=15000, name='op') {
-  return Promise.race([
-    promise,
-    new Promise((_,reject) => setTimeout(()=>reject(new Error(`${name} timeout after ${ms}ms`)), ms))
-  ])
-}
-
-let _clientReady = false
+let _clientBusy = false
 
 async function getClient() {
   const { TelegramClient } = require('telegram')
   const { StringSession } = require('telegram/sessions')
-
-  if (_client && _clientReady) {
-    try {
-      // Quick ping to verify connection is alive
-      await withTimeout(_client.getMe(), 3000, 'ping')
-      return _client
-    } catch {
-      _clientReady = false
-      _client = null
-    }
-  }
-
-  if (!_client) {
-    _client = new TelegramClient(new StringSession(_session), TG_API_ID, TG_API_HASH, {
-      connectionRetries: 3,
-      retryDelay: 1000,
-      autoReconnect: true,
-      requestRetries: 2,
-    })
-  }
-
-  await withTimeout(_client.connect(), 10000, 'connect')
-  _clientReady = true
-  log('TG client (re)connected')
+  if (_client && _client.connected) return _client
+  _client = new TelegramClient(new StringSession(_session), TG_API_ID, TG_API_HASH, { connectionRetries: 3 })
+  await _client.connect()
   return _client
 }
 
-// Keep client alive with periodic ping every 2 minutes
-setInterval(async () => {
-  if (!_client || !_clientReady) return
-  try {
-    await withTimeout(_client.getMe(), 5000, 'keepalive')
-  } catch {
-    _clientReady = false
-    log('TG client keepalive failed — will reconnect on next request')
-  }
-}, 120000)
-
-// Warm up client on session load (so first request is fast)
-async function warmupClient() {
-  if (!_session || _session.length < 10) return
-  try { await getClient(); log('✅ TG client warmed up') }
-  catch(e) { log('warmup: ' + e.message) }
-}
-
-// Entity cache to avoid repeated TG lookups
-const _entityCache = {}
-
+// Resolve entity from string ID (handles negative supergroup IDs)
 async function resolveEntity(client, idStr, username) {
-  const cacheKey = username || idStr
-  if (_entityCache[cacheKey]) return _entityCache[cacheKey]
-
-  let entity
   if (username) {
-    try { entity = await client.getEntity(username) } catch {}
+    try { return await client.getEntity(username) } catch {}
   }
-  if (!entity) {
-    const num = Number(idStr)
-    if (num < 0) {
-      try {
-        const { Api } = require('telegram/tl')
-        const channelId = Math.abs(num) - 1000000000000
-        if (channelId > 0) {
-          entity = await client.getEntity(new Api.PeerChannel({ channelId: BigInt(channelId) }))
-        } else {
-          entity = await client.getEntity(new Api.PeerChat({ chatId: BigInt(Math.abs(num)) }))
-        }
-      } catch {}
-    }
-    if (!entity) {
-      try { entity = await client.getEntity(BigInt(idStr)) } catch {}
-    }
-    if (!entity) {
-      try { entity = await client.getEntity(num) } catch {}
-    }
+  const num = Number(idStr)
+  // Negative ID = supergroup/channel — wrap with peer
+  if (num < 0) {
+    try {
+      const { Api } = require('telegram/tl')
+      const channelId = Math.abs(num) - 1000000000000
+      if (channelId > 0) {
+        return await client.getEntity(new Api.PeerChannel({ channelId: BigInt(channelId) }))
+      }
+      return await client.getEntity(new Api.PeerChat({ chatId: BigInt(Math.abs(num)) }))
+    } catch {}
   }
-  if (entity) _entityCache[cacheKey] = entity
-  return entity || idStr
+  try { return await client.getEntity(BigInt(idStr)) } catch {}
+  try { return await client.getEntity(num) } catch {}
+  return idStr // last resort: pass raw string
 }
 
 // ── AUTH: check status ──
 app.get('/api/tg/status', requireAuth, async (req,res) => {
-  if (!_session || _session.length <= 10) return res.json({ connected: false })
-  try {
-    const client = await getClient()
-    await withTimeout(client.getMe(), 5000, 'ping')
-    res.json({ connected: true })
-  } catch(e) {
-    if (e.message.includes('AUTH_KEY') || e.message.includes('SESSION')) {
-      _session = ''
-      res.json({ connected: false, error: 'Session expired' })
-    } else {
-      res.json({ connected: true, warning: e.message })
-    }
-  }
+  res.json({ connected: _session.length > 10 })
 })
 
 // ── AUTH: send OTP ──
@@ -262,71 +150,12 @@ app.post('/api/tg/verify-otp', requireAuth, async (req,res) => {
   } catch(e) { log('verifyOTP: '+e.message); res.status(500).json({ error: e.message }) }
 })
 
-// ── CHAT STATUS ──
-app.get('/api/chat/status/:id', requireAuth, async (req,res) => {
-  if (!_session) return res.json({ status: '' })
-  try {
-    const client = await getClient()
-    const peer = await resolveEntity(client, req.params.id)
-    if (!peer) return res.json({ status: '' })
-    
-    // Only fetch for User
-    if (peer.className !== 'User') {
-       return res.json({ status: '' })
-    }
-
-    const { Api } = require('telegram')
-    // We can use getEntity to fetch user info
-    const users = await client.invoke(new Api.users.GetUsers({
-      id: [peer]
-    }))
-    const user = users[0]
-    
-    if (!user || !user.status) return res.json({ status: '' })
-
-    const s = user.status
-    const c = s.className
-    let text = ''
-    if (c === 'UserStatusOnline') text = 'online'
-    else if (c === 'UserStatusRecently') text = 'last seen recently'
-    else if (c === 'UserStatusLastWeek') text = 'last seen within a week'
-    else if (c === 'UserStatusLastMonth') text = 'last seen within a month'
-    else if (c === 'UserStatusOffline') {
-      if (!s.wasOnline) text = 'last seen recently'
-      else {
-        const diff = Math.floor(Date.now()/1000) - s.wasOnline
-        if (diff < 60) text = 'last seen just now'
-        else if (diff < 3600) text = `last seen ${Math.floor(diff/60)} minutes ago`
-        else if (diff < 86400) text = `last seen ${Math.floor(diff/3600)} hours ago`
-        else text = `last seen ${Math.floor(diff/86400)} days ago`
-      }
-    } else {
-      text = 'last seen recently' // fallback for UserStatusEmpty
-    }
-    
-    res.json({ status: text })
-  } catch(e) {
-    log('chatStatus: '+e.message)
-    res.json({ status: '' })
-  }
-})
-
 // ── CHAT LIST ──
 app.get('/api/chat/list', requireAuth, async (req,res) => {
   if (!_session) return res.json([])
   try {
     const client = await getClient()
-    const limit = parseInt(req.query.limit) || 40
-    const offsetDate = parseInt(req.query.offsetDate) || 0
-    const offsetId = parseInt(req.query.offsetId) || 0
-    const offsetPeerId = req.query.offsetPeer || null
-    
-    const opts = { limit }
-    if (offsetDate > 0) opts.offsetDate = offsetDate
-    if (offsetId > 0) opts.offsetId = offsetId
-    if (offsetPeerId) opts.offsetPeer = await resolveEntity(client, offsetPeerId)
-    
-    const dialogs = await withTimeout(client.getDialogs(opts), 60000, 'getDialogs')
+    const dialogs = await client.getDialogs({ limit: 60 })
     const chats = dialogs.map(d => ({
       id: d.id.toString(),
       name: d.title || d.name || 'Unknown',
@@ -334,535 +163,25 @@ app.get('/api/chat/list', requireAuth, async (req,res) => {
       unread: d.unreadCount || 0,
       date: d.message?.date,
       isUser: d.isUser,
-      isGroup: d.isGroup || false,
-      isChannel: d.isChannel || false,
-      isForum: d.entity?.forum === true || false,
-      isPinned: d.pinned || false,
-      msgId: d.message?.id || 0,
       username: d.entity?.username || null,
       accessHash: d.entity?.accessHash?.toString() || null,
-      memberCount: d.entity?.participantsCount || d.entity?.membersCount || null,
     }))
     res.json(chats)
-  } catch(e) { 
-    log('chatList: '+e.message); 
-    if (e.message.includes('AUTH_KEY') || e.message.includes('SESSION')) {
-      _session = ''
-      return res.status(401).json({ error: 'AUTH_FAILED' })
-    }
-    res.json([]) 
-  }
+  } catch(e) { log('chatList: '+e.message); res.json([]) }
 })
-
-function formatStatus(status) {
-  if (!status) return ''
-  const c = status.className
-  if (c === 'UserStatusOnline') return 'online'
-  if (c === 'UserStatusRecently') return 'last seen recently'
-  if (c === 'UserStatusLastWeek') return 'last seen within a week'
-  if (c === 'UserStatusLastMonth') return 'last seen within a month'
-  if (c === 'UserStatusOffline') {
-    if (!status.wasOnline) return 'last seen recently'
-    const diff = Math.floor(Date.now()/1000) - status.wasOnline
-    if (diff < 60) return 'last seen just now'
-    if (diff < 3600) return `last seen ${Math.floor(diff/60)} minutes ago`
-    if (diff < 86400) return `last seen ${Math.floor(diff/3600)} hours ago`
-    return `last seen ${Math.floor(diff/86400)} days ago`
-  }
-  return 'last seen recently'
-}
-
-// ── GLOBAL SEARCH ──
-app.get('/api/telegram/search', requireAuth, async (req, res) => {
-  if (!_session) return res.json([])
-  const q = req.query.q
-  if (!q) return res.json([])
-  try {
-    const client = await getClient()
-    const { Api } = require('telegram/tl')
-    
-    let resultContacts = { chats: [], users: [] }
-    try {
-      resultContacts = await client.invoke(new Api.contacts.Search({
-        q: q,
-        limit: 10
-      }))
-    } catch(err) {
-      log('contacts.Search error: ' + err.message)
-    }
-    
-    let resultMessages = { messages: [], chats: [], users: [] }
-    try {
-      resultMessages = await client.invoke(new Api.messages.SearchGlobal({
-        q: q,
-        limit: 20,
-        offsetRate: 0,
-        offsetPeer: new Api.InputPeerEmpty(),
-        offsetId: 0
-      }))
-    } catch(err) {
-      log('messages.SearchGlobal error: ' + err.message)
-    }
-    
-    const mapped = []
-    const seenIds = new Set()
-
-    const addEntity = (d, isMsg = false, msgText = '') => {
-      if (!d) return
-      const idStr = d.id.toString()
-      if (seenIds.has(idStr)) return
-      seenIds.add(idStr)
-      
-      mapped.push({
-        id: idStr,
-        name: d.title ? d.title : (d.firstName ? (d.firstName + (d.lastName ? ' ' + d.lastName : '')).trim() : (d.username || 'Unknown')),
-        lastMsg: msgText || 'Found in global search',
-        unread: 0,
-        date: null,
-        isUser: d.className === 'User',
-        isGroup: !!d.participantsCount || d.className === 'Chat',
-        isChannel: d.broadcast || false,
-        username: d.username || null,
-        isForum: d.forum || false,
-      })
-    }
-
-    for (const d of (resultContacts.chats || [])) addEntity(d)
-    for (const d of (resultContacts.users || [])) addEntity(d)
-      
-    const msgChats = new Map((resultMessages.chats || []).map(c => [c.id.toString(), c]))
-    const msgUsers = new Map((resultMessages.users || []).map(u => [u.id.toString(), u]))
-
-    for (const m of (resultMessages.messages || [])) {
-       let peerId = m.peerId?.channelId || m.peerId?.chatId || m.peerId?.userId
-       if (!peerId) continue
-       peerId = peerId.toString()
-       const peerEntity = msgChats.get(peerId) || msgUsers.get(peerId)
-       if (peerEntity) {
-         addEntity(peerEntity, true, m.message)
-       }
-    }
-    
-    res.json(mapped)
-  } catch(e) {
-    log('global search error: ' + e.message)
-    res.json([])
-  }
-})
-
-// ── CHAT MEMBERS ──
-app.get('/api/chat/members/:id', requireAuth, async (req, res) => {
-  if (!_session) return res.json({ok: false, error: 'TG_SESSION_EXPIRED'})
-  try {
-    const client = await getClient()
-    const entity = await resolveEntity(client, req.params.id)
-    
-    // Some channels throw CHAT_ADMIN_REQUIRED if you request participants.
-    const participants = await client.getParticipants(entity, { limit: 200 })
-    
-    const members = participants.map(p => ({
-      id: p.id.toString(),
-      name: (p.firstName ? p.firstName + (p.lastName ? ' ' + p.lastName : '') : (p.title || 'Unknown')).trim(),
-      username: p.username || null,
-      isBot: p.bot || false,
-      isPremium: p.premium || false,
-      status: p.status ? formatStatus(p.status) : 'last seen recently',
-      accessHash: p.accessHash ? p.accessHash.toString() : undefined
-    }))
-    
-    res.json({ ok: true, members })
-  } catch(e) {
-    if (e.message.includes('AUTH_KEY') || e.message.includes('SESSION')) {
-      _session = ''
-      return res.json({ok: false, error: 'TG_SESSION_EXPIRED'})
-    }
-    if (e.message.includes('CHAT_ADMIN_REQUIRED')) {
-      return res.status(403).json({ error: 'Unable to load members due to Telegram permission limits.' })
-    }
-    log('members error: ' + e.message)
-    res.status(500).json({ error: e.message })
-  }
-})
-
-// ── FULL PROFILE ──
-app.get('/api/chat/profile/:id', requireAuth, async (req, res) => {
-  if (!_session) return res.json({error: 'No session'})
-  try {
-    const client = await getClient()
-    const { Api } = require('telegram/tl')
-    const entity = await resolveEntity(client, req.params.id)
-    
-    // Attempt to get full user or full chat
-    let full = null
-    try {
-      if (entity.className === 'User') {
-        full = await client.invoke(new Api.users.GetFullUser({ id: entity }))
-      } else if (entity.className === 'Chat' || entity.className === 'Channel') {
-        full = await client.invoke(new Api.messages.GetFullChat({ chatId: entity.id })) // For channels: channels.GetFullChannel
-      }
-    } catch(err) {
-      // If messages.GetFullChat fails, try channels.GetFullChannel
-      if (entity.className === 'Channel') {
-        try {
-          full = await client.invoke(new Api.channels.GetFullChannel({ channel: entity }))
-        } catch(e) { log('Full channel fetch error: ' + e.message) }
-      } else {
-        log('Full profile fetch error: ' + err.message)
-      }
-    }
-    
-    res.json({ ok: true, full })
-  } catch(e) {
-    log('profile error: ' + e.message)
-    res.status(500).json({ error: e.message })
-  }
-})
-
-// ── SHARED MEDIA ──
-const formatMediaResult = (m) => {
-  const isPhoto = m.media?.className === 'MessageMediaPhoto'
-  const isDoc   = m.media?.className === 'MessageMediaDocument'
-  const isVideo = isDoc && m.media?.document?.mimeType?.startsWith('video/')
-  const webpageUrl = m.media?.webpage?.url || m.media?.url
-  const webpageTitle = m.media?.webpage?.title
-  
-  return {
-    id: m.id,
-    text: m.message || '',
-    date: m.date,
-    hasMedia: !!m.media,
-    isPhoto,
-    isVideo,
-    isDoc: isDoc && !isVideo,
-    fileName: m.media?.document?.attributes?.find(a=>a.className==='DocumentAttributeFilename')?.fileName,
-    fileSize: m.media?.document?.size ? Number(m.media.document.size) : 0,
-    webpageUrl,
-    webpageTitle
-  }
-};
-
-const matchesMediaFilter = (m, filterType) => {
-  const isPhoto = m.media?.className === 'MessageMediaPhoto'
-  const isDoc   = m.media?.className === 'MessageMediaDocument'
-  const isVideo = isDoc && m.media?.document?.mimeType?.startsWith('video/')
-  if (filterType === 'media') return isPhoto || isVideo
-  if (filterType === 'photos') return isPhoto
-  if (filterType === 'videos') return isVideo
-  if (filterType === 'files') return isDoc && !isVideo
-  if (filterType === 'links') return !!(m.media?.webpage?.url || m.media?.url)
-  if (filterType === 'gifs') return m.media?.document?.mimeType === 'video/mp4' // simplistic
-  return false
-};
-const sharedMediaHandler = async (req, res) => {
-  if (!_session) return res.json({error: 'No session'})
-  try {
-    const client = await getClient()
-    const { Api } = require('telegram/tl')
-    
-    const chatIdStr = req.params.id || req.query.chatId;
-    if (!chatIdStr) return res.json({ok: false, error: 'Missing chatId'})
-    
-    const entity = await resolveEntity(client, chatIdStr)
-    
-    const type = req.query.type || 'photos'
-    const limit = parseInt(req.query.limit) || 30
-    const offsetId = parseInt(req.query.offsetId || req.query.cursor) || 0
-    const fromUser = req.query.fromUser || req.query.userId
-    const accessHash = req.query.accessHash
-    const topicIdStr = req.query.topicId
-    const topicId = topicIdStr ? parseInt(topicIdStr) : null
-    
-    let filter = new Api.InputMessagesFilterPhotoVideo()
-    if (type === 'media') filter = new Api.InputMessagesFilterPhotoVideo()
-    if (type === 'photos') filter = new Api.InputMessagesFilterPhotos()
-    if (type === 'videos') filter = new Api.InputMessagesFilterVideo()
-    if (type === 'files') filter = new Api.InputMessagesFilterDocument()
-    if (type === 'links') filter = new Api.InputMessagesFilterUrl()
-    if (type === 'gifs') filter = new Api.InputMessagesFilterGif()
-    
-    const params = { filter, limit }
-    if (offsetId > 0) params.offsetId = offsetId
-    if (fromUser) {
-      try {
-        if (accessHash && accessHash !== 'undefined') {
-          params.fromUser = new Api.InputPeerUser({ userId: BigInt(fromUser), accessHash: BigInt(accessHash) })
-        } else {
-          params.fromUser = await resolveEntity(client, fromUser)
-        }
-      } catch (err) {
-        log(`shared media: could not resolve fromUser ${fromUser}`)
-        return res.json({ ok: false, error: 'SENDER_NOT_FOUND', message: 'Could not resolve sender for group media' })
-      }
-    }
-    
-
-
-    let msgs;
-    if (topicId) {
-      log(`[Shared Media Debug] Topic specific search: topicId=${topicId} filter=${filter.className}`)
-      const searchReq = new Api.messages.Search({
-        peer: entity,
-        q: "",
-        filter,
-        limit,
-        offsetId,
-        fromId: params.fromUser,
-        topMsgId: topicId,
-        hash: BigInt(0)
-      })
-      const result = await client.invoke(searchReq)
-      msgs = result.messages || []
-    } else {
-      msgs = await client.getMessages(entity, params)
-    }
-
-    const results = msgs.map(formatMediaResult)
-    const nextOffsetId = results.length > 0 ? results[results.length - 1].id : null
-    const hasMore = results.length === limit
-
-    log(`[Shared Media Debug] chatId=${chatIdStr} userId=${fromUser} topicId=${topicId} mediaType=${type} offsetId=${offsetId} loadedCount=${results.length} hasMore=${hasMore} source=telegram_history`)
-    
-    res.json({ ok: true, items: results, hasMore, nextCursor: nextOffsetId, source: 'telegram_history' })
-
-  } catch(e) {
-    if (req.query.fromUser || req.query.userId || req.query.topicId) {
-      log(`shared media: ${e.errorMessage || e.message} caught. Falling back to manual history scan...`)
-      try {
-        let currentOffsetId = parseInt(req.query.offsetId || req.query.cursor) || 0;
-        let matched = [];
-        let fetchedMsgs;
-        let attempts = 0;
-        const limit = parseInt(req.query.limit) || 30;
-        const type = req.query.type || 'photos';
-        const fromUser = req.query.fromUser || req.query.userId;
-        const topicIdStr = req.query.topicId;
-        const topicId = topicIdStr ? parseInt(topicIdStr) : null;
-        
-        // Use the outer client variable
-        const client = await getClient();
-        const entity = await resolveEntity(client, req.params.id || req.query.chatId);
-        
-        while (matched.length < limit && attempts < 5) {
-            const fetchParams = { limit: 100, offsetId: currentOffsetId };
-            if (topicId) fetchParams.replyTo = topicId;
-            
-            fetchedMsgs = await client.getMessages(entity, fetchParams);
-            if (!fetchedMsgs || fetchedMsgs.length === 0) break;
-            
-            for (const m of fetchedMsgs) {
-                let matchSender = true;
-                if (fromUser) {
-                  const sId = m.senderId ? m.senderId.toString() : (m.fromId?.userId ? m.fromId.userId.toString() : '');
-                  matchSender = sId === fromUser.toString();
-                }
-                
-                if (matchSender && matchesMediaFilter(m, type)) {
-                    matched.push(m);
-                }
-            }
-            currentOffsetId = fetchedMsgs[fetchedMsgs.length - 1].id;
-            attempts++;
-        }
-        
-        const results = matched.map(formatMediaResult).slice(0, limit);
-        const hasMore = fetchedMsgs && fetchedMsgs.length === 100;
-        const nextCursor = results.length > 0 ? results[results.length - 1].id : currentOffsetId;
-        
-        log(`[Shared Media Debug] fallback manual scan: chatId=${req.params.id || req.query.chatId} topicId=${topicId} userId=${fromUser} mediaType=${type} returnedCount=${results.length} hasMore=${hasMore}`)
-        
-        res.json({ ok: true, items: results, hasMore, nextCursor, source: 'loaded_messages' });
-      } catch (innerErr) {
-        log('shared media fallback error: ' + innerErr.message)
-        res.json({ ok: false, error: innerErr.message, code: innerErr.errorMessage || innerErr.code || 'API_ERROR' })
-      }
-    } else {
-      log('shared media error: ' + e.message)
-      res.json({ ok: false, error: e.message, code: e.errorMessage || e.code || 'API_ERROR' })
-    }
-  }
-};
-
-app.get('/api/chat/shared_media/:id', requireAuth, sharedMediaHandler);
-app.get('/api/telegram/shared-media', requireAuth, sharedMediaHandler);
-
-
-// ── PROFILE PHOTO DOWNLOAD ──
-app.get('/api/chat/photo/:id', requireAuth, async (req, res) => {
-  if (!_session) return res.status(500).json({error: 'Media backend not connected'})
-  try {
-    const client = await getClient()
-    const { Api } = require('telegram/tl')
-    
-    const userIdStr = req.params.id;
-    const username = req.query.username;
-    const accessHashStr = req.query.accessHash;
-    
-    let entity = await resolveEntity(client, userIdStr, username);
-    
-    if (typeof entity === 'string' || typeof entity === 'number') {
-      if (accessHashStr) {
-        entity = new Api.InputUser({
-          userId: BigInt(userIdStr),
-          accessHash: BigInt(accessHashStr)
-        });
-      } else if (username) {
-        try {
-          entity = await client.getEntity(username);
-        } catch(e) {}
-      }
-    }
-
-    const buffer = await client.downloadProfilePhoto(entity, { isBig: false })
-    if (!buffer || buffer.length === 0) {
-      log(`[Avatar Debug] userId=${userIdStr} username=${username} status=no_photo`)
-      return res.status(404).json({error: 'No photo found'})
-    }
-    
-    log(`[Avatar Debug] userId=${userIdStr} username=${username} status=success size=${buffer.length}`)
-    res.set('Content-Type', 'image/jpeg')
-    res.set('Cache-Control', 'public, max-age=86400')
-    res.send(buffer)
-  } catch(e) {
-    log(`[Avatar Debug] userId=${req.params.id} error="${e.message}"`)
-    res.status(500).json({error: e.message})
-  }
-})
-
-// ── MEDIA DOWNLOAD ──
-app.get('/api/chat/media/:chatId/:msgId', requireAuth, async (req, res) => {
-  if (!_session) return res.status(500).json({error: 'Media backend not connected'})
-  try {
-    const msgId = parseInt(req.params.msgId)
-    const chatId = req.params.chatId
-    
-    // Check cache first
-    const cachePath = path.join(MEDIA_CACHE_DIR, `${chatId}_${msgId}`)
-    if (fs.existsSync(cachePath)) {
-      log(`[Media Cache Hit] chatId=${chatId} msgId=${msgId}`)
-      res.set('Content-Type', 'image/jpeg') // Assume JPEG, could be sniffed
-      res.set('Cache-Control', 'public, max-age=31536000')
-      return res.sendFile(cachePath)
-    }
-
-    const client = await getClient()
-    const entity = await resolveEntity(client, chatId)
-
-    const messages = await client.getMessages(entity, { ids: [msgId] })
-    if (!messages || messages.length === 0 || !messages[0]) {
-      return res.status(404).json({error: 'Message not found'})
-    }
-    const message = messages[0]
-
-    if (!message.media) {
-      return res.status(404).json({error: 'No media found in message'})
-    }
-
-    log(`[Media Cache Miss] Downloading chatId=${chatId} msgId=${msgId}`)
-    const buffer = await client.downloadMedia(message, { workers: 1 })
-    if (!buffer) {
-      return res.status(500).json({error: 'Failed to download media buffer'})
-    }
-
-    // Write to cache
-    fs.writeFileSync(cachePath, buffer)
-
-    res.set('Content-Type', 'image/jpeg') // Or application/octet-stream if unknown
-    res.set('Cache-Control', 'public, max-age=31536000')
-    res.send(buffer)
-  } catch(e) {
-    log('media download error: ' + e.message)
-    res.status(500).json({error: e.message})
-  }
-})
-
-
-function parseReactions(results) {
-  if (!results) return [];
-  return results.map(r => {
-    let emojiStr = '';
-    if (typeof r.reaction === 'string') emojiStr = r.reaction;
-    else if (r.reaction?.emoticon) emojiStr = r.reaction.emoticon;
-    else if (r.reaction?.className) emojiStr = r.reaction.className;
-    
-    const emojiMap = { 'Like': '👍', 'Laugh': '😂', 'Heart': '❤️', 'Fire': '🔥', 'Pray': '🙏', 'Smile': '🥰', 'Dislike': '👎', 'Cool': '😎' };
-    const finalEmoji = emojiMap[emojiStr] || emojiStr || '';
-    if (!finalEmoji) return null;
-    
-    return {
-      emoticon: finalEmoji,
-      count: r.count || 0,
-      chosen: typeof r.chosenOrder === 'number' || r.chosen === true
-    };
-  }).filter(Boolean);
-}
-
-function parseRecentReactions(recentReactions) {
-  if (!recentReactions) return [];
-  return recentReactions.map(rr => {
-    let emojiStr = '';
-    if (typeof rr.reaction === 'string') emojiStr = rr.reaction;
-    else if (rr.reaction?.emoticon) emojiStr = rr.reaction.emoticon;
-    else if (rr.reaction?.className) emojiStr = rr.reaction.className;
-    
-    const emojiMap = { 'Like': '👍', 'Laugh': '😂', 'Heart': '❤️', 'Fire': '🔥', 'Pray': '🙏', 'Smile': '🥰', 'Dislike': '👎', 'Cool': '😎' };
-    const finalEmoji = emojiMap[emojiStr] || emojiStr || '';
-    if (!finalEmoji) return null;
-    
-    return {
-      peerId: rr.peerId?.userId?.toString() || rr.peerId?.channelId?.toString() || null,
-      emoticon: finalEmoji
-    };
-  }).filter(Boolean);
-}
 
 // ── MESSAGES ──
 app.get('/api/chat/messages/:id', requireAuth, async (req,res) => {
   if (!_session) return res.json([])
-  const t0 = Date.now()
   try {
-    const client = await withTimeout(getClient(), 10000, 'getClient')
-    const entity = await withTimeout(resolveEntity(client, req.params.id, req.query.username), 8000, 'resolveEntity')
-    const maxId = parseInt(req.query.maxId) || 0
-    const opts = { limit: 40 }
-    if (maxId > 0) opts.offsetId = maxId
-    const msgs = await withTimeout(client.getMessages(entity, opts), 12000, 'getMessages')
+    const client = await getClient()
+    const entity = await resolveEntity(client, req.params.id, req.query.username)
+    const msgs = await client.getMessages(entity, { limit: 80 })
     const results = msgs.reverse()
-      .map(m => {
-        const isPhoto = m.media?.className === 'MessageMediaPhoto'
-        const isDoc   = m.media?.className === 'MessageMediaDocument'
-        const isVideo = isDoc && m.media?.document?.mimeType?.startsWith('video/')
-        const isAudio = isDoc && (m.media?.document?.mimeType?.startsWith('audio/') || m.media?.document?.attributes?.some?.(a=>a.className==='DocumentAttributeAudio'))
-        return {
-          id: m.id,
-          text: m.message || (isPhoto ? '' : isAudio ? '🎤 Voice' : isVideo ? '🎥 Video' : isDoc ? '📎 Document' : ''),
-          fromMe: m.out,
-          date: m.date,
-          hasMedia: !!m.media,
-          isPhoto,
-          isVideo,
-          isAudio,
-          isDoc: isDoc && !isVideo && !isAudio,
-          senderId: m.senderId?.toString() || null,
-          senderName: m.sender?.firstName
-            ? (m.sender.firstName + (m.sender.lastName ? ' ' + m.sender.lastName : ''))
-            : (m.sender?.username || null),
-          senderUsername: m.sender?.username || null,
-          senderAccessHash: m.sender?.accessHash ? m.sender.accessHash.toString() : null,
-          reactions: parseReactions(m.reactions?.results) || [],
-          recentReactions: parseRecentReactions(m.reactions?.recentReactions) || [],
-        }
-      })
-      .filter(m => m.text || m.isPhoto || m.isVideo || m.isDoc)
-    log('messages loaded: ' + results.length + ' msgs in ' + (Date.now()-t0) + 'ms')
+      .map(m => ({ id: m.id, text: m.message, fromMe: m.out, date: m.date }))
+      .filter(m => m.text)
     res.json(results)
-  } catch(e) { 
-    log('messages error: '+e.message+' ('+(Date.now()-t0)+'ms)'); 
-    if (e.message.includes('AUTH_KEY') || e.message.includes('SESSION')) {
-      _session = ''
-      return res.status(401).json({ error: 'AUTH_FAILED' })
-    }
-    res.status(500).json({ error: e.message }) 
-  }
+  } catch(e) { log('messages: '+e.message); res.json([]) }
 })
 
 // ── SEND MESSAGE ──
@@ -871,724 +190,405 @@ app.post('/api/chat/send', requireAuth, async (req,res) => {
   if (!_session) return res.status(401).json({ error: 'Not connected' })
   try {
     const client = await getClient()
-    const entity = await withTimeout(resolveEntity(client, chatId, req.body.username), 8000, 'resolveEntity')
-    await withTimeout(client.sendMessage(entity, { message: text }), 10000, 'sendMessage')
+    const entity = await resolveEntity(client, chatId, req.body.username)
+    await client.sendMessage(entity, { message: text })
     log('Sent to '+chatId+': '+text.slice(0,40))
     res.json({ ok: true })
   } catch(e) { log('send: '+e.message); res.status(500).json({ error: e.message }) }
 })
 
-// ── SEND TOPIC MESSAGE ──
-app.post('/api/chat/topics/:chatId/:topicId/send', requireAuth, async (req,res) => {
-  const { chatId, topicId } = req.params
-  const { text, username } = req.body
-  if (!_session) return res.status(401).json({ error: 'Not connected' })
-  try {
-    const client = await getClient()
-    const entity = await withTimeout(resolveEntity(client, chatId, username), 8000, 'resolveEntity')
-    await withTimeout(client.sendMessage(entity, { message: text, replyTo: parseInt(topicId) }), 10000, 'sendMessage')
-    log('Sent to topic '+chatId+'/'+topicId+': '+text.slice(0,40))
-    res.json({ ok: true })
-  } catch(e) { log('send topic: '+e.message); res.status(500).json({ error: e.message }) }
-})
-
-// ── SEND MEDIA ──
-app.post('/api/chat/send-media', requireAuth, upload.single('file'), async (req, res) => {
-  const { chatId, topicId, caption, username } = req.body
-  if (!_session) return res.status(401).json({ error: 'Not connected' })
-  if (!req.file) return res.status(400).json({ error: 'No file provided' })
-  
-  try {
-    const client = await getClient()
-    const entity = await withTimeout(resolveEntity(client, chatId, username), 8000, 'resolveEntity')
-    
-    // GramJS can upload from file path
-    const fileParams = {
-      file: req.file.path,
-      caption: caption || '',
-    }
-    if (topicId) fileParams.replyTo = parseInt(topicId)
-    
-    await withTimeout(client.sendFile(entity, fileParams), 30000, 'sendFile')
-    
-    // Cleanup temp file
-    fs.unlinkSync(req.file.path)
-    
-    log(`Sent media to ${chatId}${topicId ? '/'+topicId : ''}`)
-    res.json({ ok: true })
-  } catch(e) { 
-    log('send-media: '+e.message); 
-    if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
-    res.status(500).json({ error: e.message }) 
-  }
-})
-
 // ── AI SUGGEST (Groq) ──
 app.post('/api/ai/suggest', requireAuth, async (req,res) => {
-  const { contactName, lastMessage, messages, stage, notes, instruction, chatId, topicId } = req.body
-  const history = (messages||[]).slice(-40)
+  const { contactName, lastMessage, messages, stage, notes } = req.body
+  const history = (messages||[]).slice(-20)
   const lastClientMsg = (lastMessage||'').trim()
   const leonLines = history.filter(m=>m.fromMe).map(m=>m.text).filter(Boolean)
   const leonSaid  = leonLines.join(' | ')
   const thread    = history.map(m=>(m.fromMe?'Leon':'Client')+': '+m.text).join('\n')
 
-  const normInstruction = instruction ? instruction.toLowerCase().normalize('NFC') : null;
-  log('[AI Suggest Request Payload]: ' + JSON.stringify({
-    rawCommand: instruction,
-    normalizedCommand: normInstruction,
-    contactName: contactName,
-    chatId: chatId,
-    topicId: topicId,
-    messagesCount: history?.length || 0
-  }, null, 2))
-
   log('AI suggest — last: "' + lastClientMsg + '" stage: ' + stage)
 
-  // Local intent fallback for simple Vietnamese commands if AI fails
-  function localFallback(cmd) {
-    if (!cmd) return null;
-    const norm = cmd.toLowerCase().normalize('NFC');
-    
-    if (norm.includes("bao nhiêu dự án") || norm.includes("mấy dự án")) {
-      log('AI Suggest Fallback: Used local fallback for "bao nhiêu dự án" intent');
-      return [
-        { label: "Option 1", text: "How many projects are you currently working on?" },
-        { label: "Option 2", text: "Are you currently handling one project or multiple projects?" },
-        { label: "Option 3", text: "How many projects are you managing at the moment?" }
-      ];
-    }
+  // Rule-based fallback (when no Groq key or Groq fails)
+  function ruleBased() {
+    const m = lastClientMsg.toLowerCase()
+    const recentCtx = history.filter(m=>!m.fromMe).slice(-3).map(m=>(m.text||'').toLowerCase()).join(' ')
+    const ctx = m + ' ' + recentCtx
 
-    if (norm.includes("dự án web3") || norm.includes("dự web3") || norm.includes("nào khác")) {
-      log('AI Suggest Fallback: Used local fallback for "other Web3 projects" intent');
-      return [
-        { label: "Option 1", text: "Are you currently supporting any other Web3 projects?" },
-        { label: "Option 2", text: "Just curious, are you working with any other Web3 projects at the moment?" },
-        { label: "Option 3", text: "Besides this, are you currently helping any other crypto/Web3 projects?" }
-      ];
-    }
-
-    if (norm.includes("group chung") || norm.includes("hợp tác") || norm.includes("cơ hội")) {
-      log('AI Suggest Fallback: Used local fallback for "shared group collaboration" intent');
-      return [
-        { label: "Option 1", text: "Hey, I noticed we're in the same group, so I wanted to reach out and see if there's any potential collaboration." },
-        { label: "Option 2", text: "Hi, I saw we're both in the same community. Would be nice to connect and explore if there's any way to collaborate." },
-        { label: "Option 3", text: "Hey, I noticed we share the same group here. Are you open to a quick chat about possible collaboration?" }
-      ];
-    }
-
-    if (norm.includes("ý tưởng") || norm.includes("trước đi") || norm.includes("chia sẻ ý tưởng")) {
-      log('AI Suggest Fallback: Used local fallback for "share idea first" intent');
-      return [
-        { label: "Option 1", text: "Sure, please share your idea first." },
-        { label: "Option 2", text: "Can you share your idea first so I can understand it better?" },
-        { label: "Option 3", text: "Please send me your idea first, then I'll see how we can align." }
-      ];
-    }
-
-    if (norm.includes("example") || norm.includes("done") || norm.includes("đã làm") || norm.includes("case study")) {
-      log('AI Suggest Fallback: Used local fallback for "share examples" intent');
-      return [
-        { label: "Option 1", text: "Could you share some examples of what you've done before?" },
-        { label: "Option 2", text: "Can you send me a few examples of your previous work?" },
-        { label: "Option 3", text: "Would you mind sharing some examples or case studies you've done?" }
-      ];
-    }
-
-    if (norm.includes("link dự án") || norm.includes("cho xin link") || norm.includes("gửi link")) {
-      log('AI Suggest Fallback: Used local fallback for "project link" intent');
-      return [
-        { label: "Option 1", text: "Could you share the link to your project?" },
-        { label: "Option 2", text: "Do you mind sending over your project link so I can take a look?" },
-        { label: "Option 3", text: "Please drop your project link here when you have a moment." }
-      ];
-    }
-
-    if (norm.includes("commission") || norm.includes("hoa hồng") || norm.includes("giới thiệu")) {
-      log('AI Suggest Fallback: Used local fallback for "commission" intent');
-      return [
-        { label: "Option 1", text: "We offer a 20% commission per closed deal if you refer clients to us." },
-        { label: "Option 2", text: "Just so you know, we provide a 20% commission for any successful referrals." },
-        { label: "Option 3", text: "If you introduce any clients, we offer a 20% referral fee per closed deal." }
-      ];
-    }
-    
-    // If no explicit keywords match, return null to allow proper API error handling
-    return null;
+    if (/^(cmc|cmc news|coinmarketcap)$/.test(m.trim()))
+      return "CMC News puts your content directly on CoinMarketCap — reaches millions of crypto users and gives strong credibility. Starts at $800. Want me to send the rate card?"
+    if (/^(pr|coincu pr|coincu)$/.test(m.trim()))
+      return "Coincu PR is a featured article on coincu.com — 500K+ monthly readers, great for SEO and announcement visibility. Starts at $300. Want the rate card?"
+    if (/^(both|all|all of them|bundle|package|everything)$/.test(m.trim()))
+      return "Coincu PR + CMC News bundle starts around $950 — covers SEO visibility and CoinMarketCap credibility. Want me to put together a proposal?"
+    if (/^(yes|ok|okay|sure|yep|yeah|great|perfect|sounds good|go ahead|let'?s go|interested)$/.test(m.trim()))
+      return "Perfect — can you share your project name and website? I'll put together a tailored proposal and have it ready today."
+    if (/^(no|nope|not now|later|busy)$/.test(m.trim()))
+      return "No worries — when would be a better time? I'll follow up then."
+    if (/same thing|repeat|always say|generic/.test(ctx))
+      return "Fair point — CMC News = content on CoinMarketCap (credibility, top crypto site). Coincu PR = article on coincu.com (500K readers/month, SEO). Which fits your goal better?"
+    if (/tell me more|what is it|explain|how does|what do you|more detail/.test(ctx))
+      return "Coincu PR = featured article on coincu.com, 500K crypto readers/month, strong for SEO. CMC News = content on CoinMarketCap — top crypto site globally, stronger credibility signal. Which matters more for you?"
+    if (/discount|cheaper|lower price|negotiate|deal/.test(ctx))
+      return "Understood — is your priority CoinMarketCap visibility, SEO, or just getting the announcement out? I can suggest the most cost-efficient option for your budget."
+    if (/both|bundle|all|package/.test(ctx))
+      return "Coincu PR + CMC News bundle starts around $950 — covers both visibility and credibility. Want me to send a full proposal?"
+    if (/price|cost|how much|rate|budget/.test(ctx))
+      return "CMC News from $800, Coincu PR from $300, bundle $950. Want me to send the full rate card with all options?"
+    if (/raising|investor|round|funding|vc/.test(ctx))
+      return "Good timing — investors check media presence. CMC News on CoinMarketCap is the strongest signal before a raise. Want details?"
+    if (/tge|launch|listing|mainnet|token/.test(ctx))
+      return "CMC News right before a TGE is one of the best moves — content on CoinMarketCap when people are researching the token. Want me to walk you through it?"
+    if (/how.*start|next step|what.*do|proceed|move forward/.test(ctx))
+      return "Simple — just share your project name, website, and article (or key talking points). I'll handle the rest and have everything live within the agreed timeline."
+    if (lastClientMsg.length > 2)
+      return "Got it — to recommend the right fit, is the main goal awareness, credibility, or SEO?"
+    return "What's the main goal right now — awareness, credibility, or user growth?"
   }
 
-  if (!GROQ_KEY) return res.json({ ok: false, error: "AI API key not configured." })
+  if (!GROQ_KEY) return res.json({ suggestion: ruleBased() })
 
-  const SYSTEM_PROMPT = `You are Coincu's BD Sales Assistant.
+  const SYSTEM_PROMPT = `You are Coincu's professional BD Sales Assistant.
 
-${instruction ? `=== PRIORITY 1: USER INSTRUCTION (CRITICAL) ===
-You MUST follow this exact instruction above all else. This is the direct instruction for WHAT TO SAY to the customer.
-Instruction: "${instruction}"
+Read all information below carefully before answering. Use ONLY this knowledge base — do not invent prices, services, or guarantees.
 
-CRITICAL RULES FOR INSTRUCTION (VIETNAMESE/MIXED LANGUAGE SUPPORT):
-1. STEP 1 - INTENT TRANSLATION: Understand the core intent of the instruction.
-2. STEP 2 - NATURAL ENGLISH: Write the final reply entirely in natural English.
-3. ABSOLUTE BAN ON LITERAL COPYING: NEVER copy Vietnamese words directly into the English reply. For example, if instruction says "hướng chúng ta có thể collaborate với bạn", do NOT output "collaborate với bạn". Translate the full intent to "how we can collaborate".
-4. NO INVENTED CONTEXT: DO NOT invent concepts like "prediction event", "podcast", "rate card", "budget", "CMC", or "marketing campaign" unless they are EXPLICITLY mentioned in the instruction or the chat history.
-5. PRESERVE SPEAKER DIRECTION: "tôi/mình" = You (the Coincu sender). "bạn/anh/chị" = The Customer.
-6. If the intent is just to ask a question (e.g. "chia sẻ ý tưởng trước đi"), just ask the question naturally. Do not wrap it in a sales pitch.
+---
+COMPANY
+---
+Coincu is a crypto-focused media outlet (coincu.com) that has collaborated with top-tier news platforms. We provide content publication, PR, and CoinMarketCap News visibility services.
+We have executed 130+ successful marketing campaigns for global crypto projects.
+When explaining what Coincu is or how Coincu PR works, use EXACTLY this description: "We're a crypto-focused media outlet — coincu.com — and have collaborated with top-tier news platforms." Do not say "network of news outlets" or "we handle writing and distribution".
 
-VIETNAMESE INTENT EXAMPLES:
-- "bạn đang làm bao nhiêu dự án" -> intent is "ask how many projects customer is working on".
-- "cho tôi link dự án của bạn" -> intent is "ask customer to share their project link".
-- "chia sẻ ý tưởng của bạn trước đi" -> intent is "ask customer to share their idea first".
-- "bạn có thể đưa tôi example những gì bạn đã done không?" -> intent is "ask customer for examples of their past work".
-- "khi đó tôi sẽ biết được hướng chúng ta có thể collaborate với bạn" -> intent is "ask for details to see how we can collaborate".
-=========================================
-` : ''}
-=== PRIORITY 2: SCENARIO & BD KNOWLEDGE (Use ONLY to support the instruction, do not override it) ===
-Identify customer type: Project, Agency, Broker, Founder, Marketing, BD, Investor, Service Provider.
-Coincu.com is a crypto/Web3 international news website. Services: PR article, sponsored content, organic article, banner ads.
-Coincu can support distribution to CoinMarketCap News (CMC News) which improves credibility.
+---
+SERVICES & RATE CARD (LATEST)
+---
 
-BEHAVIOR RULES:
-- Short, natural, casual-professional, Telegram-style messages (1-3 sentences max).
-- NO email-style long paragraphs.
-- Do not hard sell too early. Ask only ONE clear open question.
+COINCU.COM
+- Press release: $240 single | $590 (3) | $890 (5) | $1,550 (10) | TAT: 24-48hrs
+- Sponsored article: $390 single | $1,020 (3) | $1,540 (5) | $2,700 (10) | TAT: 24-48hrs
+- Organic coverage/review: $520 single | $1,380 (3) | $2,080 (5) | $3,650 (10) | TAT: 24-48hrs
+- Listicle: $1,650 single | $4,380 (3) | $6,600 (5) | $11,600 (10) | TAT: 24-48hrs
+- Add to existing listicle: $1,000–$1,500
 
-=== TASK: MULTIPLE SUGGESTIONS ===
-Based on the instruction and context, generate exactly 2 to 3 distinct reply options.
-Each option MUST be short, natural, Telegram-style, and copy/send ready.
+BITCOININFONEWS.COM
+- Press release: $110 single | $270 (3) | $400 (5) | $700 (10) | TAT: 24-48hrs
+- Sponsored article: $180 single | $460 (3) | $670 (5) | $1,210 (10) | TAT: 24-48hrs
+- Organic coverage/review: $230 single | $620 (3) | $940 (5) | $1,640 (10) | TAT: 24-48hrs
+- Listicle: $740 single | $1,970 (3) | $2,970 (5) | $5,220 (10) | TAT: 24-48hrs
 
-OUTPUT FORMAT:
-Return EXACTLY this JSON structure.
-{
-  "normalizedIntent": "Your internal translation/understanding of the user instruction (e.g. 'Ask the customer to share their project link'). If no instruction, summarize the BD goal.",
-  "suggestions": [
-    { "label": "Soft", "text": "The actual message text" },
-    { "label": "Value", "text": "Another text" }
-  ]
-}
-`
+KANALCOIN.COM
+- Press release: $170 single | $410 (3) | $620 (5) | $1,080 (10) | TAT: 24-48hrs
+- Sponsored article: $270 single | $710 (3) | $1,080 (5) | $1,890 (10) | TAT: 24-48hrs
+- Organic coverage/review: $360 single | $970 (3) | $1,460 (5) | $2,550 (10) | TAT: 24-48hrs
+- Listicle: $1,150 single | $3,060 (3) | $4,620 (5) | $8,120 (10) | TAT: 24-48hrs
+
+---
+CMC TOP NEWS BOOST
+---
+- Service: Your article appears in the News section of a relevant CoinMarketCap token page
+- Eligibility: Content must be relevant to the selected token/project
+- Placement: Top of the News feed on the token's CoinMarketCap page
+- This increases visibility to users already researching that token
+- Do NOT guarantee permanent placement or top position
+- Do NOT claim Coincu controls CoinMarketCap
+- Mention as "subject to content and page eligibility"
+
+Successful CMC News Boost cases:
+- Tether (USDT): Coincu article appeared in Tether News section on CoinMarketCap
+- OKB: Coincu article appeared in OKB News section on CoinMarketCap
+- Remittix (RTX): Multiple Coincu articles appeared in Remittix News section
+- Hyperliquid (HYPE): Coincu article appeared in Hyperliquid News section
+- BlockDAG (BDAG): Coincu article appeared in BlockDAG News section
+
+---
+CORE VALUE
+---
+Coincu services can help projects:
+- Gain visibility on coincu.com (500K+ monthly readers)
+- Get exposure via CoinMarketCap News section on relevant token pages
+- Build credibility for investors, users, exchanges, partners
+- Support launches, fundraising, listings, product updates, partnerships
+- Improve SEO with long-term media presence
+
+DO NOT guarantee: token price, investor conversion, exchange listing, specific traffic, specific rankings.
+Use wording like: "can help improve visibility", "can strengthen credibility", "can support your campaign".
+
+---
+CONVERSATION RULES
+---
+- Short, clear, Telegram-style messages (1-3 sentences max)
+- Ask only ONE question at a time
+- Reply in the SAME language as the client (Vietnamese or English)
+- Never repeat what you already said in this conversation
+- End with one clear next step
+- Do not say "As an AI", "Based on the knowledge base", "According to my database"
+- Speak as a member of the Coincu team
+- If info is missing, say: "Let me confirm this with our team."
+
+---
+OBJECTION HANDLING
+---
+- Price too high: Don't immediately discount. Ask about priority — CMC visibility, SEO, or just announcement?
+- Not ready: Ask what milestone they're waiting for — launch, funding, listing, product release?
+- What do you sell: "We help crypto projects publish PR and branded content on Coincu, with additional visibility on relevant CoinMarketCap News pages where eligible."
+- Guarantee results?: "We guarantee the agreed publication deliverables, but not token performance, traffic, or market results."
+- Discount request: Ask about budget range first, then suggest most cost-efficient option or bulk package.
+
+---
+AGENCIES / PARTNERS
+---
+If client is an agency, VC, launchpad, or has multiple projects: mention bulk pricing and referral/partner model.`
 
   try {
     const userPrompt = [
-      '=== PRIORITY 3: CONVERSATION CONTEXT ===',
-      `Chat ID: ${chatId || 'Unknown'}, Topic ID: ${topicId || 'None'}`,
-      history.slice(-40).map(m=>(m.fromMe?'Leon':'Client')+': '+m.text).join('\n') || '(no messages yet)',
+      'Conversation with ' + contactName + ':',
+      thread,
       '',
-      'Client: ' + contactName,
-      'CRM Stage: ' + (stage||'Contacted'),
-      notes ? 'Notes: ' + notes : null,
+      'Client last message: "' + lastClientMsg + '"',
+      'What Leon already said in this chat (DO NOT use any of these phrases): ' + (leonSaid || 'nothing'),
       '',
-      'Client just said: "' + lastClientMsg + '"',
-      'Leon already said (do not repeat): ' + (leonSaid || '(nothing)'),
+      'Write ONE reply as Leon. FIRST read the client last message carefully, then respond to THAT message only — ignore previous topics.',
       '',
-      'First, output "normalizedIntent" to confirm you understand the direction. Then generate 2 to 3 diverse, short, Telegram-style reply options in JSON format.'
+      'Intent detection (apply to: "' + lastClientMsg + '"):',
+      '- "I manage X projects" / "I am an agency" / "multiple clients" → This is an agency/partner signal. Offer bulk rates and referral commission (10-20%). Do NOT talk about CMC News.',
+      '- "tell me more" / "what is" / "explain" / "how does" → Explain the service they asked about. Do NOT give price unless they ask.',
+      '- "how much" / "price" / "cost" → Give exact price only.',
+      '- "discount" / "bulk" → Give discount tier: 15% partner, 25% for 10+/mo, 35% for 20+/mo, 50% for 30+/mo.',
+      '- "launching" / "TGE" / "listing" → Ask what type of visibility they need.',
+      '- "raising" / "investor" → Mention CMC News for credibility.',
+      '- "yes" / "interested" / "let\'s go" → Move to next step, ask for project name.',
+      '',
+      'Rules:',
+      '1. Max 2 short sentences',
+      '2. Reply ONLY to: "' + lastClientMsg + '" — do not bring up other topics',
+      '3. ONLY use prices: PR $240, Sponsored $390, Organic $520, CMC Boost $1500. Bulk: 15%/25%/35%/50%',
+      '4. Never invent prices',
+      '5. No greeting, no sign-off',
+      '6. No mid-sentence line breaks. Complete sentences only.'
     ].filter(Boolean).join('\n')
 
-    const axios = require('axios')
-    
-    const makeGroqCall = async (modelName, promptText) => {
-      return axios.post('https://api.groq.com/openai/v1/chat/completions', {
-        model: modelName,
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: promptText }
-        ],
-        response_format: { type: "json_object" },
-        temperature: 0.7
-      }, { headers: { 'Authorization': 'Bearer ' + GROQ_KEY }});
-    };
+    const r = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
+      model: 'llama-3.3-70b-versatile',
+      messages: [
+        { role: 'system', content: 'You are a sales assistant. Follow the user instructions exactly. Never invent prices. Only use the exact prices given.' },
+        { role: 'user',   content: userPrompt }
+      ],
+      max_tokens: 80,
+      temperature: 0.35
+    }, { headers: { Authorization: 'Bearer ' + GROQ_KEY, 'Content-Type': 'application/json' }})
 
-    let safeSuggestions = null;
-    let detectedIntent = null;
-    let apiErrorStr = null;
-    let validationResult = 'success';
-    
-    const hasVietnameseLiteral = (text, instructionStr) => {
-      if (!instructionStr) return false;
-      const ignoreWords = ['bạn', 'có', 'không', 'tôi', 'làm', 'và', 'để', 'nhưng', 'của', 'là', 'cho', 'với', 'những', 'gì', 'đã'];
-      const instWords = instructionStr.toLowerCase().split(/\s+/).filter(w => w.length > 2 && !ignoreWords.includes(w));
-      const textLower = text.toLowerCase();
-      // If 2 or more non-trivial Vietnamese words from the instruction appear sequentially in the English text, flag it.
-      for (let i = 0; i < instWords.length - 1; i++) {
-        if (textLower.includes(instWords[i] + ' ' + instWords[i+1])) return true;
-      }
-      return false;
-    };
+    let s = r.data.choices[0].message.content.trim()
+      .replace(/^["'`]|["'`]$/g, '')
+      .replace(/^(Leon:|Reply:|Sure,|Of course,|Great,|Absolutely,)/i, '')
+      .trim()
 
-    const hasHallucination = (text, instructionStr, chatHistoryStr) => {
-      const blacklist = ['prediction event', 'podcast', 'rate card', 'budget', 'marketing campaign', 'cmc', 'commission'];
-      const combinedContext = ((instructionStr||'') + ' ' + (chatHistoryStr||'')).toLowerCase();
-      const textLower = text.toLowerCase();
-      
-      for (const bad of blacklist) {
-        if (textLower.includes(bad) && !combinedContext.includes(bad)) return true;
-      }
-      return false;
-    };
-
-    let retryCount = 0;
-    const maxRetries = 2;
-    let currentPrompt = userPrompt;
-
-    while (retryCount <= maxRetries) {
-      let r;
-      try {
-        r = await makeGroqCall("llama-3.3-70b-versatile", currentPrompt);
-      } catch(e) {
-        log("Groq 70b failed (" + (e.response?.data?.error?.message || e.message) + "). Failing over to 8b-instant...");
-        try {
-           r = await makeGroqCall("llama-3.1-8b-instant", currentPrompt);
-        } catch(e2) {
-           apiErrorStr = e2.message;
-           break; // Both failed, break out of retry loop
-        }
-      }
-
-      let rawText = r?.data?.choices?.[0]?.message?.content;
-      if (!rawText) {
-        apiErrorStr = "Empty response from Groq";
-        break;
-      }
-      
-      rawText = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
-
-      try {
-        const parsed = JSON.parse(rawText);
-        detectedIntent = parsed.normalizedIntent || detectedIntent;
-        
-        let tempSuggestions = null;
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          tempSuggestions = typeof parsed[0] === 'string' ? parsed.map((val, i) => ({ label: `Option ${i + 1}`, text: val })) : parsed;
-        } else if (typeof parsed === 'object' && parsed !== null) {
-          for (const key of Object.keys(parsed)) {
-            if (Array.isArray(parsed[key]) && parsed[key].length > 0) {
-              tempSuggestions = typeof parsed[key][0] === 'string' ? parsed[key].map((val, i) => ({ label: `Option ${i + 1}`, text: val })) : parsed[key];
-              break;
-            }
-          }
-          if (!tempSuggestions) {
-            const stringValues = Object.entries(parsed).filter(([key, val]) => key !== 'normalizedIntent' && typeof val === 'string' && val.length > 3).map(([_, val], i) => ({ label: `Option ${i + 1}`, text: val }));
-            if (stringValues.length > 0) tempSuggestions = stringValues;
-          }
-        }
-
-        if (tempSuggestions && tempSuggestions.length > 0) {
-          const combinedHistory = history.slice(-40).map(m=>m.text).join(' ');
-          let failedReason = null;
-          
-          for (const sug of tempSuggestions) {
-            if (!sug.text) continue;
-            if (hasVietnameseLiteral(sug.text, instruction)) {
-              failedReason = "DO NOT copy Vietnamese words into the final reply. Translate the intent to English only.";
-              break;
-            }
-            if (hasHallucination(sug.text, instruction, combinedHistory)) {
-              failedReason = "DO NOT invent contexts like 'prediction event' or 'podcast' unless explicitly mentioned.";
-              break;
-            }
-          }
-
-          if (failedReason && retryCount < maxRetries) {
-            validationResult = 'failed_retry_' + retryCount;
-            log(`[AI Suggest Validation Failed]: ${failedReason}. Retrying...`);
-            currentPrompt += `\n\n[SYSTEM FEEDBACK]: Your previous response was invalid. ${failedReason} Fix it and return valid English options.`;
-            retryCount++;
-            continue; 
-          }
-          
-          safeSuggestions = tempSuggestions;
-          if (failedReason) validationResult = 'failed_forced_accept';
-          break;
+    // ── Formatting correction pass ──
+    // 1. Split into lines and trim each
+    const rawLines = s.split('\n').map(l => l.trim()).filter(l => l.length > 0)
+    // 2. Merge lines that are broken mid-sentence
+    const merged = []
+    for (const line of rawLines) {
+      if (merged.length === 0) {
+        merged.push(line)
+      } else {
+        const prev = merged[merged.length - 1]
+        // Previous line ends with sentence-ending punctuation → new paragraph
+        if (/[.!?:]$/.test(prev)) {
+          merged.push(line)
         } else {
-          throw new Error("No suggestions found in JSON");
-        }
-      } catch(err) {
-        log('Groq JSON parse error: ' + err.message + ' | Raw: ' + rawText);
-        if (retryCount < maxRetries) {
-           currentPrompt += `\n\n[SYSTEM FEEDBACK]: Your previous response was not valid JSON. Please return strictly valid JSON.`;
-           retryCount++;
-           continue;
-        } else {
-           apiErrorStr = "JSON parse error after retries: " + err.message;
-           break;
+          // Broken mid-sentence → merge with space
+          merged[merged.length - 1] = prev + ' ' + line
         }
       }
     }
+    // 3. Remove empty lines, join with single newline
+    s = merged.filter(l => l.trim().length > 0).join('\n').trim()
 
-    const fallback = !safeSuggestions && instruction ? localFallback(instruction) : null;
-
-    log('[AI Suggest Debug]', {
-      rawCommand: instruction,
-      normalizedCommand: normInstruction,
-      detectedIntent: detectedIntent,
-      chatContextUsed: !!history.length,
-      finalEnglishOptions: safeSuggestions || fallback || null,
-      validationResult: validationResult,
-      fallbackUsed: !!fallback,
-      apiError: apiErrorStr
-    });
-
-    if (safeSuggestions) {
-      res.json({ 
-        ok: true, 
-        suggestions: safeSuggestions,
-        source: "fresh",
-        normalizedIntent: detectedIntent,
-        finalPromptPreview: currentPrompt
-      })
-    } else if (fallback) {
-      res.json({
-        ok: true,
-        suggestions: fallback,
-        source: "local_fallback",
-        error: "API failed, used local fallback"
-      })
-    } else {
-      res.json({
-        ok: false,
-        error: apiErrorStr || (instruction ? "Failed to generate custom reply. Please try rephrasing your command." : "Failed to generate contextual replies. Please provide a custom instruction.")
-      })
-    }
+    log('AI reply: "' + s.slice(0,80) + '"')
+    res.json({ suggestion: s })
   } catch(e) {
-    log('AI Suggest Error: ' + e.message)
-    res.json({ ok: false, error: e.message })
+    log('AI error: ' + e.message)
+    res.json({ suggestion: ruleBased() })
   }
 })
 
 
-app.post('/api/ai/summarize', requireAuth, async (req,res) => {
-  const { messages, contactName } = req.body
-  if (!messages?.length) return res.json({ summary: 'No messages to summarize.' })
+app.get('/api/chat/poll/:id', requireAuth, async (req, res) => {
+  if (!_session) return res.json([])
+  const since = parseInt(req.query.since) || 0
   try {
-    const thread = messages.slice(-30).map(m=>(m.fromMe?'Leon':'Client')+': '+m.text).join('\n')
-    const r = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
-      model: 'llama-3.3-70b-versatile',
-      messages: [
-        { role:'system', content:'You are a concise sales analyst. Summarize Telegram sales conversations.' },
-        { role:'user', content:'Summarize this conversation with '+contactName+' in 3-5 bullet points:\n'+thread }
-      ],
-      max_tokens: 200, temperature: 0.3
-    }, { headers: { Authorization:'Bearer '+GROQ_KEY, 'Content-Type':'application/json' }})
-    res.json({ summary: r.data.choices[0].message.content.trim() })
-  } catch(e) { res.json({ summary: 'Error: '+e.message }) }
-})
-
-// ── AI EXTRACT LEAD INFO ──
-app.post('/api/ai/extract', requireAuth, async (req,res) => {
-  const { messages, contactName } = req.body
-  if (!messages?.length) return res.json({ info: {} })
-  try {
-    const thread = messages.slice(-40).map(m=>(m.fromMe?'Leon':'Client')+': '+m.text).join('\n')
-    const r = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
-      model: 'llama-3.3-70b-versatile',
-      messages: [
-        { role:'system', content:'Extract lead info from sales chat. Return ONLY JSON, no markdown.' },
-        { role:'user', content:'Extract from this conversation:\n'+thread+'\n\nReturn JSON with: company, project_type, stage, pain_points, budget_hint, timeline, services_interested, next_action' }
-      ],
-      max_tokens: 300, temperature: 0.1
-    }, { headers: { Authorization:'Bearer '+GROQ_KEY, 'Content-Type':'application/json' }})
-    let raw = r.data.choices[0].message.content.trim().replace(/```json|```/g,'')
-    try { res.json({ info: JSON.parse(raw) }) }
-    catch { res.json({ info: { raw } }) }
-  } catch(e) { res.json({ info: { error: e.message } }) }
+    const client = await getClient()
+    const entity = await resolveEntity(client, req.params.id, req.query.username)
+    const msgs = await client.getMessages(entity, { limit: 5, minId: since })
+    const results = msgs
+      .map(m => ({ id: m.id, text: m.message, fromMe: m.out, date: m.date }))
+      .filter(m => m.text && m.id > since)
+      .reverse()
+    res.json(results)
+  } catch(e) {
+    res.json([])
+  }
 })
 
 
-// ── EDIT MESSAGE ──
-app.post('/api/chat/edit', requireAuth, async (req,res) => {
-  if(!_session) return res.status(401).json({error:'Not connected'})
-  const {chatId, msgId, text, username} = req.body
-  if(!chatId||!msgId||!text) return res.status(400).json({error:'Missing fields'})
+// ── POLL new messages since a given ID ──
+app.get('/api/chat/poll/:id', requireAuth, async (req, res) => {
+  if (!_session) return res.json([])
+  const since = parseInt(req.query.since) || 0
+  try {
+    const client = await getClient()
+    const entity = await resolveEntity(client, req.params.id, req.query.username)
+    const msgs = await client.getMessages(entity, { limit: 5, minId: since })
+    const results = msgs
+      .map(m => ({ id: m.id, text: m.message, fromMe: m.out, date: m.date }))
+      .filter(m => m.text && m.id > since)
+      .reverse()
+    res.json(results)
+  } catch(e) { res.json([]) }
+})
+
+
+// ── DELETE MESSAGE ──
+app.post('/api/chat/delete', requireAuth, async (req, res) => {
+  if (!_session) return res.status(401).json({ error: 'Not connected' })
+  const { chatId, messageId } = req.body
+  try {
+    const client = await getClient()
+    const entity = await resolveEntity(client, chatId)
+    const { Api } = require('telegram/tl')
+    await client.invoke(new Api.messages.DeleteMessages({
+      id: [parseInt(messageId)],
+      revoke: true  // delete for everyone like Telegram
+    }))
+    res.json({ ok: true })
+  } catch(e) {
+    log('delete msg: ' + e.message)
+    res.status(500).json({ error: e.message })
+  }
+})
+
+
+// ── TELEGRAM REACTIONS ──
+app.post('/api/chat/react', requireAuth, async (req, res) => {
+  if (!_session) return res.status(401).json({ error: 'Not connected' })
+  const { chatId, messageId, topicId, emoji } = req.body
+  if (!chatId || !messageId || !emoji) return res.status(400).json({ error: 'Missing fields' })
+
+  log(`React: chatId=${chatId} msgId=${messageId} emoji=${emoji}`)
+
   try {
     const client = await withTimeout(getClient(), 10000, 'getClient')
-    const entity = await withTimeout(resolveEntity(client, chatId, username), 8000, 'resolve')
-    const {Api} = require('telegram/tl')
+    const entity = await withTimeout(resolveEntity(client, chatId), 8000, 'resolve')
+    const { Api } = require('telegram/tl')
+
+    // Get current reactions on this message first
+    let currentMyReaction = null
+    try {
+      const msgs = await withTimeout(
+        client.getMessages(entity, { ids: [parseInt(messageId)] }),
+        8000, 'getMsg'
+      )
+      const msg = msgs?.[0]
+      const results = msg?.reactions?.results || []
+      // Find my current reaction (fromMe or check my user id)
+      const me = await client.getMe()
+      const myId = me?.id?.toString()
+      for (const r of results) {
+        const recentReactions = msg?.reactions?.recentReactions || []
+        for (const rr of recentReactions) {
+          if (rr.userId?.toString() === myId) {
+            currentMyReaction = rr.reaction?.emoticon || null
+            break
+          }
+        }
+        if (currentMyReaction) break
+      }
+      log(`React: currentMyReaction=${currentMyReaction}`)
+    } catch (e) {
+      log('React: could not fetch current reaction: ' + e.message)
+    }
+
+    // Determine action
+    const isSame = currentMyReaction === emoji
+    log(`React: action=${isSame ? 'toggle/remove' : 'set'} emoji=${emoji}`)
+
+    // If same emoji — toggle off (send empty reactions)
+    const reactionsList = isSame
+      ? []  // remove
+      : [new Api.ReactionEmoji({ emoticon: emoji })]
+
     await withTimeout(
-      client.invoke(new Api.messages.EditMessage({
+      client.invoke(new Api.messages.SendReaction({
         peer: entity,
-        id: parseInt(msgId),
-        message: text,
-        noWebpage: true,
+        msgId: parseInt(messageId),
+        reaction: reactionsList,
+        big: false,
       })),
-      10000, 'editMessage'
+      10000, 'SendReaction'
     )
-    log('Message edited: ' + msgId)
-    res.json({ok:true})
-  } catch(e) {
-    log('edit error: ' + e.message)
-    res.status(500).json({error: e.message})
+
+    log(`React: success — final=${isSame ? 'removed' : emoji}`)
+    res.json({ ok: true, removed: isSame, emoji, myReaction: isSame ? null : emoji })
+
+  } catch (e) {
+    const msg = e.message || ''
+    if (msg.includes('MESSAGE_NOT_MODIFIED')) {
+      log('React: MESSAGE_NOT_MODIFIED — treating as success')
+      return res.json({ ok: true, unchanged: true, emoji })
+    }
+    log('React error: ' + msg)
+    res.status(500).json({ error: msg })
   }
 })
 
 app.get('/api/health', (req,res) => res.json({ ok: true, tgConnected: _session.length > 10 }))
 app.get('/api/logs', requireAuth, (req,res) => res.json(logs))
 
-// ── SEND REACTION ──
-app.post('/api/chat/react', requireAuth, async (req,res) => {
-  if(!_session) return res.status(401).json({error:'Not connected'})
-  const {chatId, msgId, emoji, username} = req.body
-  if(!chatId||!msgId) return res.status(400).json({error:'Missing fields'})
-  try {
-    const client = await withTimeout(getClient(), 10000, 'getClient')
-    const entity = await withTimeout(resolveEntity(client, chatId, username), 8000, 'resolve')
-    const {Api} = require('telegram/tl')
-    
-    let reactionArr = [];
-    if (Array.isArray(emoji)) {
-      reactionArr = emoji.map(e => new Api.ReactionEmoji({ emoticon: e }));
-    } else if (emoji) {
-      reactionArr = [new Api.ReactionEmoji({ emoticon: emoji })];
-    }
-    
-    log(`[Reaction] Debug: chatId=${chatId}, msgId=${msgId}, resolvedPeer=${entity?.className}, peerId=${entity?.id || entity?.channelId || entity?.userId}`);
-    log(`[Reaction] Request to Telegram: msgId=${msgId}, emoji payload=${JSON.stringify(emoji)}, api_payload=${JSON.stringify(reactionArr)}`);
-    
-    const tgRes = await withTimeout(
-      client.invoke(new Api.messages.SendReaction({
-        peer: entity,
-        msgId: parseInt(msgId),
-        reaction: reactionArr,
-        addToRecent: true
-      })),
-      10000, 'sendReaction'
-    )
-    log(`Reaction sent: ${msgId} ${JSON.stringify(emoji)}. Response: ${JSON.stringify(tgRes, null, 2)}`)
-    res.json({ok:true, tgRes})
-  } catch(e) {
-    log('react error: ' + e.message)
-    res.status(500).json({error: e.message})
-  }
-})
-
-// ── MARK CHAT AS READ ──
-app.post('/api/chat/read', requireAuth, async (req,res) => {
-  if(!_session) return res.status(401).json({error:'Not connected'})
-  const { chatId, username, maxId } = req.body
-  if(!chatId) return res.status(400).json({error:'Missing chatId'})
-  try {
-    const client = await withTimeout(getClient(), 10000, 'getClient')
-    const entity = await withTimeout(resolveEntity(client, chatId, username), 8000, 'resolve')
-    
-    // Telegram markAsRead logic
-    // Using simple client.markAsRead which handles most cases
-    await withTimeout(client.markAsRead(entity, { maxId }), 5000, 'markAsRead')
-    log('Marked as read: ' + chatId)
-    res.json({ ok: true })
-  } catch(e) {
-    log('markRead error: ' + e.message)
-    res.status(500).json({error: e.message})
-  }
-})
 
 
-
-
-// ── SSE REALTIME STREAM ──
-let sseClients = []
-
-app.get('/api/chat/stream', (req, res) => {
-  // Use token from query because EventSource doesn't support custom headers easily
-  const token = req.query.token
-  if (!token) return res.status(401).end()
-  try {
-    const jwt = require('jsonwebtoken')
-    jwt.verify(token, JWT_SECRET)
-  } catch(e) {
-    return res.status(401).end()
-  }
-
-  res.setHeader('Content-Type', 'text/event-stream')
-  res.setHeader('Cache-Control', 'no-cache')
-  res.setHeader('Connection', 'keep-alive')
-  res.flushHeaders() // flush the headers to establish SSE
-
-  // Send initial connected event
-  res.write(`data: ${JSON.stringify({ type: 'connected' })}\n\n`)
-
-  sseClients.push(res)
-
-  req.on('close', () => {
-    sseClients = sseClients.filter(client => client !== res)
-  })
-})
-
-function broadcastSSE(data) {
-  const payload = `data: ${JSON.stringify(data)}\n\n`
-  sseClients.forEach(client => client.write(payload))
-}
 
 // Start Telegram event listener for incoming messages
 async function startTGListener() {
-  let NewMessage
-  try { NewMessage = require('telegram/events/NewMessage').NewMessage } catch {}
-  if (!NewMessage) { try { NewMessage = require('telegram/events').NewMessage } catch {} }
-  if (!NewMessage) { log('TG listener: NewMessage not found, skipping'); return }
+  if (!_session || _session.length < 10) {
+    setTimeout(startTGListener, 5000)
+    return
+  }
   try {
-    const { TelegramClient } = require('telegram')
+    const { TelegramClient, events } = require('telegram')
     const { StringSession } = require('telegram/sessions')
-    const lc = new TelegramClient(new StringSession(_session), TG_API_ID, TG_API_HASH, { connectionRetries: 2 })
-    await lc.connect()
-    
-    // Also listen for deleted messages
-    let DeletedMessage
-    try { DeletedMessage = require('telegram/events/DeletedMessage').DeletedMessage } catch {}
+    const listenerClient = new TelegramClient(
+      new StringSession(_session), TG_API_ID, TG_API_HASH,
+      { connectionRetries: 5 }
+    )
+    await listenerClient.connect()
+    log('✅ TG event listener started')
 
-    lc.addEventHandler(async (ev) => {
-      try { 
-        if (ev.message) {
-          const m = ev.message
-          log('📨 ' + m.chatId)
-          
-          // Format message to match client.getMessages structure
-          const msgObj = {
-            id: m.id,
-            chatId: m.chatId ? m.chatId.toString() : null,
-            text: m.message || '',
-            date: m.date,
-            fromMe: m.out,
-            isReply: !!m.replyTo,
-            replyToMsgId: m.replyTo?.replyToMsgId,
-            action: m.action ? true : false,
-            // Try to resolve sender info if possible
-            senderId: m.senderId ? m.senderId.toString() : null,
-            topicId: (m.replyTo?.forumTopic ? m.replyTo.replyToMsgId : m.replyTo?.replyToTopId) || null
-          }
-          
-          if (m.media) {
-            msgObj.hasMedia = true
-            msgObj.mediaType = m.media.className
-          }
-
-          broadcastSSE({ type: 'new_message', message: msgObj })
+    listenerClient.addEventHandler(async (event) => {
+      try {
+        const msg = event.message
+        if (!msg || !msg.text) return
+        const chatId = msg.chatId?.toString()
+        if (!chatId) return
+        const message = {
+          id: msg.id,
+          text: msg.text,
+          fromMe: msg.out,
+          date: msg.date
         }
-      } catch(err) {
-        log('SSE broadcast error: ' + err.message)
-      }
-    }, new NewMessage({}))
-    
-    if (DeletedMessage) {
-      lc.addEventHandler(async (ev) => {
-        try {
-          if (ev.deletedIds && ev.deletedIds.length > 0) {
-             broadcastSSE({ type: 'delete_messages', ids: ev.deletedIds, chatId: ev.chatId ? ev.chatId.toString() : null })
-          }
-        } catch(e) {}
-      }, new DeletedMessage({}))
-    }
-    
-    // Listen for raw reaction updates
-    let Raw;
-    try { Raw = require('telegram/events/Raw').Raw; } catch {}
-    if (Raw) {
-      lc.addEventHandler(async (ev) => {
-        try {
-          if (ev.className === 'UpdateMessageReactions') {
-            const peer = ev.peer;
-            let chatId = null;
-            if (peer.className === 'PeerUser') chatId = peer.userId.toString();
-            else if (peer.className === 'PeerChat') chatId = peer.chatId.toString();
-            else if (peer.className === 'PeerChannel') chatId = '-100' + peer.channelId.toString();
-            
-            const msgId = ev.msgId;
-            const topMsgId = ev.topMsgId; // this is essentially the topicId
-            const reactionsObj = ev.reactions;
-            
-            if (chatId && msgId && reactionsObj) {
-               const parsedReactions = parseReactions(reactionsObj.results);
-               const parsedRecent = parseRecentReactions(reactionsObj.recentReactions);
-               
-               broadcastSSE({ 
-                 type: 'update_reactions', 
-                 chatId, 
-                 msgId, 
-                 topicId: topMsgId || null,
-                 reactions: parsedReactions,
-                 recentReactions: parsedRecent
-               });
-            }
-          }
-        } catch(e) {
-          log('Reaction SSE broadcast error: ' + e.message);
-        }
-      }, new Raw({}));
-    }
+        // broadcast removed — using polling
+      } catch(e) { log('TG event error: ' + e.message) }
+    }, new events.NewMessage({}))
 
-    log('✅ TG listener active with SSE')
-  } catch(e) { log('TG listener: ' + e.message) }
+  } catch(e) {
+    log('TG listener error: ' + e.message + ' — retrying in 10s')
+    setTimeout(startTGListener, 10000)
+  }
 }
 
 // Start listener after session is loaded
 setTimeout(startTGListener, 3000)
 
-// ── COMMON GROUPS ──
-app.get('/api/chat/common_groups/:id', requireAuth, async (req, res) => {
-  if (!_session) return res.json({error: 'No session'})
-  try {
-    const client = await getClient()
-    const { Api } = require('telegram/tl')
-    
-    const userIdStr = req.params.id;
-    const username = req.query.username;
-    const accessHashStr = req.query.accessHash;
-    
-    let entity = await resolveEntity(client, userIdStr, username);
-    
-    // If resolveEntity returns a string (unresolved), try to manually construct InputUser
-    if (typeof entity === 'string' || typeof entity === 'number') {
-      if (accessHashStr) {
-        entity = new Api.InputUser({
-          userId: BigInt(userIdStr),
-          accessHash: BigInt(accessHashStr)
-        });
-      } else if (username) {
-        try {
-          entity = await client.getEntity(username);
-        } catch(e) {
-           throw new Error("Could not resolve user entity for common groups");
-        }
-      } else {
-        throw new Error("Could not resolve user entity. Missing accessHash.");
-      }
-    }
-    
-    const result = await client.invoke(new Api.messages.GetCommonChats({
-      userId: entity,
-      maxId: 0,
-      limit: 100
-    }))
-    
-    if (!result || !result.chats) {
-      log(`[Common Groups Debug] userId=${userIdStr} username=${username} accessHash=${accessHashStr} loadedCount=0 API=success (No chats returned)`);
-      return res.json({ ok: true, groups: [] })
-    }
-    
-    const groups = result.chats.map(c => ({
-      id: c.id ? c.id.toString() : '',
-      title: c.title || 'Unknown Group',
-      participantsCount: c.participantsCount || 0,
-      isGroup: true,
-      username: c.username,
-      accessHash: c.accessHash ? c.accessHash.toString() : undefined
-    }))
-    
-    log(`[Common Groups Debug] userId=${userIdStr} username=${username} accessHash=${accessHashStr} loadedCount=${groups.length} API=success`);
-    
-    res.json({ ok: true, groups })
-  } catch(e) {
-    log(`[Common Groups Debug] userId=${req.params.id} API=error fallbackReason="${e.message}"`)
-    // Do not return { ok: true, groups: [] } on error, as it gives false positives!
-    res.status(500).json({ error: e.message })
-  }
-})
-
 // ── STATIC FILES — must be LAST, after all API routes ──
 app.use(express.static(require('path').join(__dirname, 'dist')))
 app.get('*', (req,res) => res.sendFile(require('path').join(__dirname,'dist','index.html')))
-
-// Prevent crashes from unhandled rejections
-process.on('unhandledRejection', (reason) => {
-  log('Unhandled rejection: ' + (reason?.message || reason))
-})
-process.on('uncaughtException', (err) => {
-  log('Uncaught exception: ' + err.message)
-  // Don't exit — keep server running
-})
 
 app.listen(PORT, () => log('Listening on port ' + PORT))
