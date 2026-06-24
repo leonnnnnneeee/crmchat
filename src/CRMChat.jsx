@@ -754,7 +754,7 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
   const [fullProfile, setFullProfile] = useState(null)
   const [activeTab, setActiveTab] = useState('media')
   
-  const isGroupProfile = data?.isGroup;
+  const isGroupProfile = data?.chatId && data?.id && data.chatId.toString() !== data.id.toString();
   
   useEffect(() => {
     if (!data?.chatId) return
@@ -856,9 +856,8 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
       return;
     }
 
-    const isGroupUser = data?.chatId && data?.id && data.chatId.toString() !== data.id.toString();
-    const fromUserQuery = isGroupUser ? `&fromUser=${data.id}` : '';
-    const accessHashQuery = (isGroupUser && data.accessHash) ? `&accessHash=${data.accessHash}` : '';
+    const fromUserQuery = isGroupProfile ? `&fromUser=${data.id}` : '';
+    const accessHashQuery = (isGroupProfile && data.accessHash) ? `&accessHash=${data.accessHash}` : '';
     
     fetch(`/api/chat/shared_media/${data.chatId}?type=${tab}${fromUserQuery}${accessHashQuery}&offsetId=${tabOffsetId[tab]}&limit=30`, { headers: {'x-auth-token': token} })
       .then(async r => {
