@@ -513,6 +513,40 @@ app.get('/api/chat/profile/:id', requireAuth, async (req, res) => {
 })
 
 // ── SHARED MEDIA ──
+const formatMediaResult = (m) => {
+  const isPhoto = m.media?.className === 'MessageMediaPhoto'
+  const isDoc   = m.media?.className === 'MessageMediaDocument'
+  const isVideo = isDoc && m.media?.document?.mimeType?.startsWith('video/')
+  const webpageUrl = m.media?.webpage?.url || m.media?.url
+  const webpageTitle = m.media?.webpage?.title
+  
+  return {
+    id: m.id,
+    text: m.message || '',
+    date: m.date,
+    hasMedia: !!m.media,
+    isPhoto,
+    isVideo,
+    isDoc: isDoc && !isVideo,
+    fileName: m.media?.document?.attributes?.find(a=>a.className==='DocumentAttributeFilename')?.fileName,
+    fileSize: m.media?.document?.size ? Number(m.media.document.size) : 0,
+    webpageUrl,
+    webpageTitle
+  }
+};
+
+const matchesMediaFilter = (m, filterType) => {
+  const isPhoto = m.media?.className === 'MessageMediaPhoto'
+  const isDoc   = m.media?.className === 'MessageMediaDocument'
+  const isVideo = isDoc && m.media?.document?.mimeType?.startsWith('video/')
+  if (filterType === 'media') return isPhoto || isVideo
+  if (filterType === 'photos') return isPhoto
+  if (filterType === 'videos') return isVideo
+  if (filterType === 'files') return isDoc && !isVideo
+  if (filterType === 'links') return !!(m.media?.webpage?.url || m.media?.url)
+  if (filterType === 'gifs') return m.media?.document?.mimeType === 'video/mp4' // simplistic
+  return false
+};
 const sharedMediaHandler = async (req, res) => {
   if (!_session) return res.json({error: 'No session'})
   try {
@@ -555,40 +589,7 @@ const sharedMediaHandler = async (req, res) => {
       }
     }
     
-    const formatMediaResult = (m) => {
-      const isPhoto = m.media?.className === 'MessageMediaPhoto'
-      const isDoc   = m.media?.className === 'MessageMediaDocument'
-      const isVideo = isDoc && m.media?.document?.mimeType?.startsWith('video/')
-      const webpageUrl = m.media?.webpage?.url || m.media?.url
-      const webpageTitle = m.media?.webpage?.title
-      
-      return {
-        id: m.id,
-        text: m.message || '',
-        date: m.date,
-        hasMedia: !!m.media,
-        isPhoto,
-        isVideo,
-        isDoc: isDoc && !isVideo,
-        fileName: m.media?.document?.attributes?.find(a=>a.className==='DocumentAttributeFilename')?.fileName,
-        fileSize: m.media?.document?.size ? Number(m.media.document.size) : 0,
-        webpageUrl,
-        webpageTitle
-      }
-    };
 
-    const matchesMediaFilter = (m, filterType) => {
-      const isPhoto = m.media?.className === 'MessageMediaPhoto'
-      const isDoc   = m.media?.className === 'MessageMediaDocument'
-      const isVideo = isDoc && m.media?.document?.mimeType?.startsWith('video/')
-      if (filterType === 'media') return isPhoto || isVideo
-      if (filterType === 'photos') return isPhoto
-      if (filterType === 'videos') return isVideo
-      if (filterType === 'files') return isDoc && !isVideo
-      if (filterType === 'links') return !!(m.media?.webpage?.url || m.media?.url)
-      if (filterType === 'gifs') return m.media?.document?.mimeType === 'video/mp4' // simplistic
-      return false
-    };
 
     let msgs;
     if (topicId) {
