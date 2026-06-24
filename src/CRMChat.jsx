@@ -1,4 +1,4 @@
-// v-react-20260624_104209
+// v-rxfix-104511
 // v035029
 import { useState, useEffect, useRef, useCallback, useMemo } from "react"
 
@@ -1236,6 +1236,16 @@ export default function CRMChat({token}) {
         if(d.length < 40) setHasMore(false)
         else if(!append) setHasMore(true)
 
+        // Merge TG reactions from message data into reactions state
+        setReactions(prev => {
+          const updated = {...prev}
+          d.forEach(m => {
+            if(m.reactions && Object.keys(m.reactions).length > 0) {
+              updated[m.id] = m.reactions
+            }
+          })
+          return updated
+        })
         setMsgs(prev => {
           if(append) {
             const newMsgs = d.filter(m1 => !prev.some(m2 => m2.id === m1.id))
