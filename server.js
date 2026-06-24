@@ -596,7 +596,7 @@ async function startTGListener() {
 
   } catch(e) {
     log('TG listener error: ' + e.message + ' — retrying in 10s')
-    setTimeout(startTGListener, 10000)
+    // Not retrying — NewMessage not available in this package
   }
 }
 
