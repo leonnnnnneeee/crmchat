@@ -2056,7 +2056,13 @@ export default function CRMChat({ token, onAuthFailed }) {
           newReactions = newReactions.map(r => r.emoticon === emoji ? { ...r, count: r.count - 1, chosen: false } : r)
         }
       } else {
-        newReactions = newReactions.map(r => r.chosen ? { ...r, count: r.count - 1, chosen: false } : r).filter(r => r.count > 0)
+        const currentlyChosen = newReactions.filter(r => r.chosen);
+        if (currentlyChosen.length >= 3) {
+          // If already 3 reactions, remove the oldest chosen (first one in the array that is chosen)
+          const firstChosen = currentlyChosen[0].emoticon;
+          newReactions = newReactions.map(r => r.emoticon === firstChosen ? { ...r, count: r.count - 1, chosen: false } : r).filter(r => r.count > 0);
+        }
+        
         const newExisting = newReactions.find(r => r.emoticon === emoji)
         if (newExisting) {
           newReactions = newReactions.map(r => r.emoticon === emoji ? { ...r, count: r.count + 1, chosen: true } : r)
@@ -2071,17 +2077,21 @@ export default function CRMChat({ token, onAuthFailed }) {
       return updatedMsgs;
     })
     
-    // We already know if it was removal or addition based on the old state, but to be simple, let's just determine apiEmoji here.
-    // To cleanly know if we removed it, we can just do the find again on the original `msgs` reference (it might be slightly stale but it's fine for determining the intent).
-    const msgForApi = msgs.find(m => m.id === msgId) || {};
-    const oldR = msgForApi.reactions || [];
-    const isRemoving = oldR.find(r => r.emoticon === emoji && r.chosen);
-    const apiEmoji = isRemoving ? null : emoji;
+    // We send all chosen emojis as an array to the backend, so Telegram can sync them.
+    let payloadEmoji = null;
+    setMsgs(prevMsgs => {
+      const msgForApi = prevMsgs.find(m => m.id === msgId);
+      if (msgForApi) {
+        const chosenEmojis = (msgForApi.reactions || []).filter(r => r.chosen).map(r => r.emoticon);
+        payloadEmoji = chosenEmojis.length > 0 ? chosenEmojis : null;
+      }
+      return prevMsgs;
+    });
     
     console.log('updated reactions', newReactionsToLog);
     
     try {
-      const payload = { chatId: sel?.chatId || sel?.id, topicId: selTopic?.id, msgId, emoji: apiEmoji, username: sel?.username };
+      const payload = { chatId: sel?.chatId || sel?.id, topicId: selTopic?.id, msgId, emoji: payloadEmoji, username: sel?.username };
       console.log('API request payload', payload);
       
       const res = await fetch('/api/chat/react', {

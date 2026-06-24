@@ -803,15 +803,38 @@ app.get('/api/chat/messages/:id', requireAuth, async (req,res) => {
             : (m.sender?.username || null),
           senderUsername: m.sender?.username || null,
           senderAccessHash: m.sender?.accessHash ? m.sender.accessHash.toString() : null,
-          reactions: m.reactions?.results?.map(r => ({
-            emoticon: r.reaction?.emoticon || '',
-            count: r.count || 0,
-            chosen: r.chosenOrder !== undefined || r.chosen === true
-          })) || [],
-          recentReactions: m.reactions?.recentReactions?.map(rr => ({
-            peerId: rr.peerId?.userId?.toString() || rr.peerId?.channelId?.toString() || null,
-            emoticon: rr.reaction?.emoticon || ''
-          })) || [],
+          reactions: m.reactions?.results?.map(r => {
+            let emojiStr = '';
+            if (typeof r.reaction === 'string') emojiStr = r.reaction;
+            else if (r.reaction?.emoticon) emojiStr = r.reaction.emoticon;
+            else if (r.reaction?.className) emojiStr = r.reaction.className;
+            
+            // Map known reaction type names to unicode emojis if needed
+            const emojiMap = { 'Like': '👍', 'Laugh': '😂', 'Heart': '❤️', 'Fire': '🔥', 'Pray': '🙏', 'Smile': '🥰', 'Dislike': '👎', 'Cool': '😎' };
+            const finalEmoji = emojiMap[emojiStr] || emojiStr || '';
+            if (!finalEmoji) return null;
+            
+            return {
+              emoticon: finalEmoji,
+              count: r.count || 0,
+              chosen: r.chosenOrder !== undefined || r.chosen === true
+            };
+          }).filter(Boolean) || [],
+          recentReactions: m.reactions?.recentReactions?.map(rr => {
+            let emojiStr = '';
+            if (typeof rr.reaction === 'string') emojiStr = rr.reaction;
+            else if (rr.reaction?.emoticon) emojiStr = rr.reaction.emoticon;
+            else if (rr.reaction?.className) emojiStr = rr.reaction.className;
+            
+            const emojiMap = { 'Like': '👍', 'Laugh': '😂', 'Heart': '❤️', 'Fire': '🔥', 'Pray': '🙏', 'Smile': '🥰', 'Dislike': '👎', 'Cool': '😎' };
+            const finalEmoji = emojiMap[emojiStr] || emojiStr || '';
+            if (!finalEmoji) return null;
+            
+            return {
+              peerId: rr.peerId?.userId?.toString() || rr.peerId?.channelId?.toString() || null,
+              emoticon: finalEmoji
+            };
+          }).filter(Boolean) || [],
         }
       })
       .filter(m => m.text || m.isPhoto || m.isVideo || m.isDoc)
@@ -1248,9 +1271,13 @@ app.post('/api/chat/react', requireAuth, async (req,res) => {
     const {Api} = require('telegram/tl')
     
     let reactionArr = [];
-    if (emoji) {
+    if (Array.isArray(emoji)) {
+      reactionArr = emoji.map(e => new Api.ReactionEmoji({ emoticon: e }));
+    } else if (emoji) {
       reactionArr = [new Api.ReactionEmoji({ emoticon: emoji })];
     }
+    
+    log(`[Reaction] Request to Telegram: msgId=${msgId}, emoji payload=${JSON.stringify(emoji)}, api_payload=${JSON.stringify(reactionArr)}`);
     
     await withTimeout(
       client.invoke(new Api.messages.SendReaction({
