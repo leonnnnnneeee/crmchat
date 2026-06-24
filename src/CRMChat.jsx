@@ -1,4 +1,4 @@
-// v-rxfix-104511
+// v-rxmerge-104635
 // v035029
 import { useState, useEffect, useRef, useCallback, useMemo } from "react"
 
@@ -1241,7 +1241,14 @@ export default function CRMChat({token}) {
           const updated = {...prev}
           d.forEach(m => {
             if(m.reactions && Object.keys(m.reactions).length > 0) {
-              updated[m.id] = m.reactions
+              // Merge server reactions with local optimistic state
+              // Keep whichever has higher counts (don't overwrite optimistic)
+              const local = prev[m.id] || {}
+              const merged = {...m.reactions}
+              Object.keys(local).forEach(e => {
+                if((local[e]||0) > (merged[e]||0)) merged[e] = local[e]
+              })
+              updated[m.id] = merged
             }
           })
           return updated
