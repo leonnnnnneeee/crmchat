@@ -924,7 +924,7 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
   const businessHours = businessHoursObj ? `${businessHoursObj.timezoneId} (${businessHoursObj.openNow ? 'Open Now' : 'Closed'})` : null;
   const location = fullProfile?.fullUser?.businessLocation?.address;
 
-  const isFallback = tabError[activeTab] === 'SENDER_NOT_FOUND';
+  const isFallback = isGroupProfile && !!tabError[activeTab];
 
   const tabs = [
     { id: 'media', label: `Media`, count: isFallback ? fallbackData.media.length : tabData.media.length, hasMore: !isFallback && tabHasMore.media },
@@ -1026,11 +1026,11 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
               <div style={{padding:20,textAlign:'center',color:'#9b7ec8',fontSize:13}}>No groups in common</div>
             )}
             
-            {tabError[activeTab] && tabError[activeTab] !== 'SENDER_NOT_FOUND' && (
+            {tabError[activeTab] && !isFallback && (
               <div style={{padding:20,textAlign:'center',color:'#e53935',fontSize:13}}>Error: {tabError[activeTab]}</div>
             )}
 
-            {tabError[activeTab] === 'SENDER_NOT_FOUND' && isGroupProfile && activeTab !== 'groups' && (
+            {isFallback && activeTab !== 'groups' && (
               <div style={{padding:12,textAlign:'center',background:'rgba(229,57,53,.1)',color:'#e53935',fontSize:12,margin:'0 16px',borderRadius:8}}>
                 Backend full history search unavailable.<br/>Loaded group messages only.
               </div>

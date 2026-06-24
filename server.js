@@ -581,7 +581,7 @@ app.get('/api/chat/shared_media/:id', requireAuth, async (req, res) => {
     res.json({ ok: true, media: results, hasMore, nextOffsetId })
   } catch(e) {
     log('shared media error: ' + e.message)
-    res.status(500).json({ error: e.message })
+    res.json({ ok: false, error: e.message, code: e.code || 'API_ERROR' })
   }
 })
 
