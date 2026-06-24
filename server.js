@@ -1,9 +1,15 @@
 require('dotenv').config()
 const express = require('express')
 const path = require('path')
+const fs = require('fs')
 const axios = require('axios')
 const app = express()
 const PORT = process.env.PORT || 3002
+
+const MEDIA_CACHE_DIR = path.join(__dirname, '.media_cache')
+if (!fs.existsSync(MEDIA_CACHE_DIR)) {
+  fs.mkdirSync(MEDIA_CACHE_DIR, { recursive: true })
+}
 
 app.use(express.json())
 // static files served after API routes (see bottom)
@@ -454,7 +460,8 @@ app.get('/api/chat/members/:id', requireAuth, async (req, res) => {
       username: p.username || null,
       isBot: p.bot || false,
       isPremium: p.premium || false,
-      status: p.status ? formatStatus(p.status) : 'last seen recently'
+      status: p.status ? formatStatus(p.status) : 'last seen recently',
+      accessHash: p.accessHash ? p.accessHash.toString() : undefined
     }))
     
     res.json({ ok: true, members })
@@ -614,9 +621,20 @@ app.get('/api/chat/photo/:id', requireAuth, async (req, res) => {
 app.get('/api/chat/media/:chatId/:msgId', requireAuth, async (req, res) => {
   if (!_session) return res.status(500).json({error: 'Media backend not connected'})
   try {
-    const client = await getClient()
-    const entity = await resolveEntity(client, req.params.chatId)
     const msgId = parseInt(req.params.msgId)
+    const chatId = req.params.chatId
+    
+    // Check cache first
+    const cachePath = path.join(MEDIA_CACHE_DIR, `${chatId}_${msgId}`)
+    if (fs.existsSync(cachePath)) {
+      log(`[Media Cache Hit] chatId=${chatId} msgId=${msgId}`)
+      res.set('Content-Type', 'image/jpeg') // Assume JPEG, could be sniffed
+      res.set('Cache-Control', 'public, max-age=31536000')
+      return res.sendFile(cachePath)
+    }
+
+    const client = await getClient()
+    const entity = await resolveEntity(client, chatId)
 
     const messages = await client.getMessages(entity, { ids: [msgId] })
     if (!messages || messages.length === 0 || !messages[0]) {
@@ -628,13 +646,17 @@ app.get('/api/chat/media/:chatId/:msgId', requireAuth, async (req, res) => {
       return res.status(404).json({error: 'No media found in message'})
     }
 
+    log(`[Media Cache Miss] Downloading chatId=${chatId} msgId=${msgId}`)
     const buffer = await client.downloadMedia(message, { workers: 1 })
     if (!buffer) {
       return res.status(500).json({error: 'Failed to download media buffer'})
     }
 
+    // Write to cache
+    fs.writeFileSync(cachePath, buffer)
+
     res.set('Content-Type', 'image/jpeg') // Or application/octet-stream if unknown
-    res.set('Cache-Control', 'public, max-age=86400')
+    res.set('Cache-Control', 'public, max-age=31536000')
     res.send(buffer)
   } catch(e) {
     log('media download error: ' + e.message)
@@ -674,6 +696,8 @@ app.get('/api/chat/messages/:id', requireAuth, async (req,res) => {
           senderName: m.sender?.firstName
             ? (m.sender.firstName + (m.sender.lastName ? ' ' + m.sender.lastName : ''))
             : (m.sender?.username || null),
+          senderUsername: m.sender?.username || null,
+          senderAccessHash: m.sender?.accessHash ? m.sender.accessHash.toString() : null,
         }
       })
       .filter(m => m.text || m.isPhoto || m.isVideo || m.isDoc)
@@ -1269,6 +1293,7 @@ app.get('/api/chat/common_groups/:id', requireAuth, async (req, res) => {
     res.json({ ok: true, groups })
   } catch(e) {
     log(`[Common Groups Debug] userId=${req.params.id} API=error fallbackReason="${e.message}"`)
+    // Do not return { ok: true, groups: [] } on error, as it gives false positives!
     res.status(500).json({ error: e.message })
   }
 })

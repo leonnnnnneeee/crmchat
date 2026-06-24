@@ -436,8 +436,22 @@ function AISuggestPanel({text,suggestions,analysis,alternative,messages,loading,
 function LinkPreview({url}) {
   const [meta,setMeta] = useState(null)
   const [failed,setFailed] = useState(false)
+  const [isVisible, setIsVisible] = useState(false)
+  const ref = useRef(null)
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) {
+        setIsVisible(true)
+        observer.disconnect()
+      }
+    }, { rootMargin: '200px' })
+    if (ref.current) observer.observe(ref.current)
+    return () => observer.disconnect()
+  }, [])
+
   useEffect(()=>{
-    if(meta||failed||!url) return
+    if(!isVisible || meta||failed||!url) return
     if(linkCache[url]) { setMeta(linkCache[url]); return }
     fetch('https://api.allorigins.win/get?url='+encodeURIComponent(url))
       .then(r=>r.json())
@@ -454,11 +468,11 @@ function LinkPreview({url}) {
       })
       .catch(()=>setFailed(true))
   },[url])
-  if(!meta||failed) return null
+  if(!meta||failed) return <div ref={ref} />
   return (
     <a href={url} target="_blank" rel="noreferrer"
       style={{display:"block",textDecoration:"none",marginTop:6}}>
-      <div style={{background:"rgba(0,0,0,.2)",borderRadius:8,overflow:"hidden",
+      <div ref={ref} style={{background:"rgba(0,0,0,.2)",borderRadius:8,overflow:"hidden",
         border:"1px solid rgba(255,255,255,.08)"}}>
         {meta.img&&<img src={meta.img} alt="" style={{width:"100%",maxHeight:120,objectFit:"cover",display:"block"}}
           onError={e=>e.target.style.display="none"}/>}
@@ -478,11 +492,24 @@ const blobCache = new Map()
 function ChatPhoto({msg, chatId, authToken, onImageClick}) {
   const msgId = msg.id
   const [retryCnt, setRetryCnt] = useState(0)
-  const [status, setStatus] = useState(blobCache.has(msgId) ? 'loaded' : 'loading')
+  const [status, setStatus] = useState(blobCache.has(msgId) ? 'loaded' : 'pending')
   const [imgSrc, setImgSrc] = useState(msg.photoUrl || msg.mediaUrl || blobCache.get(msgId) || '')
+  const [isVisible, setIsVisible] = useState(false)
+  const ref = useRef(null)
 
   useEffect(() => {
-    if (imgSrc && status === 'loaded') return
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) {
+        setIsVisible(true)
+        observer.disconnect()
+      }
+    }, { rootMargin: '400px' })
+    if (ref.current) observer.observe(ref.current)
+    return () => observer.disconnect()
+  }, [])
+
+  useEffect(() => {
+    if (!isVisible || (imgSrc && status === 'loaded')) return
     
     let isMounted = true
     let objectUrl = ''
@@ -530,11 +557,11 @@ function ChatPhoto({msg, chatId, authToken, onImageClick}) {
     return () => {
       isMounted = false
     }
-  }, [msgId, chatId, authToken, retryCnt])
+  }, [msgId, chatId, authToken, retryCnt, isVisible])
 
   return (
-    <div style={{position:'relative',marginBottom:4,minHeight:status==='loaded'?0:80,background:status==='loading'?'rgba(124,58,237,.1)':'transparent',borderRadius:8,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden',maxWidth:520}}>
-      {status==='loading' && (
+    <div ref={ref} style={{position:'relative',marginBottom:4,minHeight:(status==='loaded'||status==='pending')?0:80,background:(status==='loading'||status==='pending')?'rgba(124,58,237,.1)':'transparent',borderRadius:8,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden',maxWidth:520}}>
+      {(status==='loading' || status==='pending') && (
         <div style={{position:'absolute',color:'#7c3aed',fontSize:20,zIndex:1}}>⏳</div>
       )}
       {status==='loaded' && imgSrc && (
@@ -548,7 +575,12 @@ function ChatPhoto({msg, chatId, authToken, onImageClick}) {
       )}
       {status==='error' && (
         <div style={{padding:'8px 12px',color:'#9b7ec8',fontSize:12,cursor:'pointer',textAlign:'center',background:'rgba(124,58,237,.1)',borderRadius:8,width:'100%'}} 
-             onClick={()=>setRetryCnt(c=>c+1)}>
+             onClick={()=>{
+                blobCache.delete(msgId);
+                setImgSrc('');
+                setRetryCnt(c=>c+1);
+                setStatus('pending');
+             }}>
           📷 Tap to retry
         </div>
       )}
@@ -736,12 +768,14 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
   const [tabLoading, setTabLoading] = useState({ media: false, files: false, links: false, groups: false });
   const [tabHasMore, setTabHasMore] = useState({ media: true, files: true, links: true, groups: true });
   const [tabOffsetId, setTabOffsetId] = useState({ media: 0, files: 0, links: 0, groups: 0 });
+  const [tabError, setTabError] = useState({ media: null, files: null, links: null, groups: null });
 
   useEffect(() => {
     // Reset when user/chat changes
     setTabData({ media: [], files: [], links: [], groups: [] });
     setTabHasMore({ media: true, files: true, links: true, groups: true });
     setTabOffsetId({ media: 0, files: 0, links: 0, groups: 0 });
+    setTabError({ media: null, files: null, links: null, groups: null });
   }, [data?.id, data?.chatId]);
 
   useEffect(() => {
@@ -763,14 +797,24 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
       const usernameQuery = data.username ? (data.accessHash ? `&username=${data.username}` : `?username=${data.username}`) : '';
       
       fetch(`/api/chat/common_groups/${data.id}${accessHashQuery}${usernameQuery}`, { headers: {'x-auth-token': token} })
-        .then(r => r.json())
+        .then(async r => {
+          if (!r.ok) {
+            const err = await r.json().catch(()=>({}));
+            throw new Error(err.error || 'API Error');
+          }
+          return r.json()
+        })
         .then(d => {
           if (isMounted && d.ok) {
              setTabData(prev => ({...prev, groups: d.groups || []}));
              setTabHasMore(prev => ({...prev, groups: false}));
+             setTabError(prev => ({...prev, groups: null}));
           }
         })
-        .catch(e => console.error(e))
+        .catch(e => {
+          console.error(e);
+          if (isMounted) setTabError(prev => ({...prev, groups: e.message}));
+        })
         .finally(() => {
           if (isMounted) setTabLoading(prev => ({...prev, groups: false}));
         });
@@ -1013,6 +1057,8 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
                 ))}
                 {tabLoading.groups ? (
                   <div style={{textAlign:'center',color:'#9b7ec8',paddingTop:10}}>Loading groups...</div>
+                ) : tabError.groups ? (
+                  <div style={{textAlign:'center',color:'#f87171',paddingTop:10}}>Unavailable ({tabError.groups})</div>
                 ) : tabData.groups.length === 0 && (
                   <div style={{textAlign:'center',color:'#9b7ec8',paddingTop:10}}>No groups in common</div>
                 )}
