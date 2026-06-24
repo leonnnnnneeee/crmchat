@@ -729,31 +729,53 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
     return () => window.removeEventListener('keydown', handleEsc)
   }, [onClose])
 
-  const [tabData, setTabData] = useState({ media: [], files: [], links: [] });
-  const [tabLoading, setTabLoading] = useState({ media: false, files: false, links: false });
-  const [tabHasMore, setTabHasMore] = useState({ media: true, files: true, links: true });
-  const [tabOffsetId, setTabOffsetId] = useState({ media: 0, files: 0, links: 0 });
+  const [tabData, setTabData] = useState({ media: [], files: [], links: [], groups: [] });
+  const [tabLoading, setTabLoading] = useState({ media: false, files: false, links: false, groups: false });
+  const [tabHasMore, setTabHasMore] = useState({ media: true, files: true, links: true, groups: true });
+  const [tabOffsetId, setTabOffsetId] = useState({ media: 0, files: 0, links: 0, groups: 0 });
 
   useEffect(() => {
     // Reset when user/chat changes
-    setTabData({ media: [], files: [], links: [] });
-    setTabHasMore({ media: true, files: true, links: true });
-    setTabOffsetId({ media: 0, files: 0, links: 0 });
+    setTabData({ media: [], files: [], links: [], groups: [] });
+    setTabHasMore({ media: true, files: true, links: true, groups: true });
+    setTabOffsetId({ media: 0, files: 0, links: 0, groups: 0 });
   }, [data?.id, data?.chatId]);
 
   useEffect(() => {
-    if (!data?.chatId) return;
-    if (activeTab === 'groups') return;
+    if (!data?.chatId && activeTab !== 'groups') return;
+    if (!data?.id && activeTab === 'groups') return;
     if (tabData[activeTab].length === 0 && tabHasMore[activeTab] && !tabLoading[activeTab]) {
       loadMore(activeTab);
     }
   }, [activeTab, data?.chatId, data?.id, tabData]);
 
   const loadMore = (tab) => {
-    if (tabLoading[tab] || !tabHasMore[tab] || !data?.chatId) return;
+    if (tabLoading[tab] || !tabHasMore[tab]) return;
     setTabLoading(prev => ({...prev, [tab]: true}));
     
     let isMounted = true;
+
+    if (tab === 'groups') {
+      fetch(`/api/chat/common_groups/${data.id}`, { headers: {'x-auth-token': token} })
+        .then(r => r.json())
+        .then(d => {
+          if (isMounted && d.ok) {
+             setTabData(prev => ({...prev, groups: d.groups || []}));
+             setTabHasMore(prev => ({...prev, groups: false}));
+          }
+        })
+        .catch(e => console.error(e))
+        .finally(() => {
+          if (isMounted) setTabLoading(prev => ({...prev, groups: false}));
+        });
+      return () => { isMounted = false; };
+    }
+
+    if (!data?.chatId) {
+      setTabLoading(prev => ({...prev, [tab]: false}));
+      return;
+    }
+
     const isGroupUser = data?.chatId && data?.id && data.chatId.toString() !== data.id.toString();
     const fromUserQuery = isGroupUser ? `&fromUser=${data.id}` : '';
     
@@ -801,7 +823,7 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
     { id: 'media', label: `Media`, count: tabData.media.length, hasMore: tabHasMore.media },
     { id: 'files', label: `Files`, count: tabData.files.length, hasMore: tabHasMore.files },
     { id: 'links', label: `Links`, count: tabData.links.length, hasMore: tabHasMore.links },
-    { id: 'groups', label: 'Groups', count: 0, hasMore: false }
+    { id: 'groups', label: `Groups`, count: tabData.groups.length, hasMore: tabHasMore.groups }
   ];
 
   return (
@@ -959,7 +981,36 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
               </div>
             )}
             {activeTab === 'groups' && (
-              <div style={{textAlign:'center',color:'#9b7ec8',paddingTop:20}}>Unavailable</div>
+              <div style={{display:'flex',flexDirection:'column',gap:12}}>
+                {tabData.groups.map(g => (
+                  <div key={g.id} onClick={() => {
+                      const chat = chats.find(c => c.id.toString() === g.id.toString());
+                      if (chat) {
+                        setSel(chat);
+                        onClose();
+                        setTimeout(() => inputRef?.current?.focus(), 100);
+                      } else {
+                        // If chat not in local list, fallback to basic sel logic
+                        setSel({ id: g.id, title: g.title, isGroup: true, username: g.username });
+                        onClose();
+                      }
+                    }} 
+                    style={{display:'flex',alignItems:'center',gap:12,cursor:'pointer',background:'rgba(124,58,237,.1)',padding:12,borderRadius:8,transition:'0.2s'}}
+                    onMouseEnter={e=>e.currentTarget.style.background='rgba(124,58,237,.2)'} 
+                    onMouseLeave={e=>e.currentTarget.style.background='rgba(124,58,237,.1)'}>
+                    <Avatar name={g.title} chatId={g.id} username={g.username} size={40} />
+                    <div style={{flex:1,overflow:'hidden'}}>
+                      <div style={{fontSize:15,fontWeight:600,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',color:'#fff'}}>{g.title}</div>
+                      <div style={{fontSize:13,color:'#9b7ec8'}}>{g.participantsCount} members</div>
+                    </div>
+                  </div>
+                ))}
+                {tabLoading.groups ? (
+                  <div style={{textAlign:'center',color:'#9b7ec8',paddingTop:10}}>Loading groups...</div>
+                ) : tabData.groups.length === 0 && (
+                  <div style={{textAlign:'center',color:'#9b7ec8',paddingTop:10}}>No groups in common</div>
+                )}
+              </div>
             )}
           </div>
         </div>

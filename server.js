@@ -1170,3 +1170,39 @@ process.on('uncaughtException', (err) => {
 })
 
 app.listen(PORT, () => log('Listening on port ' + PORT))
+
+// ── COMMON GROUPS ──
+app.get('/api/chat/common_groups/:id', requireAuth, async (req, res) => {
+  if (!_session) return res.json({error: 'No session'})
+  try {
+    const client = await getClient()
+    const { Api } = require('telegram/tl')
+    const entity = await resolveEntity(client, req.params.id)
+    
+    const result = await client.invoke(new Api.messages.GetCommonChats({
+      userId: entity,
+      maxId: 0,
+      limit: 100
+    }))
+    
+    if (!result || !result.chats) {
+      log(`[Common Groups Debug] userId=${req.params.id} loadedCount=0 API=success (No chats returned)`);
+      return res.json({ ok: true, groups: [] })
+    }
+    
+    const groups = result.chats.map(c => ({
+      id: c.id ? c.id.toString() : '',
+      title: c.title || 'Unknown Group',
+      participantsCount: c.participantsCount || 0,
+      isGroup: true,
+      username: c.username
+    }))
+    
+    log(`[Common Groups Debug] userId=${req.params.id} loadedCount=${groups.length} API=success`);
+    
+    res.json({ ok: true, groups })
+  } catch(e) {
+    log(`[Common Groups Debug] userId=${req.params.id} API=error fallbackReason="${e.message}"`)
+    res.status(500).json({ error: e.message })
+  }
+})
