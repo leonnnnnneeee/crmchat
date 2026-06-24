@@ -278,19 +278,18 @@ function ContextMenu({x,y,msg,onDelete,onCopy,onReply,onClose,onDeleteAll,onSele
   return (
     <div ref={ref} style={{
       position:'fixed',left:ax,top:ay,zIndex:9999,
-      background:'#1a0533',border:'1px solid #3d1f6a',borderRadius:12,
-      padding:'4px 0',minWidth:200,
-      boxShadow:'0 8px 32px rgba(0,0,0,.7)',
+      background:'#1a0b2e',border:'1px solid rgba(124,58,237,.2)',
+      borderRadius:12,boxShadow:'0 8px 32px rgba(0,0,0,0.6)',
+      display:'flex',flexDirection:'column',padding:'6px 0',minWidth:180
     }}>
-      {/* Quick reactions */}
-      <div style={{display:'flex',gap:2,padding:'6px 10px',borderBottom:'1px solid #2d1155',flexWrap:'wrap'}}>
-        {['👍','❤️','😂','🔥','💪','✅','🙏','😎'].map(e=>(
-          <span key={e} onClick={()=>{onReact?.(e);onClose()}}
-            style={{fontSize:18,cursor:'pointer',padding:'2px 5px',borderRadius:6,transition:'background .1s'}}
-            onMouseEnter={ev=>ev.target.style.background='#2d1155'}
-            onMouseLeave={ev=>ev.target.style.background='transparent'}>
-            {e}
-          </span>
+      <div style={{display:'flex', gap:4, padding:'8px 12px', borderBottom:'1px solid rgba(124,58,237,.2)', flexWrap:'wrap', justifyContent:'center', marginBottom:4}}>
+        {['👍', '❤️', '😂', '🔥', '🙏', '😎'].map(emoji => (
+          <div key={emoji} onClick={() => { onReact?.(emoji); onClose(); }} 
+               style={{cursor:'pointer', fontSize:22, padding:6, borderRadius:8, transition:'0.2s', background:'transparent'}} 
+               onMouseEnter={e=>e.currentTarget.style.background='rgba(124,58,237,.2)'} 
+               onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+            {emoji}
+          </div>
         ))}
       </div>
       <Item icon='↩️' label='Reply'          action={onReply}/>
@@ -749,7 +748,7 @@ function SharedMediaModal({ initialTab, msgs, data, onClose, token, setLightbox,
   )
 }
 
-function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs, messagesLoaded, hasMore, onOpenMedia }) {
+function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs, messagesLoaded, hasMore, onOpenMedia, setLightbox }) {
   const [status, setStatus] = useState(null)
   const [showMore, setShowMore] = useState(false)
   const [fullProfile, setFullProfile] = useState(null)
@@ -757,6 +756,14 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
   
   const isTopicInfo = data?.isTopic;
   const isGroupProfile = !isTopicInfo && data?.chatId && data?.id && data.chatId.toString() !== data.id.toString();
+
+  const handleMediaClick = (m) => {
+    if (m.isPhoto || m.isVideo) {
+      if (setLightbox) setLightbox(`/api/chat/media/${data.chatId}/${m.id}?t=${token}`);
+    } else if (m.isDoc) {
+      window.open(`/api/chat/media/${data.chatId}/${m.id}?t=${token}`, '_blank');
+    }
+  };
   
   useEffect(() => {
     if (!data?.chatId) return
@@ -1120,7 +1127,7 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
               <div style={{display:'flex', flexDirection:'column', gap:16}}>
                 <div style={{display:'grid',gridTemplateColumns:'repeat(3, 1fr)',gap:4}}>
                   {(isFallback ? fallbackData.media : tabData.media).map(m => (
-                    <div key={m.id} style={{aspectRatio:'1/1',background:'rgba(124,58,237,.1)',cursor:'pointer',position:'relative'}} onClick={()=>onOpenMedia && onOpenMedia(m)}>
+                    <div key={m.id} style={{aspectRatio:'1/1',background:'rgba(124,58,237,.1)',cursor:'pointer',position:'relative'}} onClick={()=>handleMediaClick(m)}>
                       <ChatPhoto msg={m} chatId={data.chatId} authToken={token} onImageClick={()=>{}}/>
                       {m.isVideo && <div style={{position:'absolute',top:'50%',left:'50%',transform:'translate(-50%,-50%)',color:'#fff',fontSize:24,textShadow:'0 2px 8px rgba(0,0,0,0.5)'}}>▶</div>}
                     </div>
@@ -1138,7 +1145,7 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
             {activeTab === 'files' && (
               <div style={{display:'flex',flexDirection:'column',gap:12}}>
                 {(isFallback ? fallbackData.files : tabData.files).map(m => (
-                  <div key={m.id} onClick={()=>onOpenMedia && onOpenMedia(m)} style={{display:'flex',alignItems:'center',gap:12,cursor:'pointer',background:'rgba(124,58,237,.1)',padding:12,borderRadius:8}}>
+                  <div key={m.id} onClick={()=>handleMediaClick(m)} style={{display:'flex',alignItems:'center',gap:12,cursor:'pointer',background:'rgba(124,58,237,.1)',padding:12,borderRadius:8}}>
                     <div style={{width:40,height:40,borderRadius:8,background:'#7c3aed',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20}}>📄</div>
                     <div style={{flex:1,overflow:'hidden'}}>
                       <div style={{fontSize:14,fontWeight:500,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{m.fileName || 'Document'}</div>
@@ -2014,6 +2021,54 @@ export default function CRMChat({ token, onAuthFailed }) {
   }
 
   const sendingRef = useRef(false)
+
+  const toggleReaction = async (msgId, emoji) => {
+    const msgIndex = msgs.findIndex(m => m.id === msgId)
+    if (msgIndex === -1) return
+    const msg = msgs[msgIndex]
+    const oldReactions = msg.reactions || []
+    
+    const existing = oldReactions.find(r => r.emoticon === emoji)
+    let newReactions = [...oldReactions]
+    let apiEmoji = emoji
+    
+    if (existing && existing.chosen) {
+      if (existing.count <= 1) {
+        newReactions = newReactions.filter(r => r.emoticon !== emoji)
+      } else {
+        newReactions = newReactions.map(r => r.emoticon === emoji ? { ...r, count: r.count - 1, chosen: false } : r)
+      }
+      apiEmoji = null
+    } else {
+      newReactions = newReactions.map(r => r.chosen ? { ...r, count: r.count - 1, chosen: false } : r).filter(r => r.count > 0)
+      const newExisting = newReactions.find(r => r.emoticon === emoji)
+      if (newExisting) {
+        newReactions = newReactions.map(r => r.emoticon === emoji ? { ...r, count: r.count + 1, chosen: true } : r)
+      } else {
+        newReactions.push({ emoticon: emoji, count: 1, chosen: true })
+      }
+    }
+    
+    const updatedMsgs = [...msgs]
+    updatedMsgs[msgIndex] = { ...msg, reactions: newReactions }
+    setMsgs(updatedMsgs)
+    
+    try {
+      const res = await fetch('/api/chat/react', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
+        body: JSON.stringify({ chatId: sel.chatId || sel.id, msgId, emoji: apiEmoji, username: sel.username })
+      })
+      if (!res.ok) throw new Error('API failed')
+      console.log(`[Reaction] success: ${msgId} ${apiEmoji}`)
+    } catch (e) {
+      console.error(e)
+      const revertMsgs = [...msgs]
+      revertMsgs[msgIndex] = { ...msg, reactions: oldReactions }
+      setMsgs(revertMsgs)
+    }
+  }
+
   async function send(){
     const safeInput = (input === "null" || input == null) ? "" : input;
     const text=safeInput.trim(); if(!text||!sel||!text.length) return
@@ -2741,7 +2796,7 @@ export default function CRMChat({ token, onAuthFailed }) {
     sel, selTopic, setSelTopic, TG, setProfilePreview, setShowMembers, onlineStatus, setChatSearchOpen, showProfile, setShowProfile,
     topics, loadingTopics, topicSearch, setTopicSearch, topicError, setTopicCtxMenu, topicCtxMenu, setSel,
     loadMsgs, messagesLoaded, msgs, hasMore, loadMessages, handleScroll, handleCtx, selectMode, setSelectedMsgs, selectedMsgs,
-    fmtDateSep, isPhotoMsg, isVideoMsg, isDocMsg, setLightbox, token, reactions, setReactions, editedMsgs, fmtMsgTime,
+    fmtDateSep, isPhotoMsg, isVideoMsg, isDocMsg, setLightbox, token, reactions, setReactions, toggleReaction, editedMsgs, fmtMsgTime,
     editingMsg, setEditingMsg, input, setInput, replyTo, setReplyTo, forwardMsg, setForwardMsg, inputRef, handleKeyDown, send, aiLoading, getAI,
     emojiOpen, setEmojiOpen, showTmpl, setShowTmpl, recording, recordSecs, fileInputRef, handleFileChange, mediaRecRef, recordTimerRef, setRecording, setRecordSecs,
     cStage, stages, setStages, tags, cProb, probs, setProbs, cDeal, deals, setDeals, leadSource,
@@ -2959,6 +3014,7 @@ export default function CRMChat({ token, onAuthFailed }) {
         msgs={msgs}
         messagesLoaded={messagesLoaded}
         hasMore={hasMore}
+        setLightbox={setLightbox}
         onOpenMedia={(type) => setSharedMediaView(type)}
       />
 

@@ -25,7 +25,7 @@ export default function MessageList(props) {
     sel, selTopic, setSelTopic, TG, setProfilePreview, setShowMembers, onlineStatus, setChatSearchOpen, showProfile, setShowProfile,
     topics, loadingTopics, topicSearch, setTopicSearch, topicError, setTopicCtxMenu, topicCtxMenu, setSel,
     loadMsgs, messagesLoaded, msgs, hasMore, loadMessages, handleScroll, handleCtx, selectMode, setSelectedMsgs, selectedMsgs,
-    fmtDateSep, isPhotoMsg, isVideoMsg, isDocMsg, setLightbox, token, reactions, setReactions, editedMsgs, fmtMsgTime,
+    fmtDateSep, isPhotoMsg, isVideoMsg, isDocMsg, setLightbox, token, toggleReaction, editedMsgs, fmtMsgTime,
     editingMsg, setEditingMsg, input, setInput, replyTo, setReplyTo, forwardMsg, setForwardMsg, inputRef, handleKeyDown, send, aiLoading, getAI,
     emojiOpen, setEmojiOpen, showTmpl, setShowTmpl, recording, recordSecs, fileInputRef, handleFileChange, mediaRecRef, recordTimerRef, setRecording, setRecordSecs,
     cStage, stages, setStages, tags, cProb, probs, setProbs, cDeal, deals, setDeals, leadSource,
@@ -202,13 +202,17 @@ export default function MessageList(props) {
                           {msg.fromMe&&<span style={{fontSize:11,color:msg.pending?"rgba(255,255,255,.3)":"rgba(255,255,255,.5)"}}>{msg.pending?"⏳":"✓✓"}</span>}
                         </div>
                       </div>
-                      {reactions[msg.id]&&Object.keys(reactions[msg.id]).length>0&&(
-                        <div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:2,marginLeft: msg.fromMe?0:12,marginRight: msg.fromMe?12:0}}>
-                          {Object.entries(reactions[msg.id]).map(([e,n])=>(
-                            <span key={e} onClick={()=>setReactions(p=>({...p,[msg.id]:{...p[msg.id],[e]:(p[msg.id][e]||1)-1}}))}
-                              style={{background:"rgba(0,0,0,.2)",border:"1px solid rgba(255,255,255,.05)",
-                                borderRadius:12,padding:"3px 8px",fontSize:13,color:"rgba(255,255,255,.8)",cursor:"pointer",userSelect:"none"}}>
-                              {e}{n>1?` ${n}`:""}
+                      {msg.reactions && msg.reactions.length > 0 && (
+                        <div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:4,marginLeft: msg.fromMe?0:12,marginRight: msg.fromMe?12:0,justifyContent:msg.fromMe?"flex-end":"flex-start"}}>
+                          {msg.reactions.map((r, idx)=>(
+                            <span key={`${r.emoticon}-${idx}`} onClick={()=>toggleReaction(msg.id, r.emoticon)}
+                              style={{
+                                background: r.chosen ? "rgba(124,58,237,.3)" : "rgba(0,0,0,.2)",
+                                border: r.chosen ? "1px solid rgba(124,58,237,.5)" : "1px solid rgba(255,255,255,.05)",
+                                borderRadius:12,padding:"3px 8px",fontSize:13,color:"rgba(255,255,255,.8)",
+                                cursor:"pointer",userSelect:"none",display:"inline-flex",alignItems:"center",gap:4
+                              }}>
+                              {r.emoticon} {r.count > 0 ? r.count : ""}
                             </span>
                           ))}
                         </div>

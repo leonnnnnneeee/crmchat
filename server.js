@@ -803,6 +803,11 @@ app.get('/api/chat/messages/:id', requireAuth, async (req,res) => {
             : (m.sender?.username || null),
           senderUsername: m.sender?.username || null,
           senderAccessHash: m.sender?.accessHash ? m.sender.accessHash.toString() : null,
+          reactions: m.reactions?.results?.map(r => ({
+            emoticon: r.reaction?.emoticon || '',
+            count: r.count || 0,
+            chosen: r.chosenOrder !== undefined || r.chosen === true
+          })) || [],
         }
       })
       .filter(m => m.text || m.isPhoto || m.isVideo || m.isDoc)
@@ -1227,6 +1232,37 @@ app.post('/api/chat/edit', requireAuth, async (req,res) => {
 
 app.get('/api/health', (req,res) => res.json({ ok: true, tgConnected: _session.length > 10 }))
 app.get('/api/logs', requireAuth, (req,res) => res.json(logs))
+
+// ── SEND REACTION ──
+app.post('/api/chat/react', requireAuth, async (req,res) => {
+  if(!_session) return res.status(401).json({error:'Not connected'})
+  const {chatId, msgId, emoji, username} = req.body
+  if(!chatId||!msgId) return res.status(400).json({error:'Missing fields'})
+  try {
+    const client = await withTimeout(getClient(), 10000, 'getClient')
+    const entity = await withTimeout(resolveEntity(client, chatId, username), 8000, 'resolve')
+    const {Api} = require('telegram/tl')
+    
+    let reactionArr = [];
+    if (emoji) {
+      reactionArr = [new Api.ReactionEmoji({ emoticon: emoji })];
+    }
+    
+    await withTimeout(
+      client.invoke(new Api.messages.SendReaction({
+        peer: entity,
+        msgId: parseInt(msgId),
+        reaction: reactionArr
+      })),
+      10000, 'sendReaction'
+    )
+    log(`Reaction sent: ${msgId} ${emoji}`)
+    res.json({ok:true})
+  } catch(e) {
+    log('react error: ' + e.message)
+    res.status(500).json({error: e.message})
+  }
+})
 
 // ── MARK CHAT AS READ ──
 app.post('/api/chat/read', requireAuth, async (req,res) => {
