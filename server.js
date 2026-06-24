@@ -1277,18 +1277,20 @@ app.post('/api/chat/react', requireAuth, async (req,res) => {
       reactionArr = [new Api.ReactionEmoji({ emoticon: emoji })];
     }
     
+    log(`[Reaction] Debug: chatId=${chatId}, msgId=${msgId}, resolvedPeer=${entity?.className}, peerId=${entity?.id || entity?.channelId || entity?.userId}`);
     log(`[Reaction] Request to Telegram: msgId=${msgId}, emoji payload=${JSON.stringify(emoji)}, api_payload=${JSON.stringify(reactionArr)}`);
     
-    await withTimeout(
+    const tgRes = await withTimeout(
       client.invoke(new Api.messages.SendReaction({
         peer: entity,
         msgId: parseInt(msgId),
-        reaction: reactionArr
+        reaction: reactionArr,
+        addToRecent: true
       })),
       10000, 'sendReaction'
     )
-    log(`Reaction sent: ${msgId} ${emoji}`)
-    res.json({ok:true})
+    log(`Reaction sent: ${msgId} ${JSON.stringify(emoji)}. Response: ${JSON.stringify(tgRes, null, 2)}`)
+    res.json({ok:true, tgRes})
   } catch(e) {
     log('react error: ' + e.message)
     res.status(500).json({error: e.message})

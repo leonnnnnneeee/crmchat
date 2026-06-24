@@ -2040,6 +2040,8 @@ export default function CRMChat({ token, onAuthFailed }) {
     let payloadEmoji = null;
     let originalReactions = [];
     
+    console.log(`[Reaction Click] msgId=${msgId}, clickedEmoji=${emoji}`);
+    
     setMsgs(prevMsgs => {
       const msgIndex = prevMsgs.findIndex(m => m.id === msgId)
       if (msgIndex === -1) {
@@ -2053,17 +2055,20 @@ export default function CRMChat({ token, onAuthFailed }) {
       let newReactions = [...originalReactions]
       
       if (existing && existing.chosen) {
+        // Toggle off the same emoji
         if (existing.count <= 1) {
           newReactions = newReactions.filter(r => r.emoticon !== emoji)
         } else {
           newReactions = newReactions.map(r => r.emoticon === emoji ? { ...r, count: r.count - 1, chosen: false } : r)
         }
       } else {
-        const currentlyChosen = newReactions.filter(r => r.chosen);
-        if (currentlyChosen.length >= 3) {
-          const firstChosen = currentlyChosen[0].emoticon;
-          newReactions = newReactions.map(r => r.emoticon === firstChosen ? { ...r, count: r.count - 1, chosen: false } : r).filter(r => r.count > 0);
-        }
+        // Un-choose any previously chosen emoji (enforce 1 reaction per user)
+        newReactions = newReactions.map(r => {
+          if (r.chosen) {
+            return { ...r, count: r.count - 1, chosen: false };
+          }
+          return r;
+        }).filter(r => r.count > 0);
         
         const newExisting = newReactions.find(r => r.emoticon === emoji)
         if (newExisting) {
@@ -2075,8 +2080,8 @@ export default function CRMChat({ token, onAuthFailed }) {
       
       newReactionsToLog = newReactions;
       
-      const chosenEmojis = newReactions.filter(r => r.chosen).map(r => r.emoticon);
-      payloadEmoji = chosenEmojis.length > 0 ? chosenEmojis : null;
+      const chosenEmojiObj = newReactions.find(r => r.chosen);
+      payloadEmoji = chosenEmojiObj ? chosenEmojiObj.emoticon : null;
       
       const updatedMsgs = [...prevMsgs]
       updatedMsgs[msgIndex] = { ...msg, reactions: newReactions }
@@ -2095,10 +2100,12 @@ export default function CRMChat({ token, onAuthFailed }) {
         body: JSON.stringify(payload)
       })
       console.log('API status/error', res.status, res.statusText);
-      if (!res.ok) throw new Error(`API failed: ${res.status}`)
-      console.log(`[Reaction] success: ${msgId} ${JSON.stringify(payloadEmoji)}`)
+      const resData = await res.json().catch(() => null);
+      
+      if (!res.ok) throw new Error(`API failed: ${res.status} ${resData?.error || ''}`)
+      console.log(`[Reaction Sync] success: msgId=${msgId}, emoji=${JSON.stringify(payloadEmoji)}, tgRes=`, resData?.tgRes)
     } catch (e) {
-      console.log('API status/error', e.message);
+      console.log(`[Reaction Sync] Telegram API error:`, e.message);
       console.error(e)
       setMsgs(prevMsgs => {
         const idx = prevMsgs.findIndex(m => m.id === msgId)
