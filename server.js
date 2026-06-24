@@ -568,6 +568,48 @@ app.get('/api/chat/shared_media/:id', requireAuth, async (req, res) => {
   }
 })
 
+// ── PROFILE PHOTO DOWNLOAD ──
+app.get('/api/chat/photo/:id', requireAuth, async (req, res) => {
+  if (!_session) return res.status(500).json({error: 'Media backend not connected'})
+  try {
+    const client = await getClient()
+    const { Api } = require('telegram/tl')
+    
+    const userIdStr = req.params.id;
+    const username = req.query.username;
+    const accessHashStr = req.query.accessHash;
+    
+    let entity = await resolveEntity(client, userIdStr, username);
+    
+    if (typeof entity === 'string' || typeof entity === 'number') {
+      if (accessHashStr) {
+        entity = new Api.InputUser({
+          userId: BigInt(userIdStr),
+          accessHash: BigInt(accessHashStr)
+        });
+      } else if (username) {
+        try {
+          entity = await client.getEntity(username);
+        } catch(e) {}
+      }
+    }
+
+    const buffer = await client.downloadProfilePhoto(entity, { isBig: false })
+    if (!buffer || buffer.length === 0) {
+      log(`[Avatar Debug] userId=${userIdStr} username=${username} status=no_photo`)
+      return res.status(404).json({error: 'No photo found'})
+    }
+    
+    log(`[Avatar Debug] userId=${userIdStr} username=${username} status=success size=${buffer.length}`)
+    res.set('Content-Type', 'image/jpeg')
+    res.set('Cache-Control', 'public, max-age=86400')
+    res.send(buffer)
+  } catch(e) {
+    log(`[Avatar Debug] userId=${req.params.id} error="${e.message}"`)
+    res.status(500).json({error: e.message})
+  }
+})
+
 // ── MEDIA DOWNLOAD ──
 app.get('/api/chat/media/:chatId/:msgId', requireAuth, async (req, res) => {
   if (!_session) return res.status(500).json({error: 'Media backend not connected'})
@@ -1218,7 +1260,8 @@ app.get('/api/chat/common_groups/:id', requireAuth, async (req, res) => {
       title: c.title || 'Unknown Group',
       participantsCount: c.participantsCount || 0,
       isGroup: true,
-      username: c.username
+      username: c.username,
+      accessHash: c.accessHash ? c.accessHash.toString() : undefined
     }))
     
     log(`[Common Groups Debug] userId=${userIdStr} username=${username} accessHash=${accessHashStr} loadedCount=${groups.length} API=success`);

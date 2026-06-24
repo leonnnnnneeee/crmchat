@@ -44,7 +44,7 @@ const photoCache = {}
 const linkCache = {}
 let _authToken = ''
 
-function Avatar({name, chatId, username, size=40}) {
+function Avatar({name, chatId, username, accessHash, size=40}) {
   const colors=["#c03d33","#4fad2d","#d09306","#168acd","#8544d6","#cd4073","#2996ad","#ce671b"]
   const colorIdx = (name||"?").charCodeAt(0) % colors.length
   const initials = (name||"?").split(" ").map(w=>w[0]).slice(0,2).join("").toUpperCase()
@@ -54,7 +54,10 @@ function Avatar({name, chatId, username, size=40}) {
   useEffect(()=>{
     if (!chatId || !_authToken || failed) return
     if (photoCache[chatId]) { setPhotoUrl(photoCache[chatId]); return }
-    const qs = username ? `?username=${encodeURIComponent(username)}` : ""
+    const qsObj = new URLSearchParams()
+    if (username) qsObj.append('username', username)
+    if (accessHash) qsObj.append('accessHash', accessHash)
+    const qs = qsObj.toString() ? `?${qsObj.toString()}` : ""
     fetch(`/api/chat/photo/${chatId}${qs}`, {headers:{"x-auth-token":_authToken}})
       .then(r => { if (!r.ok) throw new Error("no photo"); return r.blob() })
       .then(blob => {
@@ -63,7 +66,7 @@ function Avatar({name, chatId, username, size=40}) {
         setPhotoUrl(url)
       })
       .catch(() => setFailed(true))
-  }, [chatId])
+  }, [chatId, failed, username, accessHash])
 
   if (photoUrl && !failed) {
     return (
@@ -846,7 +849,7 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
         <div style={{flex:1, overflowY:'auto'}}>
           {/* Top Profile */}
           <div style={{padding:'20px',display:'flex',gap:16,alignItems:'center'}}>
-            <Avatar name={data.name||'User'} chatId={data.id} username={data.username} size={72}/>
+            <Avatar name={data.name||'User'} chatId={data.id} username={data.username} accessHash={data.accessHash} size={72}/>
             <div>
               <div style={{fontSize:18,fontWeight:600,display:'flex',alignItems:'center',gap:4}}>
                 {data.name||'Unknown User'}
@@ -1001,7 +1004,7 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
                     style={{display:'flex',alignItems:'center',gap:12,cursor:'pointer',background:'rgba(124,58,237,.1)',padding:12,borderRadius:8,transition:'0.2s'}}
                     onMouseEnter={e=>e.currentTarget.style.background='rgba(124,58,237,.2)'} 
                     onMouseLeave={e=>e.currentTarget.style.background='rgba(124,58,237,.1)'}>
-                    <Avatar name={g.title} chatId={g.id} username={g.username} size={40} />
+                    <Avatar name={g.title} chatId={g.id} username={g.username} accessHash={g.accessHash} size={40} />
                     <div style={{flex:1,overflow:'hidden'}}>
                       <div style={{fontSize:15,fontWeight:600,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',color:'#fff'}}>{g.title}</div>
                       <div style={{fontSize:13,color:'#9b7ec8'}}>{g.participantsCount} members</div>
@@ -2633,7 +2636,7 @@ export default function CRMChat({ token, onAuthFailed }) {
                 // TODO: Sync read status to backend if needed
               }}>
                 <div style={{position:"relative",flexShrink:0}}>
-                  <Avatar name={chat.name} chatId={chat.id} username={chat.username} size={52}/>
+                  <Avatar name={chat.name} chatId={chat.id} username={chat.username} accessHash={chat.accessHash} size={52}/>
                 </div>
                 <div style={{flex:1,minWidth:0,display:"flex",flexDirection:"column",justifyContent:"center",gap:4}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
@@ -2762,7 +2765,7 @@ export default function CRMChat({ token, onAuthFailed }) {
           <div style={{background:'#1a0533',borderRadius:16,padding:24,width:340,
             boxShadow:'0 8px 32px rgba(0,0,0,.7)'}} onClick={e=>e.stopPropagation()}>
             <div style={{display:'flex',alignItems:'center',gap:14,marginBottom:16}}>
-              <Avatar name={previewChat.name} chatId={previewChat.id} username={previewChat.username} size={52}/>
+              <Avatar name={previewChat.name} chatId={previewChat.id} username={previewChat.username} accessHash={previewChat.accessHash} size={52}/>
               <div>
                 <div style={{fontWeight:700,fontSize:16,color:'#f0e6ff'}}>{previewChat.name}</div>
                 <div style={{fontSize:12,color:'#6b4d94',marginTop:3}}>
@@ -2848,10 +2851,10 @@ export default function CRMChat({ token, onAuthFailed }) {
 
                 return filteredMembers.map(m => (
                   <div key={m.id} style={{display:'flex',alignItems:'center',gap:12,padding:'10px 20px',cursor:'pointer'}}
-                    onClick={() => setProfilePreview({ id: m.id, name: m.name, username: m.username, chatId: sel.id })}
+                    onClick={() => setProfilePreview({ id: m.id, name: m.name, username: m.username, chatId: sel.id, accessHash: m.accessHash })}
                     onMouseEnter={e=>e.currentTarget.style.background='#2d1155'}
                     onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-                    <Avatar name={m.name} chatId={m.id} username={m.username} size={42}/>
+                    <Avatar name={m.name} chatId={m.id} username={m.username} accessHash={m.accessHash} size={42}/>
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{fontWeight:600,fontSize:14,color:'#f0e6ff',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
                         {m.name} {m.isBot && <span style={{fontSize:10,background:'#7c3aed',color:'#fff',padding:'2px 6px',borderRadius:4,marginLeft:6,verticalAlign:'middle'}}>BOT</span>}
