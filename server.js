@@ -510,19 +510,37 @@ app.get('/api/chat/shared_media/:id', requireAuth, async (req, res) => {
     const entity = await resolveEntity(client, req.params.id)
     
     const type = req.query.type || 'photos'
+    const limit = parseInt(req.query.limit) || 30
+    const offsetId = parseInt(req.query.offsetId) || 0
+    const fromUser = req.query.fromUser
+    
     let filter = new Api.InputMessagesFilterPhotoVideo()
+    if (type === 'media') filter = new Api.InputMessagesFilterPhotoVideo()
     if (type === 'photos') filter = new Api.InputMessagesFilterPhotos()
     if (type === 'videos') filter = new Api.InputMessagesFilterVideo()
     if (type === 'files') filter = new Api.InputMessagesFilterDocument()
     if (type === 'links') filter = new Api.InputMessagesFilterUrl()
     if (type === 'gifs') filter = new Api.InputMessagesFilterGif()
     
-    const msgs = await client.getMessages(entity, { filter, limit: 30 })
+    const params = { filter, limit }
+    if (offsetId > 0) params.offsetId = offsetId
+    if (fromUser) {
+      try {
+        params.fromUser = await resolveEntity(client, fromUser)
+      } catch (err) {
+        log(`shared media: could not resolve fromUser ${fromUser}`)
+      }
+    }
+    
+    const msgs = await client.getMessages(entity, params)
     
     const results = msgs.map(m => {
       const isPhoto = m.media?.className === 'MessageMediaPhoto'
       const isDoc   = m.media?.className === 'MessageMediaDocument'
       const isVideo = isDoc && m.media?.document?.mimeType?.startsWith('video/')
+      const webpageUrl = m.media?.webpage?.url || m.media?.url
+      const webpageTitle = m.media?.webpage?.title
+      
       return {
         id: m.id,
         text: m.message || '',
@@ -532,11 +550,18 @@ app.get('/api/chat/shared_media/:id', requireAuth, async (req, res) => {
         isVideo,
         isDoc: isDoc && !isVideo,
         fileName: m.media?.document?.attributes?.find(a=>a.className==='DocumentAttributeFilename')?.fileName,
-        fileSize: m.media?.document?.size
+        fileSize: m.media?.document?.size ? Number(m.media.document.size) : 0,
+        webpageUrl,
+        webpageTitle
       }
     })
     
-    res.json({ ok: true, media: results })
+    const nextOffsetId = results.length > 0 ? results[results.length - 1].id : null
+    const hasMore = results.length === limit
+
+    log(`[Shared Media Debug] chatId=${req.params.id} userId=${fromUser} mediaType=${type} offsetId=${offsetId} loadedCount=${results.length} hasMore=${hasMore}`)
+    
+    res.json({ ok: true, media: results, hasMore, nextOffsetId })
   } catch(e) {
     log('shared media error: ' + e.message)
     res.status(500).json({ error: e.message })

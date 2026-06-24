@@ -729,27 +729,55 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
     return () => window.removeEventListener('keydown', handleEsc)
   }, [onClose])
 
-  const filteredMsgs = useMemo(() => {
-    if (!msgs) return [];
-    if (isGroupProfile) return msgs;
-    if (data?.chatId && data?.id && data.chatId.toString() !== data.id.toString()) {
-       return msgs.filter(m => m.senderId?.toString() === data.id.toString());
-    }
-    return msgs;
-  }, [msgs, isGroupProfile, data]);
+  const [tabData, setTabData] = useState({ media: [], files: [], links: [] });
+  const [tabLoading, setTabLoading] = useState({ media: false, files: false, links: false });
+  const [tabHasMore, setTabHasMore] = useState({ media: true, files: true, links: true });
+  const [tabOffsetId, setTabOffsetId] = useState({ media: 0, files: 0, links: 0 });
 
-  const mediaList = useMemo(() => filteredMsgs.filter(m => m.hasMedia && (m.isPhoto || m.isVideo)), [filteredMsgs]);
-  const fileList = useMemo(() => filteredMsgs.filter(m => m.hasMedia && m.isDoc && !m.isVideo), [filteredMsgs]);
-  const linkList = useMemo(() => {
-     const list = [];
-     filteredMsgs.forEach(m => {
-       const matches = m.text?.match(/(https?:\/\/[^\s]+)/g);
-       if (matches) {
-          matches.forEach(link => list.push({ ...m, link }));
-       }
-     });
-     return list;
-  }, [filteredMsgs]);
+  useEffect(() => {
+    // Reset when user/chat changes
+    setTabData({ media: [], files: [], links: [] });
+    setTabHasMore({ media: true, files: true, links: true });
+    setTabOffsetId({ media: 0, files: 0, links: 0 });
+  }, [data?.id, data?.chatId]);
+
+  useEffect(() => {
+    if (!data?.chatId) return;
+    if (activeTab === 'groups') return;
+    if (tabData[activeTab].length === 0 && tabHasMore[activeTab] && !tabLoading[activeTab]) {
+      loadMore(activeTab);
+    }
+  }, [activeTab, data?.chatId, data?.id, tabData]);
+
+  const loadMore = (tab) => {
+    if (tabLoading[tab] || !tabHasMore[tab] || !data?.chatId) return;
+    setTabLoading(prev => ({...prev, [tab]: true}));
+    
+    let isMounted = true;
+    const isGroupUser = data?.chatId && data?.id && data.chatId.toString() !== data.id.toString();
+    const fromUserQuery = isGroupUser ? `&fromUser=${data.id}` : '';
+    
+    fetch(`/api/chat/shared_media/${data.chatId}?type=${tab}${fromUserQuery}&offsetId=${tabOffsetId[tab]}&limit=30`, { headers: {'x-auth-token': token} })
+      .then(r => r.json())
+      .then(d => {
+        if (isMounted && d.ok) {
+           setTabData(prev => {
+             // Deduplicate by id just in case
+             const existingIds = new Set(prev[tab].map(m => m.id));
+             const newItems = d.media.filter(m => !existingIds.has(m.id));
+             return {...prev, [tab]: [...prev[tab], ...newItems]};
+           });
+           setTabHasMore(prev => ({...prev, [tab]: d.hasMore}));
+           setTabOffsetId(prev => ({...prev, [tab]: d.nextOffsetId}));
+        }
+      })
+      .catch(e => console.error(e))
+      .finally(() => {
+        if (isMounted) setTabLoading(prev => ({...prev, [tab]: false}));
+      });
+      
+    return () => { isMounted = false; };
+  };
 
   if (!data) return null
 
@@ -770,10 +798,10 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
   const location = fullProfile?.fullUser?.businessLocation?.address;
 
   const tabs = [
-    { id: 'media', label: `Media`, count: mediaList.length },
-    { id: 'files', label: `Files`, count: fileList.length },
-    { id: 'links', label: `Links`, count: linkList.length },
-    { id: 'groups', label: 'Groups', count: 0 }
+    { id: 'media', label: `Media`, count: tabData.media.length, hasMore: tabHasMore.media },
+    { id: 'files', label: `Files`, count: tabData.files.length, hasMore: tabHasMore.files },
+    { id: 'links', label: `Links`, count: tabData.links.length, hasMore: tabHasMore.links },
+    { id: 'groups', label: 'Groups', count: 0, hasMore: false }
   ];
 
   return (
@@ -863,23 +891,27 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
           {/* Tab Content */}
           <div style={{padding:20}}>
             {activeTab === 'media' && (
-              <div style={{display:'grid',gridTemplateColumns:'repeat(3, 1fr)',gap:4}}>
-                {mediaList.map(m => (
-                  <div key={m.id} style={{aspectRatio:'1/1',background:'rgba(124,58,237,.1)',cursor:'pointer',position:'relative'}} onClick={()=>onOpenMedia && onOpenMedia(m)}>
-                    <ChatPhoto msg={m} chatId={m.chatId || data.chatId} authToken={token} onImageClick={()=>{}}/>
-                    {m.isVideo && <div style={{position:'absolute',top:'50%',left:'50%',transform:'translate(-50%,-50%)',color:'#fff',fontSize:24,textShadow:'0 2px 8px rgba(0,0,0,0.5)'}}>▶</div>}
-                  </div>
-                ))}
-                {!messagesLoaded ? (
-                  <div style={{gridColumn:'1/-1',textAlign:'center',color:'#9b7ec8',paddingTop:20}}>Loading messages...</div>
-                ) : mediaList.length === 0 && (
-                  <div style={{gridColumn:'1/-1',textAlign:'center',color:'#9b7ec8',paddingTop:20}}>No media found</div>
+              <div style={{display:'flex', flexDirection:'column', gap:16}}>
+                <div style={{display:'grid',gridTemplateColumns:'repeat(3, 1fr)',gap:4}}>
+                  {tabData.media.map(m => (
+                    <div key={m.id} style={{aspectRatio:'1/1',background:'rgba(124,58,237,.1)',cursor:'pointer',position:'relative'}} onClick={()=>onOpenMedia && onOpenMedia(m)}>
+                      <ChatPhoto msg={m} chatId={data.chatId} authToken={token} onImageClick={()=>{}}/>
+                      {m.isVideo && <div style={{position:'absolute',top:'50%',left:'50%',transform:'translate(-50%,-50%)',color:'#fff',fontSize:24,textShadow:'0 2px 8px rgba(0,0,0,0.5)'}}>▶</div>}
+                    </div>
+                  ))}
+                </div>
+                {tabLoading.media ? (
+                  <div style={{textAlign:'center',color:'#9b7ec8',paddingTop:10}}>Loading media...</div>
+                ) : tabHasMore.media ? (
+                  <div onClick={()=>loadMore('media')} style={{textAlign:'center',color:'#7c3aed',cursor:'pointer',padding:8,background:'rgba(124,58,237,.1)',borderRadius:8}}>Load More</div>
+                ) : tabData.media.length === 0 && (
+                  <div style={{textAlign:'center',color:'#9b7ec8',paddingTop:10}}>No media found</div>
                 )}
               </div>
             )}
             {activeTab === 'files' && (
               <div style={{display:'flex',flexDirection:'column',gap:12}}>
-                {fileList.map(m => (
+                {tabData.files.map(m => (
                   <div key={m.id} onClick={()=>onOpenMedia && onOpenMedia(m)} style={{display:'flex',alignItems:'center',gap:12,cursor:'pointer',background:'rgba(124,58,237,.1)',padding:12,borderRadius:8}}>
                     <div style={{width:40,height:40,borderRadius:8,background:'#7c3aed',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20}}>📄</div>
                     <div style={{flex:1,overflow:'hidden'}}>
@@ -888,28 +920,41 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
                     </div>
                   </div>
                 ))}
-                {!messagesLoaded ? (
-                  <div style={{textAlign:'center',color:'#9b7ec8',paddingTop:20}}>Loading messages...</div>
-                ) : fileList.length === 0 && (
-                  <div style={{textAlign:'center',color:'#9b7ec8',paddingTop:20}}>No files found</div>
+                {tabLoading.files ? (
+                  <div style={{textAlign:'center',color:'#9b7ec8',paddingTop:10}}>Loading files...</div>
+                ) : tabHasMore.files ? (
+                  <div onClick={()=>loadMore('files')} style={{textAlign:'center',color:'#7c3aed',cursor:'pointer',padding:8,background:'rgba(124,58,237,.1)',borderRadius:8}}>Load More</div>
+                ) : tabData.files.length === 0 && (
+                  <div style={{textAlign:'center',color:'#9b7ec8',paddingTop:10}}>No files found</div>
                 )}
               </div>
             )}
             {activeTab === 'links' && (
               <div style={{display:'flex',flexDirection:'column',gap:12}}>
-                {linkList.map((l, i) => (
-                  <div key={i} style={{display:'flex',gap:12,background:'rgba(124,58,237,.1)',padding:12,borderRadius:8,alignItems:'center'}}>
-                    <div style={{width:40,height:40,borderRadius:8,background:'rgba(124,58,237,.2)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18}}>🔗</div>
-                    <div style={{flex:1,overflow:'hidden'}}>
-                      <a href={l.link} target="_blank" rel="noreferrer" style={{color:'#7c3aed',textDecoration:'none',fontSize:14,fontWeight:500,display:'block',textOverflow:'ellipsis',overflow:'hidden',whiteSpace:'nowrap'}}>{l.link}</a>
-                      <div style={{fontSize:12,color:'#9b7ec8',textOverflow:'ellipsis',overflow:'hidden',whiteSpace:'nowrap'}}>{l.text}</div>
+                {tabData.links.map((l, i) => {
+                  // Fallback to regex if backend didn't provide webpageUrl
+                  const urlMatch = l.webpageUrl || (l.text ? l.text.match(/(https?:\/\/[^\s]+)/) : null);
+                  const finalUrl = typeof urlMatch === 'string' ? urlMatch : (urlMatch ? urlMatch[0] : '#');
+                  const finalTitle = l.webpageTitle || l.text || finalUrl;
+                  
+                  if (!finalUrl || finalUrl === '#') return null;
+
+                  return (
+                    <div key={i} style={{display:'flex',gap:12,background:'rgba(124,58,237,.1)',padding:12,borderRadius:8,alignItems:'center'}}>
+                      <div style={{width:40,height:40,borderRadius:8,background:'rgba(124,58,237,.2)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18}}>🔗</div>
+                      <div style={{flex:1,overflow:'hidden'}}>
+                        <a href={finalUrl} target="_blank" rel="noreferrer" style={{color:'#7c3aed',textDecoration:'none',fontSize:14,fontWeight:500,display:'block',textOverflow:'ellipsis',overflow:'hidden',whiteSpace:'nowrap'}}>{finalUrl}</a>
+                        <div style={{fontSize:12,color:'#9b7ec8',textOverflow:'ellipsis',overflow:'hidden',whiteSpace:'nowrap'}}>{finalTitle}</div>
+                      </div>
                     </div>
-                  </div>
-                ))}
-                {!messagesLoaded ? (
-                  <div style={{textAlign:'center',color:'#9b7ec8',paddingTop:20}}>Loading messages...</div>
-                ) : linkList.length === 0 && (
-                  <div style={{textAlign:'center',color:'#9b7ec8',paddingTop:20}}>No links found</div>
+                  )
+                })}
+                {tabLoading.links ? (
+                  <div style={{textAlign:'center',color:'#9b7ec8',paddingTop:10}}>Loading links...</div>
+                ) : tabHasMore.links ? (
+                  <div onClick={()=>loadMore('links')} style={{textAlign:'center',color:'#7c3aed',cursor:'pointer',padding:8,background:'rgba(124,58,237,.1)',borderRadius:8}}>Load More</div>
+                ) : tabData.links.length === 0 && (
+                  <div style={{textAlign:'center',color:'#9b7ec8',paddingTop:10}}>No links found</div>
                 )}
               </div>
             )}
