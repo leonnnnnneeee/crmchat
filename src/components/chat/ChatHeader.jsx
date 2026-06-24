@@ -32,7 +32,7 @@ export default function ChatHeader(props) {
             )}
             <div 
               style={{cursor: 'pointer', display: 'flex', alignItems: 'center', flexShrink: 0}}
-              onClick={() => setProfilePreview({ id: sel.id, name: sel.name, username: sel.username, chatId: sel.id, isGroup: sel.isGroup || sel.isChannel })}
+              onClick={() => setProfilePreview({ id: sel.id, name: sel.name, username: sel.username, chatId: sel.id, isGroup: sel.isGroup || sel.isChannel, isTopic: !!selTopic, topicId: selTopic?.id, topicTitle: selTopic?.title })}
             >
               {selTopic ? (
                 <div style={{width: 42, height: 42, borderRadius: '50%', background: '#2b5278', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 20, fontWeight: 600}}>
@@ -45,7 +45,7 @@ export default function ChatHeader(props) {
             <div style={{flex:1,minWidth:0,display:"flex",flexDirection:"column",justifyContent:"center",gap:"2px"}}>
               <div 
                 style={{fontWeight:600,fontSize:16,color:TG.text,lineHeight:1.2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap", cursor: 'pointer'}}
-                onClick={() => setProfilePreview({ id: sel.id, name: sel.name, username: sel.username, chatId: sel.id, isGroup: sel.isGroup || sel.isChannel })}
+                onClick={() => setProfilePreview({ id: sel.id, name: sel.name, username: sel.username, chatId: sel.id, isGroup: sel.isGroup || sel.isChannel, isTopic: !!selTopic, topicId: selTopic?.id, topicTitle: selTopic?.title })}
               >
                 {selTopic ? selTopic.title : sel.name}
               </div>

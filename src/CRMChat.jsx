@@ -57,6 +57,7 @@ export const handlePaste = (e) => {
 // ── Avatar — loads real TG photo, falls back to colored initials ──
 const photoCache = {}
 const linkCache = {}
+let sharedMediaCache = {}
 let _authToken = ''
 
 function Avatar({name, chatId, username, accessHash, size=40}) {
@@ -754,7 +755,8 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
   const [fullProfile, setFullProfile] = useState(null)
   const [activeTab, setActiveTab] = useState('media')
   
-  const isGroupProfile = data?.chatId && data?.id && data.chatId.toString() !== data.id.toString();
+  const isTopicInfo = data?.isTopic;
+  const isGroupProfile = !isTopicInfo && data?.chatId && data?.id && data.chatId.toString() !== data.id.toString();
   
   useEffect(() => {
     if (!data?.chatId) return
@@ -799,12 +801,29 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
   const [tabError, setTabError] = useState({ media: null, files: null, links: null, groups: null });
 
   useEffect(() => {
-    // Reset when user/chat changes
-    setTabData({ media: [], files: [], links: [], groups: [] });
-    setTabHasMore({ media: true, files: true, links: true, groups: true });
-    setTabOffsetId({ media: 0, files: 0, links: 0, groups: 0 });
-    setTabError({ media: null, files: null, links: null, groups: null });
-  }, [data?.id, data?.chatId]);
+    if (!data) return;
+    const keyBase = `${data.chatId}_${data.topicId||''}_${data.id}`;
+    
+    const initialTabData = { media: [], files: [], links: [], groups: [] };
+    const initialTabHasMore = { media: true, files: true, links: true, groups: true };
+    const initialTabOffsetId = { media: 0, files: 0, links: 0, groups: 0 };
+    const initialTabError = { media: null, files: null, links: null, groups: null };
+
+    ['media', 'files', 'links', 'groups'].forEach(t => {
+      const c = sharedMediaCache[`${keyBase}_${t}`];
+      if (c) {
+        initialTabData[t] = c.items;
+        initialTabHasMore[t] = c.hasMore;
+        initialTabOffsetId[t] = c.nextCursor;
+        initialTabError[t] = c.error;
+      }
+    });
+
+    setTabData(initialTabData);
+    setTabHasMore(initialTabHasMore);
+    setTabOffsetId(initialTabOffsetId);
+    setTabError(initialTabError);
+  }, [data?.id, data?.chatId, data?.topicId]);
 
   useEffect(() => {
     if (!data?.chatId && activeTab !== 'groups') return;
@@ -836,7 +855,11 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
         })
         .then(d => {
           if (isMounted && d.ok) {
-             setTabData(prev => ({...prev, groups: d.groups || []}));
+             setTabData(prev => {
+               const updated = d.groups || [];
+               sharedMediaCache[`${data.chatId}_${data.topicId||''}_${data.id}_groups`] = { items: updated, hasMore: false, nextCursor: 0, error: null };
+               return {...prev, groups: updated};
+             });
              setTabHasMore(prev => ({...prev, groups: false}));
              setTabError(prev => ({...prev, groups: null}));
           }
@@ -856,10 +879,11 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
       return;
     }
 
-    const fromUserQuery = isGroupProfile ? `&fromUser=${data.id}` : '';
+    const fromUserQuery = isGroupProfile ? `&userId=${data.id}` : '';
     const accessHashQuery = (isGroupProfile && data.accessHash) ? `&accessHash=${data.accessHash}` : '';
+    const topicIdQuery = isTopicInfo ? `&topicId=${data.topicId}` : '';
     
-    fetch(`/api/chat/shared_media/${data.chatId}?type=${tab}${fromUserQuery}${accessHashQuery}&offsetId=${tabOffsetId[tab]}&limit=30`, { headers: {'x-auth-token': token} })
+    fetch(`/api/telegram/shared-media?chatId=${data.chatId}&type=${tab}${fromUserQuery}${accessHashQuery}${topicIdQuery}&cursor=${tabOffsetId[tab]}&limit=30`, { headers: {'x-auth-token': token} })
       .then(async r => {
         const ct = r.headers.get('content-type');
         if (ct && ct.includes('text/html')) throw new Error('API route not found or backend returned HTML');
@@ -874,7 +898,14 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
              // Deduplicate by id just in case
              const existingIds = new Set(prev[tab].map(m => m.id));
              const newItems = items.filter(m => !existingIds.has(m.id));
-             return {...prev, [tab]: [...prev[tab], ...newItems]};
+             const updated = [...prev[tab], ...newItems];
+             sharedMediaCache[`${data.chatId}_${data.topicId||''}_${data.id}_${tab}`] = {
+               items: updated,
+               hasMore: d.hasMore,
+               nextCursor: nextCursor,
+               error: null
+             };
+             return {...prev, [tab]: updated};
            });
            setTabHasMore(prev => ({...prev, [tab]: d.hasMore}));
            setTabOffsetId(prev => ({...prev, [tab]: nextCursor}));
@@ -884,7 +915,14 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
       })
       .catch(e => {
         console.error(e);
-        if (isMounted) setTabError(prev => ({...prev, [tab]: e.message}));
+        if (isMounted) {
+            setTabError(prev => {
+                sharedMediaCache[`${data.chatId}_${data.topicId||''}_${data.id}_${tab}`] = { 
+                    items: tabData[tab], hasMore: tabHasMore[tab], nextCursor: tabOffsetId[tab], error: e.message 
+                };
+                return {...prev, [tab]: e.message};
+            });
+        }
       })
       .finally(() => {
         if (isMounted) setTabLoading(prev => ({...prev, [tab]: false}));
@@ -927,7 +965,11 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
 
   const isFallback = isGroupProfile && tabError[activeTab] === 'SENDER_NOT_FOUND';
 
-  const tabs = [
+  const tabs = isTopicInfo ? [
+    { id: 'media', label: `Media`, count: tabData.media.length, hasMore: tabHasMore.media },
+    { id: 'files', label: `Files`, count: tabData.files.length, hasMore: tabHasMore.files },
+    { id: 'links', label: `Links`, count: tabData.links.length, hasMore: tabHasMore.links }
+  ] : [
     { id: 'media', label: `Media`, count: isFallback ? fallbackData.media.length : tabData.media.length, hasMore: !isFallback && tabHasMore.media },
     { id: 'files', label: `Files`, count: isFallback ? fallbackData.files.length : tabData.files.length, hasMore: !isFallback && tabHasMore.files },
     { id: 'links', label: `Links`, count: isFallback ? fallbackData.links.length : tabData.links.length, hasMore: !isFallback && tabHasMore.links },
@@ -943,7 +985,7 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'16px 20px',borderBottom:'1px solid rgba(124,58,237,.2)'}}>
           <div style={{display:'flex',alignItems:'center',gap:16}}>
             <button onClick={onClose} style={{background:'none',border:'none',color:'#9b7ec8',cursor:'pointer',fontSize:20}}>✕</button>
-            <div style={{fontSize:16,fontWeight:600}}>User Info</div>
+            <div style={{fontSize:16,fontWeight:600}}>{isTopicInfo ? 'Topic Info' : 'User Info'}</div>
           </div>
           <button style={{background:'none',border:'none',color:'#9b7ec8',cursor:'not-allowed',fontSize:18}}>✎</button>
         </div>
@@ -951,19 +993,32 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
         <div style={{flex:1, overflowY:'auto'}}>
           {/* Top Profile */}
           <div style={{padding:'20px',display:'flex',gap:16,alignItems:'center'}}>
-            <Avatar name={data.name||'User'} chatId={data.id} username={data.username} accessHash={data.accessHash} size={72}/>
-            <div>
-              <div style={{fontSize:18,fontWeight:600,display:'flex',alignItems:'center',gap:4}}>
-                {data.name||'Unknown User'}
-                {fullProfile?.fullUser?.verified && <span style={{color:'#0088cc',fontSize:14}}>✓</span>}
+            {isTopicInfo ? (
+              <div style={{width: 72, height: 72, borderRadius: '50%', background: '#2b5278', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 32, fontWeight: 600}}>
+                #
               </div>
-              <div style={{fontSize:13,color:status==='online'?'#4caf50':'#9b7ec8',marginTop:4}}>
-                {status ? status : 'last seen recently'}
+            ) : (
+              <Avatar name={data.name||'User'} chatId={data.id} username={data.username} accessHash={data.accessHash} size={72}/>
+            )}
+            <div style={{minWidth: 0, flex: 1}}>
+              <div style={{fontSize:18,fontWeight:600,display:'flex',alignItems:'center',gap:4}}>
+                <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                  {isTopicInfo ? data.topicTitle : (data.name||'Unknown User')}
+                </span>
+                {!isTopicInfo && fullProfile?.fullUser?.verified && <span style={{color:'#0088cc',fontSize:14,flexShrink:0}}>✓</span>}
+              </div>
+              <div style={{fontSize:13,color:status==='online'?'#4caf50':'#9b7ec8',marginTop:6,display:'flex',alignItems:'center',gap:8,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                {isTopicInfo ? (
+                  <span style={{background: 'rgba(124,58,237,.2)', color: '#b395e3', padding: '2px 8px', borderRadius: 12, fontSize: 12}}>
+                    in {data.name}
+                  </span>
+                ) : (status ? status : 'last seen recently')}
               </div>
             </div>
           </div>
 
           {/* Action Buttons Row */}
+          {!isTopicInfo && (
           <div style={{display:'flex', justifyContent:'space-around', padding:'12px 20px', borderBottom:'1px solid rgba(124,58,237,.2)'}}>
             <div onClick={handleMessage} style={{display:'flex', flexDirection:'column', alignItems:'center', cursor:'pointer', color:'#7c3aed', gap:4}}>
               <div style={{width:40,height:40,borderRadius:'50%',background:'rgba(124,58,237,.1)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18}}>💬</div>
@@ -991,23 +1046,47 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
               )}
             </div>
           </div>
+          )}
 
           <div style={{height: 8, background: '#0d0618', width: '100%', flexShrink:0}} />
 
           {/* Info Card */}
-          <div style={{padding:'16px 20px',display:'flex',flexDirection:'column',gap:16}}>
-            {data.phone && <div><div style={{fontSize:15}}>{data.phone}</div><div style={{fontSize:13,color:'#9b7ec8'}}>Phone</div></div>}
-            {data.username && <div><div style={{fontSize:15}}>@{data.username}</div><div style={{fontSize:13,color:'#9b7ec8'}}>Username</div></div>}
-            {bio && <div><div style={{fontSize:15, lineHeight:1.4, wordBreak:'break-word'}}>{bio}</div><div style={{fontSize:13,color:'#9b7ec8'}}>Bio</div></div>}
-            {businessHours && <div><div style={{fontSize:15,color:'#4caf50'}}>{businessHours}</div><div style={{fontSize:13,color:'#9b7ec8'}}>Business Hours</div></div>}
-            {location && <div><div style={{fontSize:15, lineHeight:1.4}}>{location}</div><div style={{fontSize:13,color:'#9b7ec8'}}>Location</div></div>}
-            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginTop:4}}>
-              <span style={{fontSize:15}}>Notifications</span>
-              <div style={{width:36,height:20,background:'#7c3aed',borderRadius:10,position:'relative'}}><div style={{width:16,height:16,background:'#fff',borderRadius:'50%',position:'absolute',top:2,right:2}}/></div>
+          {!isTopicInfo && (
+            <div style={{padding:'16px 20px',display:'flex',flexDirection:'column',gap:16}}>
+              {data.phone && <div><div style={{fontSize:15}}>{data.phone}</div><div style={{fontSize:13,color:'#9b7ec8'}}>Phone</div></div>}
+              {data.username && <div><div style={{fontSize:15}}>@{data.username}</div><div style={{fontSize:13,color:'#9b7ec8'}}>Username</div></div>}
+              {bio && <div><div style={{fontSize:15, lineHeight:1.4, wordBreak:'break-word'}}>{bio}</div><div style={{fontSize:13,color:'#9b7ec8'}}>Bio</div></div>}
+              {businessHours && <div><div style={{fontSize:15,color:'#4caf50'}}>{businessHours}</div><div style={{fontSize:13,color:'#9b7ec8'}}>Business Hours</div></div>}
+              {location && <div><div style={{fontSize:15, lineHeight:1.4}}>{location}</div><div style={{fontSize:13,color:'#9b7ec8'}}>Location</div></div>}
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginTop:4}}>
+                <span style={{fontSize:15}}>Notifications</span>
+                <div style={{width:36,height:20,background:'#7c3aed',borderRadius:10,position:'relative'}}><div style={{width:16,height:16,background:'#fff',borderRadius:'50%',position:'absolute',top:2,right:2}}/></div>
+              </div>
             </div>
-          </div>
+          )}
 
-          <div style={{height: 8, background: '#0d0618', width: '100%', flexShrink:0}} />
+          {!isTopicInfo && <div style={{height: 8, background: '#0d0618', width: '100%', flexShrink:0}} />}
+
+          {isTopicInfo && (
+            <div style={{padding:'16px 20px',display:'flex',flexDirection:'column',gap:16}}>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                <div style={{display:'flex',flexDirection:'column',gap:4}}>
+                  <div style={{fontSize:15,color:'#7dd3fc',wordBreak:'break-all'}}>https://t.me/c/{data.chatId?.toString()?.replace('-100','')}/{data.topicId}</div>
+                  <div style={{fontSize:13,color:'#9b7ec8'}}>Link</div>
+                </div>
+                <div style={{display:'flex',gap:12,color:'#9b7ec8',fontSize:18}}>
+                  <div style={{cursor:'pointer'}} onClick={()=>{navigator.clipboard.writeText(`https://t.me/c/${data.chatId?.toString()?.replace('-100','')}/${data.topicId}`)}}>📋</div>
+                  <div style={{cursor:'pointer'}}>▣</div>
+                </div>
+              </div>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginTop:4}}>
+                <span style={{fontSize:15}}>Notifications</span>
+                <div style={{width:36,height:20,background:'#7c3aed',borderRadius:10,position:'relative'}}><div style={{width:16,height:16,background:'#fff',borderRadius:'50%',position:'absolute',top:2,right:2}}/></div>
+              </div>
+            </div>
+          )}
+
+          {isTopicInfo && <div style={{height: 8, background: '#0d0618', width: '100%', flexShrink:0}} />}
 
           {/* Tab Bar */}
           <div style={{display:'flex',padding:'0 20px',borderBottom:'1px solid rgba(124,58,237,.2)',overflowX:'auto',scrollbarWidth:'none'}}>
@@ -1085,7 +1164,7 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
                   if (!finalUrl || finalUrl === '#') return null;
 
                   return (
-                    <div key={i} style={{display:'flex',gap:12,background:'rgba(124,58,237,.1)',padding:12,borderRadius:8,alignItems:'center'}}>
+                    <div key={i} onClick={()=>window.open(finalUrl, '_blank')} style={{display:'flex',gap:12,background:'rgba(124,58,237,.1)',padding:12,borderRadius:8,alignItems:'center',cursor:'pointer'}}>
                       <div style={{width:40,height:40,borderRadius:8,background:'rgba(124,58,237,.2)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18}}>🔗</div>
                       <div style={{flex:1,overflow:'hidden'}}>
                         <div style={{fontSize:14,fontWeight:500,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',color:'#7dd3fc'}}>{m.webpageTitle || m.webpageUrl || 'Link'}</div>
