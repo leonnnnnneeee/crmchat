@@ -2015,7 +2015,8 @@ export default function CRMChat({ token, onAuthFailed }) {
 
   const sendingRef = useRef(false)
   async function send(){
-    const text=input.trim(); if(!text||!sel||!text.length) return
+    const safeInput = (input === "null" || input == null) ? "" : input;
+    const text=safeInput.trim(); if(!text||!sel||!text.length) return
     // Handle edit mode — call Telegram API
     if(editingMsg) {
       const origId = editingMsg.id
@@ -2667,7 +2668,8 @@ export default function CRMChat({ token, onAuthFailed }) {
     .ri  { display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 8px 10px; border-radius: 8px; font-size: 13px; font-weight: 600; transition: background .1s; }
     .ri:hover { background: #3d1f6a; }
     .rl  { border-bottom: 1px solid #0d0618; margin: 4px 0; }
-    .qb  { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; border: none; text-align: left; transition: background .15s; width: 100%; }
+    .qb  { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; border: none; text-align: left; transition: background .15s; width: 100%; background: #2d1155; color: #f0e6ff; margin-bottom: 4px; }
+    .qb:hover { background: #3d1f6a; }
     .ti  { padding: 8px 12px; cursor: pointer; border-radius: 8px; font-size: 13px; transition: background .1s; color: #f0e6ff; border-bottom: 1px solid #2d1155; }
     .ti:hover { background: #2d1155; }
     .tmpl-panel { position: absolute; bottom: 100%; right: 0; background: #1a0533; border: 1px solid #3d1f6a; border-radius: 12px; padding: 8px 0; min-width: 300px; max-height: 300px; overflow-y: auto; box-shadow: 0 8px 24px rgba(0,0,0,.5); z-index: 100; }

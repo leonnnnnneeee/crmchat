@@ -25,6 +25,8 @@ export default function Composer(props) {
     gifQuery, setGifQuery, searchGifs, gifs, loadingRef, showScrollBtn
   } = props;
 
+  const safeInput = (input === "null" || input == null) ? "" : input;
+
   return (
     <>
           {/* Handles AI suggestions, templates, voice recording, typing indicator */}
@@ -56,7 +58,7 @@ export default function Composer(props) {
                 {["👍","❤️","😂","🔥","💪","✅","🙏","😎","🤔","👀","💯","🎯","🔑","💎","🚀","⭐"].map(e=>(
                   <button key={e} style={{background:"none",border:"none",cursor:"pointer",fontSize:19,
                     padding:"2px 4px",borderRadius:6,flexShrink:0,lineHeight:1}}
-                    onClick={()=>{setInput(p=>p+e)}}>
+                    onClick={()=>{setInput(p=>((p === "null" || p == null) ? "" : p)+e)}}>
                     {e}
                   </button>
                 ))}
@@ -74,7 +76,7 @@ export default function Composer(props) {
                 onClick={()=>fileInputRef.current?.click()} style={{fontSize:17}}>📎</button>
               <input type="file" ref={fileInputRef} style={{display:'none'}} onChange={handleFileChange} />
               <textarea className="message-input" placeholder="Type a message..."
-                ref={inputRef} value={input} rows={1}
+                ref={inputRef} value={safeInput} rows={1}
                 onChange={e=>{
                   setInput(e.target.value)
                 }}
@@ -91,8 +93,8 @@ export default function Composer(props) {
                 style={{background:aiLoading?"rgba(124,58,237,.25)":TG.elevated,fontSize:17}}>
                 {aiLoading?"⏳":"✨"}
               </button>
-              <button className="ib s" onClick={send} disabled={!input.trim()||sending}
-                style={{opacity:input.trim()&&!sending?1:.4,fontSize:17,background:editingMsg?'#4caf50':'',color:editingMsg?'#fff':''}} title={editingMsg?"Save Edit":"Send"}>
+              <button className="ib s" onClick={send} disabled={!safeInput.trim()||sending}
+                style={{opacity:safeInput.trim()&&!sending?1:.4,fontSize:17,background:editingMsg?'#4caf50':'',color:editingMsg?'#fff':''}} title={editingMsg?"Save Edit":"Send"}>
                 {editingMsg?"✓":"➤"}
               </button>
             </div>

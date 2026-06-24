@@ -218,6 +218,7 @@ export default function MessageList(props) {
                 </div>
               )
             })}
+            <div style={{height: 80, flexShrink: 0}} />
             <div ref={endRef}/>
           </div>
 
