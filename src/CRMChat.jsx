@@ -892,6 +892,20 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
     return () => { isMounted = false; };
   };
 
+  const getSenderId = (m) => m.senderId || m.fromId || m.userId || m.peerId || m.author?.id || m.sender?.id || m.from?.id;
+
+  const groupMediaMsgs = useMemo(() => {
+    if (!isGroupProfile || !msgs) return [];
+    return msgs.filter(m => (getSenderId(m) || '').toString() === data?.id?.toString());
+  }, [msgs, isGroupProfile, data?.id]);
+
+  const fallbackData = useMemo(() => ({
+    media: groupMediaMsgs.filter(m => m.hasMedia && (m.isPhoto || m.isVideo)),
+    files: groupMediaMsgs.filter(m => m.isDoc && !m.isVideo),
+    links: groupMediaMsgs.filter(m => m.webpageUrl),
+    groups: []
+  }), [groupMediaMsgs]);
+
   if (!data) return null
 
   const handleMessage = () => {
@@ -909,20 +923,6 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
   const businessHoursObj = fullProfile?.fullUser?.businessWorkHours;
   const businessHours = businessHoursObj ? `${businessHoursObj.timezoneId} (${businessHoursObj.openNow ? 'Open Now' : 'Closed'})` : null;
   const location = fullProfile?.fullUser?.businessLocation?.address;
-
-  const getSenderId = (m) => m.senderId || m.fromId || m.userId || m.peerId || m.author?.id || m.sender?.id || m.from?.id;
-
-  const groupMediaMsgs = useMemo(() => {
-    if (!isGroupProfile || !msgs) return [];
-    return msgs.filter(m => (getSenderId(m) || '').toString() === data.id.toString());
-  }, [msgs, isGroupProfile, data?.id]);
-
-  const fallbackData = useMemo(() => ({
-    media: groupMediaMsgs.filter(m => m.hasMedia && (m.isPhoto || m.isVideo)),
-    files: groupMediaMsgs.filter(m => m.isDoc && !m.isVideo),
-    links: groupMediaMsgs.filter(m => m.webpageUrl),
-    groups: []
-  }), [groupMediaMsgs]);
 
   const isFallback = tabError[activeTab] === 'SENDER_NOT_FOUND';
 
