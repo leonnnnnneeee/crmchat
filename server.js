@@ -770,6 +770,45 @@ app.get('/api/chat/media/:chatId/:msgId', requireAuth, async (req, res) => {
 })
 
 
+function parseReactions(results) {
+  if (!results) return [];
+  return results.map(r => {
+    let emojiStr = '';
+    if (typeof r.reaction === 'string') emojiStr = r.reaction;
+    else if (r.reaction?.emoticon) emojiStr = r.reaction.emoticon;
+    else if (r.reaction?.className) emojiStr = r.reaction.className;
+    
+    const emojiMap = { 'Like': '👍', 'Laugh': '😂', 'Heart': '❤️', 'Fire': '🔥', 'Pray': '🙏', 'Smile': '🥰', 'Dislike': '👎', 'Cool': '😎' };
+    const finalEmoji = emojiMap[emojiStr] || emojiStr || '';
+    if (!finalEmoji) return null;
+    
+    return {
+      emoticon: finalEmoji,
+      count: r.count || 0,
+      chosen: r.chosenOrder !== undefined || r.chosen === true
+    };
+  }).filter(Boolean);
+}
+
+function parseRecentReactions(recentReactions) {
+  if (!recentReactions) return [];
+  return recentReactions.map(rr => {
+    let emojiStr = '';
+    if (typeof rr.reaction === 'string') emojiStr = rr.reaction;
+    else if (rr.reaction?.emoticon) emojiStr = rr.reaction.emoticon;
+    else if (rr.reaction?.className) emojiStr = rr.reaction.className;
+    
+    const emojiMap = { 'Like': '👍', 'Laugh': '😂', 'Heart': '❤️', 'Fire': '🔥', 'Pray': '🙏', 'Smile': '🥰', 'Dislike': '👎', 'Cool': '😎' };
+    const finalEmoji = emojiMap[emojiStr] || emojiStr || '';
+    if (!finalEmoji) return null;
+    
+    return {
+      peerId: rr.peerId?.userId?.toString() || rr.peerId?.channelId?.toString() || null,
+      emoticon: finalEmoji
+    };
+  }).filter(Boolean);
+}
+
 // ── MESSAGES ──
 app.get('/api/chat/messages/:id', requireAuth, async (req,res) => {
   if (!_session) return res.json([])
@@ -803,38 +842,8 @@ app.get('/api/chat/messages/:id', requireAuth, async (req,res) => {
             : (m.sender?.username || null),
           senderUsername: m.sender?.username || null,
           senderAccessHash: m.sender?.accessHash ? m.sender.accessHash.toString() : null,
-          reactions: m.reactions?.results?.map(r => {
-            let emojiStr = '';
-            if (typeof r.reaction === 'string') emojiStr = r.reaction;
-            else if (r.reaction?.emoticon) emojiStr = r.reaction.emoticon;
-            else if (r.reaction?.className) emojiStr = r.reaction.className;
-            
-            // Map known reaction type names to unicode emojis if needed
-            const emojiMap = { 'Like': '👍', 'Laugh': '😂', 'Heart': '❤️', 'Fire': '🔥', 'Pray': '🙏', 'Smile': '🥰', 'Dislike': '👎', 'Cool': '😎' };
-            const finalEmoji = emojiMap[emojiStr] || emojiStr || '';
-            if (!finalEmoji) return null;
-            
-            return {
-              emoticon: finalEmoji,
-              count: r.count || 0,
-              chosen: r.chosenOrder !== undefined || r.chosen === true
-            };
-          }).filter(Boolean) || [],
-          recentReactions: m.reactions?.recentReactions?.map(rr => {
-            let emojiStr = '';
-            if (typeof rr.reaction === 'string') emojiStr = rr.reaction;
-            else if (rr.reaction?.emoticon) emojiStr = rr.reaction.emoticon;
-            else if (rr.reaction?.className) emojiStr = rr.reaction.className;
-            
-            const emojiMap = { 'Like': '👍', 'Laugh': '😂', 'Heart': '❤️', 'Fire': '🔥', 'Pray': '🙏', 'Smile': '🥰', 'Dislike': '👎', 'Cool': '😎' };
-            const finalEmoji = emojiMap[emojiStr] || emojiStr || '';
-            if (!finalEmoji) return null;
-            
-            return {
-              peerId: rr.peerId?.userId?.toString() || rr.peerId?.channelId?.toString() || null,
-              emoticon: finalEmoji
-            };
-          }).filter(Boolean) || [],
+          reactions: parseReactions(m.reactions?.results) || [],
+          recentReactions: parseRecentReactions(m.reactions?.recentReactions) || [],
         }
       })
       .filter(m => m.text || m.isPhoto || m.isVideo || m.isDoc)
@@ -846,7 +855,7 @@ app.get('/api/chat/messages/:id', requireAuth, async (req,res) => {
       _session = ''
       return res.status(401).json({ error: 'AUTH_FAILED' })
     }
-    res.json([]) 
+    res.status(500).json({ error: e.message }) 
   }
 })
 
@@ -1411,6 +1420,43 @@ async function startTGListener() {
           }
         } catch(e) {}
       }, new DeletedMessage({}))
+    }
+    
+    // Listen for raw reaction updates
+    let Raw;
+    try { Raw = require('telegram/events/Raw').Raw; } catch {}
+    if (Raw) {
+      lc.addEventHandler(async (ev) => {
+        try {
+          if (ev.className === 'UpdateMessageReactions') {
+            const peer = ev.peer;
+            let chatId = null;
+            if (peer.className === 'PeerUser') chatId = peer.userId.toString();
+            else if (peer.className === 'PeerChat') chatId = peer.chatId.toString();
+            else if (peer.className === 'PeerChannel') chatId = '-100' + peer.channelId.toString();
+            
+            const msgId = ev.msgId;
+            const topMsgId = ev.topMsgId; // this is essentially the topicId
+            const reactionsObj = ev.reactions;
+            
+            if (chatId && msgId && reactionsObj) {
+               const parsedReactions = parseReactions(reactionsObj.results);
+               const parsedRecent = parseRecentReactions(reactionsObj.recentReactions);
+               
+               broadcastSSE({ 
+                 type: 'update_reactions', 
+                 chatId, 
+                 msgId, 
+                 topicId: topMsgId || null,
+                 reactions: parsedReactions,
+                 recentReactions: parsedRecent
+               });
+            }
+          }
+        } catch(e) {
+          log('Reaction SSE broadcast error: ' + e.message);
+        }
+      }, new Raw({}));
     }
 
     log('✅ TG listener active with SSE')

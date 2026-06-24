@@ -1344,6 +1344,7 @@ export default function CRMChat({ token, onAuthFailed }) {
   const [topicSearch,setTopicSearch]=useState("")
   const [topicCtxMenu,setTopicCtxMenu]=useState(null)
   const [msgs,setMsgs]=useState([])
+  const msgsCacheRef = useRef({})
   const [search,setSearch]=useState(() => localStorage.getItem('crm_search') || '')
   const [globalMatches, setGlobalMatches] = useState([])
   const [isGlobalSearching, setIsGlobalSearching] = useState(false)
@@ -1725,25 +1726,28 @@ export default function CRMChat({ token, onAuthFailed }) {
     if (prevSelId.current !== sel.id) {
        currentTopic = null
        setSelTopic(null)
+       chatOrTopicChanged = true
        prevSelId.current = sel.id
        prevSelTopicId.current = null
        setForceNormalView(false)
        setTopicError(false)
-       chatOrTopicChanged = true
     } else if (prevSelTopicId.current !== selTopic?.id) {
        prevSelTopicId.current = selTopic?.id
        chatOrTopicChanged = true
     }
-
+    
     if (chatOrTopicChanged) {
-      setMsgs([]); setAiText(""); setAiSuggestions([]); setAiAnalysis(""); setAiAlt(""); setReplyTo(null); setAiError(null)
-      setMessagesLoaded(false)
       hasRestoredScroll.current = false
-    } else {
-      // If we didn't change chat/topic, but just received a new message, AI suggestions might be stale
-      // We clear them if we are already loaded. Wait, we already clear them on SSE new_message.
-      // So chatOrTopicChanged already clears them. We don't need additional clear logic unless we want to clear them when msgs.length changes.
-      // The SSE listener already clears them. We'll add an explicit effect to clear them when the last customer message changes.
+      const cacheKey = sel.id + (currentTopic ? '_' + currentTopic.id : '')
+      if (msgsCacheRef.current[cacheKey]) {
+        setMsgs(msgsCacheRef.current[cacheKey])
+        setMessagesLoaded(true)
+        setLoadMsgs(false)
+      } else {
+        setMsgs([])
+        setMessagesLoaded(false)
+        setLoadMsgs(true)
+      }
     }
     
     if (sel.isForum && !currentTopic && !forceNormalView) {
@@ -1924,7 +1928,9 @@ export default function CRMChat({ token, onAuthFailed }) {
               setMsgs(prev => {
                 if (prev.some(m => m.id === msg.id)) return prev
                 const updated = [...prev, msg]
-                return updated.sort((a,b) => a.date - b.date)
+                const nextState = updated.sort((a,b) => a.date - b.date)
+                msgsCacheRef.current[selRef.current.id + (selTopicRef.current ? '_' + selTopicRef.current.id : '')] = nextState
+                return nextState
               })
               
               // Regenerate AI Reply if we are in the chat
@@ -1940,8 +1946,34 @@ export default function CRMChat({ token, onAuthFailed }) {
           else if (data.type === 'delete_messages') {
              const { ids, chatId } = data
              if (selRef.current?.id === chatId) {
-                setMsgs(prev => prev.filter(m => !ids.includes(m.id)))
+                setMsgs(prev => {
+                  const nextState = prev.filter(m => !ids.includes(m.id))
+                  msgsCacheRef.current[selRef.current.id + (selTopicRef.current ? '_' + selTopicRef.current.id : '')] = nextState
+                  return nextState
+                })
              }
+          }
+          else if (data.type === 'update_reactions') {
+            const { chatId, msgId, topicId, reactions, recentReactions } = data;
+            const isSameChat = selRef.current?.id === chatId;
+            const isSameTopic = !selRef.current?.isForum || (topicId && selTopicRef.current?.id === topicId) || (!topicId && !selTopicRef.current);
+            
+            if (isSameChat && isSameTopic) {
+              setMsgs(prev => {
+                const idx = prev.findIndex(m => m.id === msgId);
+                if (idx === -1) return prev;
+                
+                // Only update if the reaction stringified content actually changed (optional optimization)
+                const updatedMsgs = [...prev];
+                updatedMsgs[idx] = { 
+                  ...updatedMsgs[idx], 
+                  reactions: reactions || [],
+                  recentReactions: recentReactions || []
+                };
+                msgsCacheRef.current[selRef.current.id + (selTopicRef.current ? '_' + selTopicRef.current.id : '')] = updatedMsgs;
+                return updatedMsgs;
+              });
+            }
           }
         } catch (err) {
           console.error('SSE parse error:', err)
@@ -2001,13 +2033,16 @@ export default function CRMChat({ token, onAuthFailed }) {
         else if(!append) setHasMore(true)
 
         setMsgs(prev => {
+          let nextState;
           if(append) {
             const newMsgs = d.filter(m1 => !prev.some(m2 => m2.id === m1.id))
-            return [...newMsgs, ...prev]
+            nextState = [...newMsgs, ...prev]
           } else {
             const stillPending = prev.filter(m => m.pending && m.id < 0 && !d.some(s=>s.text===m.text&&s.fromMe))
-            return [...d, ...stillPending]
+            nextState = [...d, ...stillPending]
           }
+          msgsCacheRef.current[chat.id + (topicId ? '_' + topicId : '')] = nextState;
+          return nextState;
         })
       } else if (d && d.error === 'AUTH_FAILED') {
         if (typeof onAuthFailed === 'function') onAuthFailed()
@@ -2085,6 +2120,7 @@ export default function CRMChat({ token, onAuthFailed }) {
       
       const updatedMsgs = [...prevMsgs]
       updatedMsgs[msgIndex] = { ...msg, reactions: newReactions }
+      msgsCacheRef.current[selRef.current?.id + (selTopicRef.current ? '_' + selTopicRef.current.id : '')] = updatedMsgs;
       return updatedMsgs;
     })
     
@@ -2112,6 +2148,7 @@ export default function CRMChat({ token, onAuthFailed }) {
         if (idx === -1) return prevMsgs;
         const revertMsgs = [...prevMsgs]
         revertMsgs[idx] = { ...prevMsgs[idx], reactions: originalReactions }
+        msgsCacheRef.current[selRef.current?.id + (selTopicRef.current ? '_' + selTopicRef.current.id : '')] = revertMsgs;
         return revertMsgs;
       })
     }
