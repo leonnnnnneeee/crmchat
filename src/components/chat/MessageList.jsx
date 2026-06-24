@@ -145,13 +145,13 @@ export default function MessageList(props) {
                   </div>}
                     {!msg.fromMe && (
                       isLastInGroup
-                      ? <div className="msg-avatar" style={{cursor:'pointer'}} onClick={() => setProfilePreview({ id: getSenderId(msg)||sel.id, name: resolveSender(msg, sel)||sel.name, chatId: sel.id })}><Avatar name={resolveSender(msg, sel)||sel.name} chatId={getSenderId(msg)||sel.id} username={null} size={32}/></div>
+                      ? <div className="msg-avatar" style={{cursor:'pointer'}} onClick={() => setProfilePreview({ id: getSenderId(msg)||sel.id, name: resolveSender(msg, sel)||sel.name, username: msg.senderUsername, accessHash: msg.senderAccessHash, chatId: sel.id })}><Avatar name={resolveSender(msg, sel)||sel.name} chatId={getSenderId(msg)||sel.id} username={msg.senderUsername} accessHash={msg.senderAccessHash} size={32}/></div>
                       : <div className="msg-avatar-gap"/>
                     )}
                     <div className="msg-content" onContextMenu={e=>handleCtx(e,msg,i)}>
                       <div className={`bbl msg-bubble ${msg.fromMe?"out":"in"}${groupClass}`}>
-                        {!msg.fromMe && !sel?.isUser && !isSameGroup && (
-                          <div style={{fontSize:12,fontWeight:600,color:"#7dd3fc",marginBottom:2,whiteSpace:"nowrap",cursor:'pointer'}} onClick={() => setProfilePreview({ id: getSenderId(msg)||sel.id, name: resolveSender(msg, sel)||sel.name, chatId: sel.id })}>{resolveSender(msg, sel)}</div>
+                        {sel?.isGroup && isFirstInGroup && !msg.fromMe && (
+                          <div style={{fontSize:12,fontWeight:600,color:"#7dd3fc",marginBottom:2,whiteSpace:"nowrap",cursor:'pointer'}} onClick={() => setProfilePreview({ id: getSenderId(msg)||sel.id, name: resolveSender(msg, sel)||sel.name, username: msg.senderUsername, accessHash: msg.senderAccessHash, chatId: sel.id })}>{resolveSender(msg, sel)}</div>
                         )}
                         {msg.replyTo&&(
                           <div onClick={()=>{/* scroll to reply */}} style={{background:"rgba(255,255,255,.05)",borderLeft:`3px solid #7dd3fc`,padding:"2px 8px",borderRadius:"0 4px 4px 0",marginBottom:6,fontSize:13,color:"rgba(255,255,255,.7)",maxWidth:"100%",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",cursor:"pointer",display:"flex",flexDirection:"column"}}>
