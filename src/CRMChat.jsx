@@ -1395,6 +1395,8 @@ export default function CRMChat({ token, onAuthFailed }) {
     localStorage.setItem('crm_search', search)
   }, [search])
   const [input,setInput]=useState("")
+  const [pastedFile,setPastedFile]=useState(null)
+  const [filePreview,setFilePreview]=useState(null)
   const inputRef = useRef(null)
   const fileInputRef = useRef(null)
   const leftColScrollRef = useRef(null)
@@ -2156,7 +2158,8 @@ export default function CRMChat({ token, onAuthFailed }) {
 
   async function send(){
     const safeInput = (input === "null" || input == null) ? "" : input;
-    const text=safeInput.trim(); if(!text||!sel||!text.length) return
+    const text=safeInput.trim(); 
+    if((!text && !pastedFile) || !sel) return
     // Handle edit mode — call Telegram API
     if(editingMsg) {
       const origId = editingMsg.id
@@ -2212,15 +2215,30 @@ export default function CRMChat({ token, onAuthFailed }) {
     })
 
     try {
-      if(selTopic) {
+      if (pastedFile) {
+        const formData = new FormData()
+        formData.append('chatId', sel.id)
+        if (selTopic) formData.append('topicId', selTopic.id)
+        if (sel.username) formData.append('username', sel.username)
+        if (text) formData.append('caption', text)
+        formData.append('file', pastedFile)
+
+        await fetch('/api/chat/send-media', {
+          method: 'POST',
+          headers: { "x-auth-token": token },
+          body: formData
+        })
+        setPastedFile(null)
+        setFilePreview(null)
+      } else if(selTopic) {
         await fetch('/api/chat/topics/'+sel.id+'/'+selTopic.id+'/send', {
           method:"POST", headers:{"Content-Type":"application/json","x-auth-token":token},
-          body:JSON.stringify({text})
+          body:JSON.stringify({text, username: sel.username || undefined})
         })
       } else {
-        await fetch("/api/chat/send",{
+        await fetch('/api/chat/send', {
           method:"POST", headers:{"Content-Type":"application/json","x-auth-token":token},
-          body:JSON.stringify({chatId:sel.id, text})
+          body:JSON.stringify({chatId:sel.id, text, username: sel.username || undefined})
         })
       }
       
@@ -2865,17 +2883,35 @@ export default function CRMChat({ token, onAuthFailed }) {
   const handleKeyDown = useCallback((e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      if (input.trim()) {
+      if (input.trim() || pastedFile) {
         send();
       }
     }
-  }, [input, send]);
+  }, [input, pastedFile, send]);
+
+  const handleComposerPaste = useCallback((e) => {
+    const clipboardData = e.clipboardData || window.clipboardData
+    if (clipboardData && clipboardData.files && clipboardData.files.length > 0) {
+      e.preventDefault()
+      const file = clipboardData.files[0]
+      setPastedFile(file)
+      if (file.type.startsWith('image/')) {
+        setFilePreview(URL.createObjectURL(file))
+      } else {
+        setFilePreview(null)
+      }
+    }
+  }, [])
 
   const handleFileChange = useCallback((e) => {
     const file = e.target.files?.[0]
     if (file) {
-      alert('File upload not connected yet: ' + file.name)
-      // TODO: Implement backend file upload API
+      setPastedFile(file)
+      if (file.type.startsWith('image/')) {
+        setFilePreview(URL.createObjectURL(file))
+      } else {
+        setFilePreview(null)
+      }
     }
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
@@ -2889,6 +2925,7 @@ export default function CRMChat({ token, onAuthFailed }) {
     fmtDateSep, isPhotoMsg, isVideoMsg, isDocMsg, setLightbox, token, reactions, setReactions, toggleReaction, editedMsgs, fmtMsgTime,
     editingMsg, setEditingMsg, input, setInput, replyTo, setReplyTo, forwardMsg, setForwardMsg, inputRef, handleKeyDown, send, aiLoading, getAI,
     emojiOpen, setEmojiOpen, showTmpl, setShowTmpl, recording, recordSecs, fileInputRef, handleFileChange, mediaRecRef, recordTimerRef, setRecording, setRecordSecs,
+    pastedFile, setPastedFile, filePreview, setFilePreview, handleComposerPaste,
     cStage, stages, setStages, tags, cProb, probs, setProbs, cDeal, deals, setDeals, leadSource,
     fups, setFups, notes, saveNote, addNote, setAddNote, noteInp, setNoteInp,
     LinkPreview, ChatPhoto, Avatar, fmtTime,

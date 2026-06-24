@@ -22,7 +22,8 @@ export default function Composer(props) {
     AISuggestPanel, aiText, setAiText, aiAnalysis, setAiAnalysis,
     aiAlt, setAiAlt, setAiLoading, tmplCats, setTmplCat,
     tmplCat, TEMPLATES, setMsgs, setSelectMode, lightbox, StageBadge, gifOpen, setGifOpen,
-    gifQuery, setGifQuery, searchGifs, gifs, loadingRef, showScrollBtn
+    gifQuery, setGifQuery, searchGifs, gifs, loadingRef, showScrollBtn,
+    pastedFile, setPastedFile, filePreview, setFilePreview, handleComposerPaste
   } = props;
 
   const safeInput = (input === "null" || input == null) ? "" : input;
@@ -68,6 +69,34 @@ export default function Composer(props) {
                 </button>
               </div>
             )}
+            {/* File preview */}
+            {pastedFile && (
+              <div style={{display:'flex',alignItems:'center',gap:12,padding:'8px 16px',
+                background:'rgba(124,58,237,.15)',borderBottom:'1px solid #2d1155',flexShrink:0}}>
+                {filePreview ? (
+                  <div style={{width:40,height:40,borderRadius:6,overflow:'hidden',flexShrink:0,background:'#000'}}>
+                    <img src={filePreview} alt="preview" style={{width:'100%',height:'100%',objectFit:'cover'}} />
+                  </div>
+                ) : (
+                  <div style={{width:40,height:40,borderRadius:6,background:'#2d1155',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,fontSize:20}}>
+                    📄
+                  </div>
+                )}
+                <div style={{flex:1,minWidth:0,display:'flex',flexDirection:'column',justifyContent:'center'}}>
+                  <div style={{fontSize:13,fontWeight:600,color:'#f0e6ff',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
+                    {pastedFile.name || 'Attachment'}
+                  </div>
+                  <div style={{fontSize:12,color:'#9b7ec8'}}>
+                    {(pastedFile.size / 1024).toFixed(1)} KB
+                  </div>
+                </div>
+                <button onClick={() => { setPastedFile(null); setFilePreview(null); }}
+                  style={{background:'none',border:'none',color:'#a78bfa',cursor:'pointer',
+                    fontSize:20,lineHeight:1,padding:4,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}>
+                  ✕
+                </button>
+              </div>
+            )}
             {/* Input row */}
             <div className="ir">
               <button className="ib" onClick={()=>setEmojiOpen(p=>!p)} title="Emoji"
@@ -80,7 +109,7 @@ export default function Composer(props) {
                 onChange={e=>{
                   setInput(e.target.value)
                 }}
-                onPaste={handlePaste}
+                onPaste={handleComposerPaste}
                 onKeyDown={(e) => {
                   allowShortcuts(e);
                   handleKeyDown(e);
@@ -93,8 +122,8 @@ export default function Composer(props) {
                 style={{background:aiLoading?"rgba(124,58,237,.25)":TG.elevated,fontSize:17}}>
                 {aiLoading?"⏳":"✨"}
               </button>
-              <button className="ib s" onClick={send} disabled={!safeInput.trim()||sending}
-                style={{opacity:safeInput.trim()&&!sending?1:.4,fontSize:17,background:editingMsg?'#4caf50':'',color:editingMsg?'#fff':''}} title={editingMsg?"Save Edit":"Send"}>
+              <button className="ib s" onClick={send} disabled={(!safeInput.trim() && !pastedFile)||sending}
+                style={{opacity:(safeInput.trim() || pastedFile)&&!sending?1:.4,fontSize:17,background:editingMsg?'#4caf50':'',color:editingMsg?'#fff':''}} title={editingMsg?"Save Edit":"Send"}>
                 {editingMsg?"✓":"➤"}
               </button>
             </div>

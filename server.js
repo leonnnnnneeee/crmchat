@@ -2,7 +2,13 @@ require('dotenv').config()
 const express = require('express')
 const path = require('path')
 const fs = require('fs')
+const os = require('os')
 const axios = require('axios')
+const { TelegramClient } = require('telegram')
+const { StringSession } = require('telegram/sessions')
+const multer = require('multer')
+const upload = multer({ dest: os.tmpdir() })
+
 const app = express()
 const PORT = process.env.PORT || 3002
 
@@ -870,6 +876,51 @@ app.post('/api/chat/send', requireAuth, async (req,res) => {
     log('Sent to '+chatId+': '+text.slice(0,40))
     res.json({ ok: true })
   } catch(e) { log('send: '+e.message); res.status(500).json({ error: e.message }) }
+})
+
+// ── SEND TOPIC MESSAGE ──
+app.post('/api/chat/topics/:chatId/:topicId/send', requireAuth, async (req,res) => {
+  const { chatId, topicId } = req.params
+  const { text, username } = req.body
+  if (!_session) return res.status(401).json({ error: 'Not connected' })
+  try {
+    const client = await getClient()
+    const entity = await withTimeout(resolveEntity(client, chatId, username), 8000, 'resolveEntity')
+    await withTimeout(client.sendMessage(entity, { message: text, replyTo: parseInt(topicId) }), 10000, 'sendMessage')
+    log('Sent to topic '+chatId+'/'+topicId+': '+text.slice(0,40))
+    res.json({ ok: true })
+  } catch(e) { log('send topic: '+e.message); res.status(500).json({ error: e.message }) }
+})
+
+// ── SEND MEDIA ──
+app.post('/api/chat/send-media', requireAuth, upload.single('file'), async (req, res) => {
+  const { chatId, topicId, caption, username } = req.body
+  if (!_session) return res.status(401).json({ error: 'Not connected' })
+  if (!req.file) return res.status(400).json({ error: 'No file provided' })
+  
+  try {
+    const client = await getClient()
+    const entity = await withTimeout(resolveEntity(client, chatId, username), 8000, 'resolveEntity')
+    
+    // GramJS can upload from file path
+    const fileParams = {
+      file: req.file.path,
+      caption: caption || '',
+    }
+    if (topicId) fileParams.replyTo = parseInt(topicId)
+    
+    await withTimeout(client.sendFile(entity, fileParams), 30000, 'sendFile')
+    
+    // Cleanup temp file
+    fs.unlinkSync(req.file.path)
+    
+    log(`Sent media to ${chatId}${topicId ? '/'+topicId : ''}`)
+    res.json({ ok: true })
+  } catch(e) { 
+    log('send-media: '+e.message); 
+    if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+    res.status(500).json({ error: e.message }) 
+  }
 })
 
 // ── AI SUGGEST (Groq) ──
