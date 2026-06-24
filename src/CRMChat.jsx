@@ -284,7 +284,12 @@ function ContextMenu({x,y,msg,onDelete,onCopy,onReply,onClose,onDeleteAll,onSele
     }}>
       <div style={{display:'flex', gap:4, padding:'8px 12px', borderBottom:'1px solid rgba(124,58,237,.2)', flexWrap:'wrap', justifyContent:'center', marginBottom:4}}>
         {['👍', '❤️', '😂', '🔥', '🙏', '😎'].map(emoji => (
-          <div key={emoji} onClick={() => { onReact?.(emoji); onClose(); }} 
+          <div key={emoji} onClick={(e) => { 
+            e.stopPropagation(); 
+            e.preventDefault(); 
+            onReact?.(emoji); 
+            onClose(); 
+          }} 
                style={{cursor:'pointer', fontSize:22, padding:6, borderRadius:8, transition:'0.2s', background:'transparent'}} 
                onMouseEnter={e=>e.currentTarget.style.background='rgba(124,58,237,.2)'} 
                onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
@@ -3281,12 +3286,7 @@ export default function CRMChat({ token, onAuthFailed }) {
               setInput(editText)
             }
           }}
-          onReact={emoji=>{
-            setReactions(p=>{
-              const prev = p[ctxMenu.msg.id] || {}
-              return {...p, [ctxMenu.msg.id]: {...prev, [emoji]: (prev[emoji]||0)+1}}
-            })
-          }}
+          onReact={(emoji) => toggleReaction(ctxMenu.msg.id, emoji)}
           onClose={()=>setCtxMenu(null)}
         />
       )}
