@@ -178,7 +178,23 @@ app.get('/api/chat/messages/:id', requireAuth, async (req,res) => {
     const entity = await resolveEntity(client, req.params.id, req.query.username)
     const msgs = await client.getMessages(entity, { limit: 80 })
     const results = msgs.reverse()
-      .map(m => ({ id: m.id, text: m.message, fromMe: m.out, date: m.date }))
+      .map(m => {
+        // Extract reactions
+        const rxn = {}
+        if(m.reactions?.results) {
+          for(const r of m.reactions.results) {
+            const e = r.reaction?.emoticon
+            if(e) rxn[e] = r.count || 1
+          }
+        }
+        return {
+          id: m.id,
+          text: m.message || '',
+          fromMe: m.out,
+          date: m.date,
+          reactions: Object.keys(rxn).length > 0 ? rxn : undefined
+        }
+      })
       .filter(m => m.text)
     res.json(results)
   } catch(e) { log('messages: '+e.message); res.json([]) }
