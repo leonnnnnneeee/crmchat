@@ -2261,8 +2261,8 @@ export default function CRMChat({ token, onAuthFailed }) {
       display: flex; flex-direction: column;
       height: 100%; max-height: 100%;
       min-height: 0;
-      width: 270px;
-      min-width: 270px;
+      width: 320px;
+      min-width: 320px;
       flex-shrink: 0;
       background: #1a0533;
       border-right: 1px solid #0d0618;
@@ -2709,7 +2709,10 @@ export default function CRMChat({ token, onAuthFailed }) {
                     </div>
                     <div style={{display:"flex",alignItems:"center",gap:4,flexShrink:0,marginLeft:8}}>
                       {chat.isPinned || pinnedChats.has(chat.id) ? (
-                        <span style={{color:TG.textMuted,fontSize:12,opacity:isSel?0.8:0.5}}>📌</span>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{color: TG.textMuted, opacity: isSel ? 0.8 : 0.5}}>
+                          <path d="M12 17v5" />
+                          <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z" />
+                        </svg>
                       ) : null}
                       <span style={{fontSize:12,color:isSel?"rgba(255,255,255,.7)":TG.textMuted,marginLeft:4}}>{fmtTime(chat.date)}</span>
                     </div>
@@ -2756,10 +2759,6 @@ export default function CRMChat({ token, onAuthFailed }) {
           {hasMoreChats && chats.length > 0 && !search && (
             <div style={{padding:12,textAlign:"center",color:TG.textMuted,fontSize:12}}>Loading more chats...</div>
           )}
-        </div>
-        <div style={{padding:"10px 12px",borderTop:`1px solid ${TG.border}`,display:"flex",gap:8}}>
-          <button style={{flex:1,padding:"8px",background:TG.blue,border:"none",borderRadius:8,color:"#fff",fontSize:12,cursor:"pointer",fontWeight:600,fontFamily:"inherit"}}>+ Meeting</button>
-          <button style={{flex:1,padding:"8px",background:TG.elevated,border:"1px solid #3d1f6a",borderRadius:8,color:TG.textSec,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Schedule</button>
         </div>
       </div>
 
