@@ -827,27 +827,20 @@ ${instruction ? `=== PRIORITY 1: USER INSTRUCTION (CRITICAL) ===
 You MUST follow this exact instruction above all else. This is the direct instruction for WHAT TO SAY to the customer.
 Instruction: "${instruction}"
 
-CRITICAL RULES FOR INSTRUCTION:
-- If instruction asks a question, your replies MUST ask that question naturally.
-- If instruction asks to offer commission/referral, mention 20% commission per closed deal.
-- If instruction asks to mention CMC, mention Coincu + CMC News softly.
-- If instruction says "don't sell" or similar, ONLY qualify with one soft question, do not pitch.
-- Preserve speaker direction: "bạn/your/anh/chị" means the CUSTOMER. "tôi/mình/I/me" means YOU (the sender).
-- You are a translator and BD assistant. You MUST support ANY free-text instruction in ANY language (English, Vietnamese, or mixed "Vietglish"). Translate the core intent of the command into natural English Telegram replies.
-- OUTPUT THE REPLY IN ENGLISH unless the conversation context is entirely in Vietnamese.
-- Even if the command is not in the examples, you MUST process it and generate 2-3 options.
-- DO NOT invent wrong context like podcasts, partnerships, rate cards, or budgets unless the instruction explicitly asks for it or it exists in chat.
-- DO NOT reply to the instruction itself. Create a message intended for the customer.
-- If intent confidence is low, ask a clarification internally or generate a safe direct question based on the command, DO NOT fall back to generic sales pitches.
+CRITICAL RULES FOR INSTRUCTION (VIETNAMESE/MIXED LANGUAGE SUPPORT):
+1. STEP 1 - INTENT TRANSLATION: Understand the core intent of the instruction.
+2. STEP 2 - NATURAL ENGLISH: Write the final reply entirely in natural English.
+3. ABSOLUTE BAN ON LITERAL COPYING: NEVER copy Vietnamese words directly into the English reply. For example, if instruction says "hướng chúng ta có thể collaborate với bạn", do NOT output "collaborate với bạn". Translate the full intent to "how we can collaborate".
+4. NO INVENTED CONTEXT: DO NOT invent concepts like "prediction event", "podcast", "rate card", "budget", "CMC", or "marketing campaign" unless they are EXPLICITLY mentioned in the instruction or the chat history.
+5. PRESERVE SPEAKER DIRECTION: "tôi/mình" = You (the Coincu sender). "bạn/anh/chị" = The Customer.
+6. If the intent is just to ask a question (e.g. "chia sẻ ý tưởng trước đi"), just ask the question naturally. Do not wrap it in a sales pitch.
 
 VIETNAMESE INTENT EXAMPLES:
-- "tôi thấy bạn trong group chung và muốn nhắn tìm cơ hội hợp tác" -> intent is "shared group outreach collaboration".
 - "bạn đang làm bao nhiêu dự án" -> intent is "ask how many projects customer is working on".
 - "cho tôi link dự án của bạn" -> intent is "ask customer to share their project link".
 - "chia sẻ ý tưởng của bạn trước đi" -> intent is "ask customer to share their idea first".
 - "bạn có thể đưa tôi example những gì bạn đã done không?" -> intent is "ask customer for examples of their past work".
-- "bạn có hỗ trợ dự án web3 nào khác không" -> intent is "ask if customer supports other Web3 projects".
-- "offer commission nếu họ giới thiệu khách" -> intent is "mention 20% commission per closed deal".
+- "khi đó tôi sẽ biết được hướng chúng ta có thể collaborate với bạn" -> intent is "ask for details to see how we can collaborate".
 =========================================
 ` : ''}
 === PRIORITY 2: SCENARIO & BD KNOWLEDGE (Use ONLY to support the instruction, do not override it) ===
@@ -893,141 +886,172 @@ Return EXACTLY this JSON structure.
 
     const axios = require('axios')
     
-    const makeGroqCall = async (modelName) => {
+    const makeGroqCall = async (modelName, promptText) => {
       return axios.post('https://api.groq.com/openai/v1/chat/completions', {
         model: modelName,
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: userPrompt }
+          { role: "user", content: promptText }
         ],
         response_format: { type: "json_object" },
         temperature: 0.7
       }, { headers: { 'Authorization': 'Bearer ' + GROQ_KEY }});
     };
 
-    let r;
-    try {
-      r = await makeGroqCall("llama-3.3-70b-versatile");
-    } catch(e) {
-      log("Groq 70b failed (" + (e.response?.data?.error?.message || e.message) + "). Failing over to 8b-instant...");
-      r = await makeGroqCall("llama-3.1-8b-instant");
-    }
+    let safeSuggestions = null;
+    let detectedIntent = null;
+    let apiErrorStr = null;
+    let validationResult = 'success';
+    
+    const hasVietnameseLiteral = (text, instructionStr) => {
+      if (!instructionStr) return false;
+      const ignoreWords = ['bạn', 'có', 'không', 'tôi', 'làm', 'và', 'để', 'nhưng', 'của', 'là', 'cho', 'với', 'những', 'gì', 'đã'];
+      const instWords = instructionStr.toLowerCase().split(/\s+/).filter(w => w.length > 2 && !ignoreWords.includes(w));
+      const textLower = text.toLowerCase();
+      // If 2 or more non-trivial Vietnamese words from the instruction appear sequentially in the English text, flag it.
+      for (let i = 0; i < instWords.length - 1; i++) {
+        if (textLower.includes(instWords[i] + ' ' + instWords[i+1])) return true;
+      }
+      return false;
+    };
 
-    let rawText = r.data.choices[0].message.content;
-    // Strip markdown formatting if the LLM wraps the JSON in ```json ... ```
-    rawText = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
+    const hasHallucination = (text, instructionStr, chatHistoryStr) => {
+      const blacklist = ['prediction event', 'podcast', 'rate card', 'budget', 'marketing campaign', 'cmc', 'commission'];
+      const combinedContext = ((instructionStr||'') + ' ' + (chatHistoryStr||'')).toLowerCase();
+      const textLower = text.toLowerCase();
+      
+      for (const bad of blacklist) {
+        if (textLower.includes(bad) && !combinedContext.includes(bad)) return true;
+      }
+      return false;
+    };
 
-    try {
-      const parsed = JSON.parse(rawText)
-      if (parsed.normalizedIntent) {
-        log('AI Intent: ' + parsed.normalizedIntent)
+    let retryCount = 0;
+    const maxRetries = 2;
+    let currentPrompt = userPrompt;
+
+    while (retryCount <= maxRetries) {
+      let r;
+      try {
+        r = await makeGroqCall("llama-3.3-70b-versatile", currentPrompt);
+      } catch(e) {
+        log("Groq 70b failed (" + (e.response?.data?.error?.message || e.message) + "). Failing over to 8b-instant...");
+        try {
+           r = await makeGroqCall("llama-3.1-8b-instant", currentPrompt);
+        } catch(e2) {
+           apiErrorStr = e2.message;
+           break; // Both failed, break out of retry loop
+        }
       }
 
-      // Safety parsing: find ANY array in the parsed JSON object
-      let safeSuggestions = null;
+      let rawText = r?.data?.choices?.[0]?.message?.content;
+      if (!rawText) {
+        apiErrorStr = "Empty response from Groq";
+        break;
+      }
       
-      // If the LLM returned an array directly
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        if (typeof parsed[0] === 'object' && parsed[0].text) {
-          safeSuggestions = parsed;
-        } else if (typeof parsed[0] === 'string') {
-          safeSuggestions = parsed.map((val, i) => ({ label: `Option ${i + 1}`, text: val }));
-        }
-      } else if (typeof parsed === 'object' && parsed !== null) {
-        // Look for any array inside the object (e.g., suggestions, replyOptions, messages, output, etc.)
-        for (const key of Object.keys(parsed)) {
-          const val = parsed[key];
-          if (Array.isArray(val) && val.length > 0) {
-            if (typeof val[0] === 'object' && val[0].text) {
-              safeSuggestions = val;
-              break;
-            } else if (typeof val[0] === 'string') {
-              safeSuggestions = val.map((v, i) => ({ label: `Option ${i + 1}`, text: v }));
+      rawText = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
+
+      try {
+        const parsed = JSON.parse(rawText);
+        detectedIntent = parsed.normalizedIntent || detectedIntent;
+        
+        let tempSuggestions = null;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          tempSuggestions = typeof parsed[0] === 'string' ? parsed.map((val, i) => ({ label: `Option ${i + 1}`, text: val })) : parsed;
+        } else if (typeof parsed === 'object' && parsed !== null) {
+          for (const key of Object.keys(parsed)) {
+            if (Array.isArray(parsed[key]) && parsed[key].length > 0) {
+              tempSuggestions = typeof parsed[key][0] === 'string' ? parsed[key].map((val, i) => ({ label: `Option ${i + 1}`, text: val })) : parsed[key];
               break;
             }
           }
+          if (!tempSuggestions) {
+            const stringValues = Object.entries(parsed).filter(([key, val]) => key !== 'normalizedIntent' && typeof val === 'string' && val.length > 3).map(([_, val], i) => ({ label: `Option ${i + 1}`, text: val }));
+            if (stringValues.length > 0) tempSuggestions = stringValues;
+          }
         }
-      }
 
-      if (!safeSuggestions || !Array.isArray(safeSuggestions)) {
-        // Collect string values from the flat object, excluding normalizedIntent
-        const stringValues = Object.entries(parsed)
-          .filter(([key, val]) => key !== 'normalizedIntent' && typeof val === 'string' && val.length > 3)
-          .map(([_, val], i) => ({ label: `Option ${i + 1}`, text: val }));
-        
-        if (stringValues.length > 0) {
-          safeSuggestions = stringValues;
-          log('AI Safety Parse: Extracted ' + safeSuggestions.length + ' flat string suggestions.');
+        if (tempSuggestions && tempSuggestions.length > 0) {
+          const combinedHistory = history.slice(-40).map(m=>m.text).join(' ');
+          let failedReason = null;
+          
+          for (const sug of tempSuggestions) {
+            if (!sug.text) continue;
+            if (hasVietnameseLiteral(sug.text, instruction)) {
+              failedReason = "DO NOT copy Vietnamese words into the final reply. Translate the intent to English only.";
+              break;
+            }
+            if (hasHallucination(sug.text, instruction, combinedHistory)) {
+              failedReason = "DO NOT invent contexts like 'prediction event' or 'podcast' unless explicitly mentioned.";
+              break;
+            }
+          }
+
+          if (failedReason && retryCount < maxRetries) {
+            validationResult = 'failed_retry_' + retryCount;
+            log(`[AI Suggest Validation Failed]: ${failedReason}. Retrying...`);
+            currentPrompt += `\n\n[SYSTEM FEEDBACK]: Your previous response was invalid. ${failedReason} Fix it and return valid English options.`;
+            retryCount++;
+            continue; 
+          }
+          
+          safeSuggestions = tempSuggestions;
+          if (failedReason) validationResult = 'failed_forced_accept';
+          break;
         } else {
-          safeSuggestions = null;
+          throw new Error("No suggestions found in JSON");
+        }
+      } catch(err) {
+        log('Groq JSON parse error: ' + err.message + ' | Raw: ' + rawText);
+        if (retryCount < maxRetries) {
+           currentPrompt += `\n\n[SYSTEM FEEDBACK]: Your previous response was not valid JSON. Please return strictly valid JSON.`;
+           retryCount++;
+           continue;
+        } else {
+           apiErrorStr = "JSON parse error after retries: " + err.message;
+           break;
         }
       }
+    }
 
-      log('[AI Suggest Debug]', {
-        rawCommand: instruction,
-        normalizedCommand: normInstruction,
-        detectedIntent: parsed.normalizedIntent || null,
-        requestPayload: userPrompt,
-        apiError: null,
-        fallbackUsed: false,
-        finalSuggestions: safeSuggestions
-      });
+    const fallback = !safeSuggestions && instruction ? localFallback(instruction) : null;
 
+    log('[AI Suggest Debug]', {
+      rawCommand: instruction,
+      normalizedCommand: normInstruction,
+      detectedIntent: detectedIntent,
+      chatContextUsed: !!history.length,
+      finalEnglishOptions: safeSuggestions || fallback || null,
+      validationResult: validationResult,
+      fallbackUsed: !!fallback,
+      apiError: apiErrorStr
+    });
+
+    if (safeSuggestions) {
       res.json({ 
         ok: true, 
-        suggestions: safeSuggestions || null,
-        error: !safeSuggestions ? (instruction ? "Failed to generate custom reply. Please try rephrasing your command." : "Failed to generate contextual replies. Please provide a custom instruction.") : null,
+        suggestions: safeSuggestions,
         source: "fresh",
-        normalizedIntent: parsed.normalizedIntent || null,
-        finalPromptPreview: userPrompt
+        normalizedIntent: detectedIntent,
+        finalPromptPreview: currentPrompt
       })
-    } catch(err) {
-      log('Groq JSON parse error: ' + err.message + ' | Raw: ' + rawText)
-      if (instruction) {
-        const fallback = localFallback(instruction);
-        
-        log('[AI Suggest Debug]', {
-          rawCommand: instruction,
-          normalizedCommand: normInstruction,
-          detectedIntent: null,
-          requestPayload: userPrompt,
-          apiError: err.message,
-          fallbackUsed: !!fallback,
-          finalSuggestions: fallback || null
-        });
-
-        if (fallback) {
-          res.json({ ok: true, suggestions: fallback, source: "local_fallback", fallbackUsed: true, apiError: err.message });
-        } else {
-          res.json({ ok: false, error: "Failed to generate custom reply. Please try rephrasing your command.", source: "fallback_error", apiError: err.message });
-        }
-      } else {
-        res.json({ ok: false, error: "AI failed to generate contextual replies. Please try adding a custom instruction.", source: "fallback_error", apiError: err.message });
-      }
+    } else if (fallback) {
+      res.json({
+        ok: true,
+        suggestions: fallback,
+        source: "local_fallback",
+        error: "API failed, used local fallback"
+      })
+    } else {
+      res.json({
+        ok: false,
+        error: apiErrorStr || (instruction ? "Failed to generate custom reply. Please try rephrasing your command." : "Failed to generate contextual replies. Please provide a custom instruction.")
+      })
     }
   } catch(e) {
-    log('groq suggest error: ' + (e.response?.data?.error?.message || e.message))
-    if (instruction) {
-      const fallback = localFallback(instruction);
-
-      log('[AI Suggest Debug]', {
-        rawCommand: instruction,
-        normalizedCommand: normInstruction,
-        detectedIntent: null,
-        requestPayload: userPrompt || null,
-        apiError: e.response?.data?.error?.message || e.message,
-        fallbackUsed: !!fallback,
-        finalSuggestions: fallback || null
-      });
-
-      if (fallback) {
-        res.json({ ok: true, suggestions: fallback, source: "local_fallback", fallbackUsed: true, apiError: e.message });
-      } else {
-        res.json({ ok: false, error: "Failed to generate custom reply. Please try rephrasing your command.", source: "fallback_error", apiError: e.message });
-      }
-    } else {
-      res.json({ ok: false, error: "AI failed to generate contextual replies. Please try adding a custom instruction.", source: "fallback_error", apiError: e.message });
-    }
+    log('AI Suggest Error: ' + e.message)
+    res.json({ ok: false, error: e.message })
   }
 })
 
