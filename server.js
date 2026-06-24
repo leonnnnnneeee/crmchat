@@ -47,13 +47,13 @@ log('🚀 Coincu CRM Chat v16 — 20260619_071242')
 
 function requireAuth(req,res,next){
   const t=req.headers['x-auth-token']||req.query.token
-  if(!t)return res.status(401).json({error:'Unauthorized: Missing token'})
+  if(!t)return res.status(401).json({ok: false, error:'TOKEN_EXPIRED'})
   try {
     const decoded = jwt.verify(t, JWT_SECRET)
     req.user = decoded
     return next()
   } catch(err) {
-    return res.status(401).json({error:'Unauthorized: Invalid or expired token'})
+    return res.status(401).json({ok: false, error:'TOKEN_EXPIRED'})
   }
 }
 
@@ -446,7 +446,7 @@ app.get('/api/telegram/search', requireAuth, async (req, res) => {
 
 // ── CHAT MEMBERS ──
 app.get('/api/chat/members/:id', requireAuth, async (req, res) => {
-  if (!_session) return res.json({error: 'No session'})
+  if (!_session) return res.json({ok: false, error: 'TG_SESSION_EXPIRED'})
   try {
     const client = await getClient()
     const entity = await resolveEntity(client, req.params.id)
@@ -466,6 +466,10 @@ app.get('/api/chat/members/:id', requireAuth, async (req, res) => {
     
     res.json({ ok: true, members })
   } catch(e) {
+    if (e.message.includes('AUTH_KEY') || e.message.includes('SESSION')) {
+      _session = ''
+      return res.json({ok: false, error: 'TG_SESSION_EXPIRED'})
+    }
     if (e.message.includes('CHAT_ADMIN_REQUIRED')) {
       return res.status(403).json({ error: 'Unable to load members due to Telegram permission limits.' })
     }
@@ -520,6 +524,7 @@ app.get('/api/chat/shared_media/:id', requireAuth, async (req, res) => {
     const limit = parseInt(req.query.limit) || 30
     const offsetId = parseInt(req.query.offsetId) || 0
     const fromUser = req.query.fromUser
+    const accessHash = req.query.accessHash
     
     let filter = new Api.InputMessagesFilterPhotoVideo()
     if (type === 'media') filter = new Api.InputMessagesFilterPhotoVideo()
@@ -533,9 +538,14 @@ app.get('/api/chat/shared_media/:id', requireAuth, async (req, res) => {
     if (offsetId > 0) params.offsetId = offsetId
     if (fromUser) {
       try {
-        params.fromUser = await resolveEntity(client, fromUser)
+        if (accessHash && accessHash !== 'undefined') {
+          params.fromUser = new Api.InputPeerUser({ userId: BigInt(fromUser), accessHash: BigInt(accessHash) })
+        } else {
+          params.fromUser = await resolveEntity(client, fromUser)
+        }
       } catch (err) {
         log(`shared media: could not resolve fromUser ${fromUser}`)
+        return res.json({ ok: false, error: 'SENDER_NOT_FOUND', message: 'Could not resolve sender for group media' })
       }
     }
     

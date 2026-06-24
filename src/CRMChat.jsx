@@ -858,8 +858,9 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
 
     const isGroupUser = data?.chatId && data?.id && data.chatId.toString() !== data.id.toString();
     const fromUserQuery = isGroupUser ? `&fromUser=${data.id}` : '';
+    const accessHashQuery = (isGroupUser && data.accessHash) ? `&accessHash=${data.accessHash}` : '';
     
-    fetch(`/api/chat/shared_media/${data.chatId}?type=${tab}${fromUserQuery}&offsetId=${tabOffsetId[tab]}&limit=30`, { headers: {'x-auth-token': token} })
+    fetch(`/api/chat/shared_media/${data.chatId}?type=${tab}${fromUserQuery}${accessHashQuery}&offsetId=${tabOffsetId[tab]}&limit=30`, { headers: {'x-auth-token': token} })
       .then(async r => {
         const ct = r.headers.get('content-type');
         if (ct && ct.includes('text/html')) throw new Error('API route not found or backend returned HTML');
@@ -876,9 +877,14 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
            });
            setTabHasMore(prev => ({...prev, [tab]: d.hasMore}));
            setTabOffsetId(prev => ({...prev, [tab]: d.nextOffsetId}));
+        } else if (isMounted && !d.ok) {
+           setTabError(prev => ({...prev, [tab]: d.error || 'Failed to fetch'}));
         }
       })
-      .catch(e => console.error(e))
+      .catch(e => {
+        console.error(e);
+        if (isMounted) setTabError(prev => ({...prev, [tab]: e.message}));
+      })
       .finally(() => {
         if (isMounted) setTabLoading(prev => ({...prev, [tab]: false}));
       });
@@ -904,10 +910,26 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
   const businessHours = businessHoursObj ? `${businessHoursObj.timezoneId} (${businessHoursObj.openNow ? 'Open Now' : 'Closed'})` : null;
   const location = fullProfile?.fullUser?.businessLocation?.address;
 
+  const getSenderId = (m) => m.senderId || m.fromId || m.userId || m.peerId || m.author?.id || m.sender?.id || m.from?.id;
+
+  const groupMediaMsgs = useMemo(() => {
+    if (!isGroupProfile || !msgs) return [];
+    return msgs.filter(m => (getSenderId(m) || '').toString() === data.id.toString());
+  }, [msgs, isGroupProfile, data?.id]);
+
+  const fallbackData = useMemo(() => ({
+    media: groupMediaMsgs.filter(m => m.hasMedia && (m.isPhoto || m.isVideo)),
+    files: groupMediaMsgs.filter(m => m.isDoc && !m.isVideo),
+    links: groupMediaMsgs.filter(m => m.webpageUrl),
+    groups: []
+  }), [groupMediaMsgs]);
+
+  const isFallback = tabError[activeTab] === 'SENDER_NOT_FOUND';
+
   const tabs = [
-    { id: 'media', label: `Media`, count: tabData.media.length, hasMore: tabHasMore.media },
-    { id: 'files', label: `Files`, count: tabData.files.length, hasMore: tabHasMore.files },
-    { id: 'links', label: `Links`, count: tabData.links.length, hasMore: tabHasMore.links },
+    { id: 'media', label: `Media`, count: isFallback ? fallbackData.media.length : tabData.media.length, hasMore: !isFallback && tabHasMore.media },
+    { id: 'files', label: `Files`, count: isFallback ? fallbackData.files.length : tabData.files.length, hasMore: !isFallback && tabHasMore.files },
+    { id: 'links', label: `Links`, count: isFallback ? fallbackData.links.length : tabData.links.length, hasMore: !isFallback && tabHasMore.links },
     { id: 'groups', label: `Groups`, count: tabData.groups.length, hasMore: tabHasMore.groups }
   ];
 
@@ -997,10 +1019,27 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
 
           {/* Tab Content */}
           <div style={{padding:20}}>
+            {!isGroupProfile && activeTab === 'groups' && tabLoading.groups && tabData.groups.length === 0 && (
+              <div style={{padding:20,textAlign:'center',color:'#9b7ec8',fontSize:13}}>Loading common groups...</div>
+            )}
+            {!isGroupProfile && activeTab === 'groups' && !tabLoading.groups && tabData.groups.length === 0 && !tabError.groups && (
+              <div style={{padding:20,textAlign:'center',color:'#9b7ec8',fontSize:13}}>No groups in common</div>
+            )}
+            
+            {tabError[activeTab] && tabError[activeTab] !== 'SENDER_NOT_FOUND' && (
+              <div style={{padding:20,textAlign:'center',color:'#e53935',fontSize:13}}>Error: {tabError[activeTab]}</div>
+            )}
+
+            {tabError[activeTab] === 'SENDER_NOT_FOUND' && isGroupProfile && activeTab !== 'groups' && (
+              <div style={{padding:12,textAlign:'center',background:'rgba(229,57,53,.1)',color:'#e53935',fontSize:12,margin:'0 16px',borderRadius:8}}>
+                Backend full history search unavailable.<br/>Loaded group messages only.
+              </div>
+            )}
+
             {activeTab === 'media' && (
               <div style={{display:'flex', flexDirection:'column', gap:16}}>
                 <div style={{display:'grid',gridTemplateColumns:'repeat(3, 1fr)',gap:4}}>
-                  {tabData.media.map(m => (
+                  {(isFallback ? fallbackData.media : tabData.media).map(m => (
                     <div key={m.id} style={{aspectRatio:'1/1',background:'rgba(124,58,237,.1)',cursor:'pointer',position:'relative'}} onClick={()=>onOpenMedia && onOpenMedia(m)}>
                       <ChatPhoto msg={m} chatId={data.chatId} authToken={token} onImageClick={()=>{}}/>
                       {m.isVideo && <div style={{position:'absolute',top:'50%',left:'50%',transform:'translate(-50%,-50%)',color:'#fff',fontSize:24,textShadow:'0 2px 8px rgba(0,0,0,0.5)'}}>▶</div>}
@@ -1009,16 +1048,16 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
                 </div>
                 {tabLoading.media ? (
                   <div style={{textAlign:'center',color:'#9b7ec8',paddingTop:10}}>Loading media...</div>
-                ) : tabHasMore.media ? (
+                ) : !isFallback && tabHasMore.media ? (
                   <div onClick={()=>loadMore('media')} style={{textAlign:'center',color:'#7c3aed',cursor:'pointer',padding:8,background:'rgba(124,58,237,.1)',borderRadius:8}}>Load More</div>
-                ) : tabData.media.length === 0 && (
+                ) : (isFallback ? fallbackData.media.length === 0 : tabData.media.length === 0) && (
                   <div style={{textAlign:'center',color:'#9b7ec8',paddingTop:10}}>No media found</div>
                 )}
               </div>
             )}
             {activeTab === 'files' && (
               <div style={{display:'flex',flexDirection:'column',gap:12}}>
-                {tabData.files.map(m => (
+                {(isFallback ? fallbackData.files : tabData.files).map(m => (
                   <div key={m.id} onClick={()=>onOpenMedia && onOpenMedia(m)} style={{display:'flex',alignItems:'center',gap:12,cursor:'pointer',background:'rgba(124,58,237,.1)',padding:12,borderRadius:8}}>
                     <div style={{width:40,height:40,borderRadius:8,background:'#7c3aed',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20}}>📄</div>
                     <div style={{flex:1,overflow:'hidden'}}>
@@ -1029,20 +1068,18 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
                 ))}
                 {tabLoading.files ? (
                   <div style={{textAlign:'center',color:'#9b7ec8',paddingTop:10}}>Loading files...</div>
-                ) : tabHasMore.files ? (
+                ) : !isFallback && tabHasMore.files ? (
                   <div onClick={()=>loadMore('files')} style={{textAlign:'center',color:'#7c3aed',cursor:'pointer',padding:8,background:'rgba(124,58,237,.1)',borderRadius:8}}>Load More</div>
-                ) : tabData.files.length === 0 && (
+                ) : (isFallback ? fallbackData.files.length === 0 : tabData.files.length === 0) && (
                   <div style={{textAlign:'center',color:'#9b7ec8',paddingTop:10}}>No files found</div>
                 )}
               </div>
             )}
             {activeTab === 'links' && (
               <div style={{display:'flex',flexDirection:'column',gap:12}}>
-                {tabData.links.map((l, i) => {
-                  // Fallback to regex if backend didn't provide webpageUrl
-                  const urlMatch = l.webpageUrl || (l.text ? l.text.match(/(https?:\/\/[^\s]+)/) : null);
+                {(isFallback ? fallbackData.links : tabData.links).map((m, i) => {
+                  const urlMatch = m.webpageUrl || (m.text ? m.text.match(/(https?:\/\/[^\s]+)/) : null);
                   const finalUrl = typeof urlMatch === 'string' ? urlMatch : (urlMatch ? urlMatch[0] : '#');
-                  const finalTitle = l.webpageTitle || l.text || finalUrl;
                   
                   if (!finalUrl || finalUrl === '#') return null;
 
@@ -1050,17 +1087,17 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
                     <div key={i} style={{display:'flex',gap:12,background:'rgba(124,58,237,.1)',padding:12,borderRadius:8,alignItems:'center'}}>
                       <div style={{width:40,height:40,borderRadius:8,background:'rgba(124,58,237,.2)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18}}>🔗</div>
                       <div style={{flex:1,overflow:'hidden'}}>
-                        <a href={finalUrl} target="_blank" rel="noreferrer" style={{color:'#7c3aed',textDecoration:'none',fontSize:14,fontWeight:500,display:'block',textOverflow:'ellipsis',overflow:'hidden',whiteSpace:'nowrap'}}>{finalUrl}</a>
-                        <div style={{fontSize:12,color:'#9b7ec8',textOverflow:'ellipsis',overflow:'hidden',whiteSpace:'nowrap'}}>{finalTitle}</div>
+                        <div style={{fontSize:14,fontWeight:500,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',color:'#7dd3fc'}}>{m.webpageTitle || m.webpageUrl || 'Link'}</div>
+                        <div style={{fontSize:12,color:'#9b7ec8'}}>{new Date(m.date*1000).toLocaleString()}</div>
                       </div>
                     </div>
                   )
                 })}
                 {tabLoading.links ? (
                   <div style={{textAlign:'center',color:'#9b7ec8',paddingTop:10}}>Loading links...</div>
-                ) : tabHasMore.links ? (
+                ) : !isFallback && tabHasMore.links ? (
                   <div onClick={()=>loadMore('links')} style={{textAlign:'center',color:'#7c3aed',cursor:'pointer',padding:8,background:'rgba(124,58,237,.1)',borderRadius:8}}>Load More</div>
-                ) : tabData.links.length === 0 && (
+                ) : (isFallback ? fallbackData.links.length === 0 : tabData.links.length === 0) && (
                   <div style={{textAlign:'center',color:'#9b7ec8',paddingTop:10}}>No links found</div>
                 )}
               </div>
@@ -1323,32 +1360,51 @@ export default function CRMChat({ token, onAuthFailed }) {
   const [loadingMembers, setLoadingMembers] = useState(false)
   const [membersError, setMembersError] = useState(null)
 
-  useEffect(() => {
-    if (showMembers && sel && (sel.isGroup || sel.isChannel)) {
-      setMembersError(null)
-      const fetchMembers = async () => {
-        setLoadingMembers(true)
-        try {
-          const res = await fetch(`/api/chat/members/${sel.id}`, { headers: { "x-auth-token": token }})
-          if (res.status === 403) {
-            setMembersError("Unable to load members due to Telegram permission limits.")
-            return
-          }
-          const data = await res.json()
-          if (data.ok) {
-            setChatMembersCache(p => ({...p, [sel.id]: data.members}))
-          } else {
-            setMembersError(data.error || "Failed to load members")
-          }
-        } catch(e) {
-          setMembersError(e.message)
-        } finally {
-          setLoadingMembers(false)
+  const fetchMembers = useCallback(async () => {
+    if (!sel || (!sel.isGroup && !sel.isChannel)) return
+    setLoadingMembers(true)
+    setMembersError(null)
+    console.log(`[Members API] Fetching members for ${sel.id}...`)
+    try {
+      const res = await fetch(`/api/chat/members/${sel.id}`, { headers: { "x-auth-token": token }})
+      console.log(`[Members API] URL: /api/chat/members/${sel.id}, Status: ${res.status}`)
+      
+      if (res.status === 401) {
+        setMembersError("TOKEN_EXPIRED")
+        return
+      }
+      if (res.status === 403) {
+        setMembersError("Unable to load members due to Telegram permission limits.")
+        return
+      }
+      
+      const data = await res.json()
+      if (data.ok) {
+        setChatMembersCache(p => ({...p, [sel.id]: data.members}))
+      } else {
+        if (data.error === 'No session' || data.error === 'TG_SESSION_EXPIRED' || data.error?.includes('SESSION')) {
+          setMembersError("TG_SESSION_EXPIRED")
+        } else {
+          setMembersError(data.error || "Failed to load members")
         }
       }
-      fetchMembers()
+    } catch(e) {
+      console.log(`[Members API] Error:`, e)
+      setMembersError(e.message)
+    } finally {
+      setLoadingMembers(false)
     }
-  }, [showMembers, sel, token])
+  }, [sel, token])
+
+  useEffect(() => {
+    if (showMembers && sel && (sel.isGroup || sel.isChannel)) {
+      if (!chatMembersCache[sel.id]) {
+        fetchMembers()
+      } else {
+        setMembersError(null)
+      }
+    }
+  }, [showMembers, sel, fetchMembers, chatMembersCache])
 
   const [notifPerm,setNotifPerm]=useState(false)
   const [showTmpl,setShowTmpl]=useState(false)
@@ -2885,7 +2941,9 @@ export default function CRMChat({ token, onAuthFailed }) {
           <div style={{background:'#1a0533',borderRadius:16,width:360,maxHeight:'80vh',
             display:'flex',flexDirection:'column',boxShadow:'0 8px 32px rgba(0,0,0,.7)'}} onClick={e=>e.stopPropagation()}>
             <div style={{padding:'16px 20px',borderBottom:'1px solid #2d1155',display:'flex',alignItems:'center',justifyContent:'space-between',flexShrink:0}}>
-              <div style={{fontWeight:700,fontSize:16,color:'#f0e6ff'}}>{sel.memberCount ? `${sel.memberCount} Members` : 'Members'}</div>
+              <div style={{fontWeight:700,fontSize:16,color:'#f0e6ff'}}>
+                {(loadingMembers || membersError) ? 'Members' : (sel.memberCount ? `${sel.memberCount} Members` : 'Members')}
+              </div>
               <button onClick={()=>{setShowMembers(false);setMemberSearch("")}} style={{background:'transparent',border:'none',color:'#9b7ec8',cursor:'pointer',fontSize:18}}>✕</button>
             </div>
             <div style={{padding:'12px 16px',borderBottom:'1px solid #2d1155',flexShrink:0}}>
@@ -2901,7 +2959,26 @@ export default function CRMChat({ token, onAuthFailed }) {
                   return (
                     <div style={{padding:32,textAlign:'center',color:'#e53935',fontSize:13}}>
                       <div style={{fontSize:32,marginBottom:12}}>⚠️</div>
-                      {membersError}
+                      
+                      {membersError === 'TOKEN_EXPIRED' ? (
+                        <>
+                          <div style={{marginBottom:16,color:'#f0e6ff'}}>Session expired, please sign in again.</div>
+                          <button onClick={() => window.location.reload()} style={{padding:'8px 16px',background:'#7c3aed',color:'#fff',border:'none',borderRadius:8,cursor:'pointer'}}>Sign In</button>
+                        </>
+                      ) : membersError === 'TG_SESSION_EXPIRED' ? (
+                        <>
+                          <div style={{marginBottom:16,color:'#f0e6ff'}}>Telegram session expired, please reconnect</div>
+                          <div style={{display:'flex',gap:8,justifyContent:'center'}}>
+                            <button onClick={() => onAuthFailed && onAuthFailed()} style={{padding:'8px 16px',background:'#7c3aed',color:'#fff',border:'none',borderRadius:8,cursor:'pointer'}}>Reconnect</button>
+                            <button onClick={() => fetchMembers()} style={{padding:'8px 16px',background:'transparent',color:'#9b7ec8',border:'1px solid #9b7ec8',borderRadius:8,cursor:'pointer'}}>Retry</button>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div style={{marginBottom:16,color:'#f0e6ff'}}>{membersError}</div>
+                          <button onClick={() => fetchMembers()} style={{padding:'8px 16px',background:'#7c3aed',color:'#fff',border:'none',borderRadius:8,cursor:'pointer'}}>Retry</button>
+                        </>
+                      )}
                     </div>
                   )
                 }
