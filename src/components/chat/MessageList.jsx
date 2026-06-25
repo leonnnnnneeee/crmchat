@@ -45,6 +45,21 @@ export default function MessageList(props) {
     gifQuery, setGifQuery, searchGifs, gifs, loadingRef, showScrollBtn, aiError
   } = props;
 
+  const [seenTooltip, setSeenTooltip] = React.useState(null);
+
+  useEffect(() => {
+    const handleClose = (e) => {
+      if (e.key === 'Escape') setSeenTooltip(null);
+    };
+    const handleClickOutside = () => setSeenTooltip(null);
+    window.addEventListener('keydown', handleClose);
+    window.addEventListener('click', handleClickOutside);
+    return () => {
+      window.removeEventListener('keydown', handleClose);
+      window.removeEventListener('click', handleClickOutside);
+    };
+  }, []);
+
   useEffect(() => {
     const firstInMsg = msgs.find(m => !m.fromMe);
     if (firstInMsg && !window.__loggedSenderInfo) {
@@ -206,15 +221,32 @@ export default function MessageList(props) {
                             const status = msg.pending ? 'sending' : msg.failed ? 'failed' : isRead ? 'read' : 'sent';
                             
                             // Debug logs as requested
-                            console.log(`[Status Debug] msgId=${msg.id} isOutgoing=${msg.fromMe} rawStatus=${msg.pending ? 'pending' : msg.failed ? 'failed' : 'sent'} normalizedStatus=${status} maxReadId=${maxId} renderedIcon=${status}`);
+                            console.log(`[Status Debug] msgId=${msg.id} isOutgoing=${msg.fromMe} rawStatus=${msg.pending ? 'pending' : msg.failed ? 'failed' : 'sent'} normalizedStatus=${status} maxReadId=${maxId} renderedIcon=${status} seenAt=unavailable tooltipOpened=${seenTooltip?.msgId === msg.id}`);
                             
                             return (
-                              <span style={{
-                                display: 'inline-flex', 
-                                alignItems: 'center', 
-                                marginLeft: 4, 
-                                color: msg.failed ? '#ef4444' : (isRead ? '#4ade80' : 'rgba(255,255,255,.6)')
-                              }}>
+                              <span 
+                                onClick={(e) => {
+                                  if (isRead) {
+                                    e.stopPropagation();
+                                    const rect = e.currentTarget.getBoundingClientRect();
+                                    setSeenTooltip(seenTooltip?.msgId === msg.id ? null : { msgId: msg.id, x: rect.left, y: Math.max(10, rect.top - 36) });
+                                  }
+                                }}
+                                onMouseEnter={(e) => {
+                                  if (isRead) {
+                                    const rect = e.currentTarget.getBoundingClientRect();
+                                    setSeenTooltip({ msgId: msg.id, x: rect.left, y: Math.max(10, rect.top - 36) });
+                                  }
+                                }}
+                                onMouseLeave={() => setSeenTooltip(null)}
+                                style={{
+                                  display: 'inline-flex', 
+                                  alignItems: 'center', 
+                                  marginLeft: 4, 
+                                  cursor: isRead ? 'pointer' : 'default',
+                                  color: msg.failed ? '#ef4444' : (isRead ? '#4ade80' : 'rgba(255,255,255,.6)')
+                                }}
+                              >
                                 {msg.pending ? (
                                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                     <circle cx="12" cy="12" r="10"></circle>
@@ -408,6 +440,31 @@ export default function MessageList(props) {
               <span style={{fontSize:12,color:TG.textSec,flex:1}}>Release 🎤 to send, or swipe away to cancel</span>
               <button onClick={()=>{mediaRecRef.current?.stop();clearInterval(recordTimerRef.current);setRecording(false);setRecordSecs(0)}}
                 style={{background:"none",border:"none",color:TG.textSec,cursor:"pointer",fontSize:13}}>Cancel</button>
+            </div>
+          )}
+          {seenTooltip && (
+            <div style={{
+              position: 'fixed',
+              top: seenTooltip.y,
+              left: seenTooltip.x - 20, // center somewhat
+              background: 'rgba(0,0,0,0.85)',
+              color: '#fff',
+              padding: '6px 10px',
+              borderRadius: 8,
+              fontSize: 13,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              zIndex: 99999,
+              pointerEvents: 'none',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+              whiteSpace: 'nowrap'
+            }}>
+              <svg width="16" height="12" viewBox="0 0 24 24" fill="none" stroke="#4ade80" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="18 6 7 17 2 12"></polyline>
+                <path d="M22 10l-9.5 9.5-1.5-1.5"></path>
+              </svg>
+              <span>Seen</span>
             </div>
           )}
     </>
