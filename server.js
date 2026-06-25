@@ -1385,8 +1385,17 @@ app.get('/api/logs', requireAuth, (req,res) => res.json(logs))
 // ── SEND REACTION ──
 app.post(['/api/chat/react', '/api/telegram/messages/react'], requireAuth, async (req,res) => {
   if(!_session) return res.status(401).json({error:'Not connected'})
-  const {chatId, msgId, emoji, username} = req.body
-  if(!chatId||!msgId) return res.status(400).json({error:'Missing fields'})
+  const {chatId, messageId, emoji, username, topicId} = req.body
+  
+  const missing = [];
+  if (!chatId) missing.push("chatId");
+  if (!messageId) missing.push("messageId");
+  if (emoji === undefined) missing.push("emoji"); // emoji can be null, but must be defined in payload
+  
+  if (missing.length > 0) {
+    return res.status(400).json({ ok: false, code: "MISSING_FIELDS", missing });
+  }
+  
   try {
     const client = await withTimeout(getClient(), 10000, 'getClient')
     const entity = await withTimeout(resolveEntity(client, chatId, username), 8000, 'resolve')
@@ -1399,23 +1408,23 @@ app.post(['/api/chat/react', '/api/telegram/messages/react'], requireAuth, async
       reactionArr = [new Api.ReactionEmoji({ emoticon: emoji })];
     }
     
-    log(`[Reaction] Debug: chatId=${chatId}, msgId=${msgId}, resolvedPeer=${entity?.className}, peerId=${entity?.id || entity?.channelId || entity?.userId}`);
-    log(`[Reaction] Request to Telegram: msgId=${msgId}, emoji payload=${JSON.stringify(emoji)}, api_payload=${JSON.stringify(reactionArr)}`);
+    log(`[Reaction] Debug: chatId=${chatId}, messageId=${messageId}, resolvedPeer=${entity?.className}, peerId=${entity?.id || entity?.channelId || entity?.userId}`);
+    log(`[Reaction] Request to Telegram: messageId=${messageId}, emoji payload=${JSON.stringify(emoji)}, api_payload=${JSON.stringify(reactionArr)}`);
     
     const tgRes = await withTimeout(
       client.invoke(new Api.messages.SendReaction({
         peer: entity,
-        msgId: parseInt(msgId),
+        msgId: parseInt(messageId),
         reaction: reactionArr,
         addToRecent: true
       })),
       10000, 'sendReaction'
     )
-    log(`Reaction sent: ${msgId} ${JSON.stringify(emoji)}. Response: ${JSON.stringify(tgRes, null, 2)}`)
+    log(`Reaction sent: ${messageId} ${JSON.stringify(emoji)}. Response: ${JSON.stringify(tgRes, null, 2)}`)
     res.json({ok:true, tgRes})
   } catch(e) {
     if (e.message.includes('MESSAGE_NOT_MODIFIED')) {
-      log(`Reaction not modified: ${msgId} ${JSON.stringify(emoji)}`);
+      log(`Reaction not modified: ${messageId} ${JSON.stringify(emoji)}`);
       return res.json({ok: true, unchanged: true});
     }
     log('react error: ' + e.message)
