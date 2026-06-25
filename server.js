@@ -1011,11 +1011,12 @@ app.get('/api/chat/messages/:chatId/:msgId/read-receipts', requireAuth, async (r
   try {
     const client = await getClient();
     const entity = await withTimeout(resolveEntity(client, chatId), 8000, 'resolveEntity');
+    const inputPeer = await client.getInputEntity(entity || chatId);
     
-    if (entity.className === 'InputPeerUser') {
+    if (inputPeer.className === 'InputPeerUser') {
       try {
         const result = await client.invoke(new Api.messages.GetOutboxReadDate({
-          peer: entity,
+          peer: inputPeer,
           msgId: parseInt(msgId)
         }));
         return res.json({ ok: true, type: 'private', date: result.date });
@@ -1025,7 +1026,7 @@ app.get('/api/chat/messages/:chatId/:msgId/read-receipts', requireAuth, async (r
     } else {
       try {
         const result = await client.invoke(new Api.messages.GetMessageReadParticipants({
-          peer: entity,
+          peer: inputPeer,
           msgId: parseInt(msgId)
         }));
         
