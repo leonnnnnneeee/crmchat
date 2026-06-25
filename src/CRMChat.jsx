@@ -285,6 +285,7 @@ function ContextMenu({x,y,msg,allowedReactions,onDelete,onCopy,onReply,onClose,o
   const defaultEmojis = ['👍', '❤️', '😂', '🔥', '🙏', '😎', '👎', '🥰'];
   let emojisToRender = defaultEmojis;
   let reactionsNotAllowed = false;
+  let isFallback = false;
 
   if (allowedReactions) {
     if (allowedReactions.allowed === 'none') {
@@ -293,6 +294,9 @@ function ContextMenu({x,y,msg,allowedReactions,onDelete,onCopy,onReply,onClose,o
     } else if (allowedReactions.allowed === 'some' && allowedReactions.emoticons) {
       emojisToRender = allowedReactions.emoticons.filter(e => defaultEmojis.includes(e));
       if (emojisToRender.length === 0) emojisToRender = allowedReactions.emoticons.slice(0, 8);
+    } else if (allowedReactions.allowed === 'fallback') {
+      isFallback = true;
+      emojisToRender = ['👍', '❤️']; // Safe fallback
     }
   }
 
@@ -305,6 +309,7 @@ function ContextMenu({x,y,msg,allowedReactions,onDelete,onCopy,onReply,onClose,o
     }}>
       {!reactionsNotAllowed && emojisToRender.length > 0 ? (
         <div onClick={(e) => { e.stopPropagation(); e.preventDefault(); }} style={{display:'flex', gap:4, padding:'8px 12px', borderBottom:'1px solid rgba(124,58,237,.2)', flexWrap:'wrap', justifyContent:'center', marginBottom:4}}>
+          {isFallback && <div style={{width:'100%', fontSize:10, color:'#6b4d94', textAlign:'center', marginBottom:4}}>Using fallback reactions</div>}
           {emojisToRender.map(emoji => (
             <button type="button" key={emoji} onClick={(e) => { 
               console.log('emojiClickStarted', { selectedMessageId: msg?.id, selectedEmoji: emoji });
@@ -1587,17 +1592,27 @@ export default function CRMChat({ token, onAuthFailed }) {
   
   const [allowedReactionsCache, setAllowedReactionsCache] = useState({})
   
+  const fetchAllowedReactions = useCallback(async (chatId) => {
+    try {
+      const res = await fetch(`/api/chat/${chatId}/allowed_reactions`, {
+        headers: { 'x-auth-token': token }
+      });
+      const d = await res.json();
+      console.log('allowedReactionsFetchStatus', d);
+      console.log('allowedReactionsSource', d.source || 'cache');
+      if (!d.error) {
+        setAllowedReactionsCache(p => ({ ...p, [chatId]: d }));
+      }
+    } catch(e) {
+      console.log('fetch allowed_reactions error:', e);
+    }
+  }, [token]);
+
   useEffect(() => {
     if (sel && !allowedReactionsCache[sel.id]) {
-      fetch(`/api/chat/${sel.id}/allowed_reactions`, {
-        headers: { 'x-auth-token': token }
-      }).then(r => r.json()).then(d => {
-        if (!d.error) {
-          setAllowedReactionsCache(p => ({ ...p, [sel.id]: d }));
-        }
-      }).catch(e => console.log('fetch allowed_reactions error:', e));
+      fetchAllowedReactions(sel.id);
     }
-  }, [sel, token])
+  }, [sel, token, allowedReactionsCache, fetchAllowedReactions])
   
   const [leadSource,setLeadSource]=useState({})
   const [probs,setProbs]=useState({})
@@ -2177,7 +2192,8 @@ export default function CRMChat({ token, onAuthFailed }) {
       if (allowed.allowed === 'none') validationResult = 'not_allowed';
       if (allowed.allowed === 'some' && allowed.emoticons && !allowed.emoticons.includes(emoji)) validationResult = 'not_allowed';
     }
-    console.log('validationResult', validationResult);
+    console.log('frontendValidationResult', validationResult);
+    console.log('skippedApiCall', validationResult === 'not_allowed');
 
     if (validationResult === 'not_allowed') {
        alert('This reaction is not allowed in this chat.');
@@ -2269,10 +2285,26 @@ export default function CRMChat({ token, onAuthFailed }) {
       });
       const d = await res.json();
       console.log('apiStatus', d);
+      console.log('backendValidationResult', d.code || 'allowed');
       console.log('finalReactionsFromTelegram', d.tgRes || 'unchanged');
       if (!d.ok && !d.unchanged) {
-        if (d.error && d.error.includes('REACTION_INVALID')) {
-          alert('Biểu tượng cảm xúc này không được phép trong nhóm/chat này (REACTION_INVALID).');
+        if (d.error && d.error.includes('REACTION_INVALID') || d.code === 'REACTION_INVALID') {
+          alert('This reaction is not allowed in this chat (REACTION_INVALID).');
+          // Update cache to remove this emoji if it was mistakenly cached as allowed
+          setAllowedReactionsCache(prev => {
+            const current = prev[targetChatId];
+            if (current && current.allowed === 'some' && current.emoticons) {
+              return {
+                ...prev,
+                [targetChatId]: {
+                  ...current,
+                  emoticons: current.emoticons.filter(e => e !== emoji)
+                }
+              };
+            }
+            return prev;
+          });
+          fetchAllowedReactions(targetChatId);
         } else {
           alert('Lỗi thả emoji từ Telegram: ' + (d.error || 'Unknown error'));
         }

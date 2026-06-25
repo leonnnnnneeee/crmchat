@@ -540,24 +540,26 @@ app.get('/api/chat/:id/allowed_reactions', requireAuth, async (req, res) => {
     }
 
     if (!full || !full.fullChat) {
-      return res.json({ allowed: 'all' })
+      console.log(`[Reactions] fullChat missing for ${req.params.id}. Returning fallback.`);
+      return res.json({ allowed: 'fallback', source: 'fallback' })
     }
 
     const availableReactions = full.fullChat.availableReactions;
     if (!availableReactions) {
-      return res.json({ allowed: 'all' });
+      console.log(`[Reactions] availableReactions missing for ${req.params.id}. Returning fallback.`);
+      return res.json({ allowed: 'fallback', source: 'fallback' });
     }
 
     if (availableReactions.className === 'ChatReactionsAll') {
-      return res.json({ allowed: 'all' });
+      return res.json({ allowed: 'all', source: 'telegram' });
     } else if (availableReactions.className === 'ChatReactionsNone') {
-      return res.json({ allowed: 'none' });
+      return res.json({ allowed: 'none', source: 'telegram' });
     } else if (availableReactions.className === 'ChatReactionsSome') {
       const emoticons = availableReactions.reactions.map(r => r.emoticon).filter(Boolean);
-      return res.json({ allowed: 'some', emoticons });
+      return res.json({ allowed: 'some', emoticons, source: 'telegram' });
     }
     
-    res.json({ allowed: 'all' });
+    return res.json({ allowed: 'fallback', source: 'fallback' });
   } catch(e) {
     res.status(500).json({ error: e.message })
   }
@@ -1507,6 +1509,10 @@ app.post(['/api/chat/react', '/api/telegram/messages/react'], requireAuth, async
   if (missing.length > 0) {
     return res.status(400).json({ ok: false, code: "MISSING_FIELDS", missing });
   }
+  
+  // Backend validation against allowedReactions (if we can fetch it synchronously here)
+  // Actually, to avoid slowing down the reaction, we just try to send it and handle REACTION_INVALID gracefully.
+
   
   try {
     const client = await withTimeout(getClient(), 10000, 'getClient')
