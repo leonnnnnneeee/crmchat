@@ -1532,14 +1532,14 @@ export default function CRMChat({ token, onAuthFailed }) {
       if (optimisticChosen) {
         const backendHasIt = backendReactions.find(r => r.chosen && r.emoticon === optimisticChosen.emoticon)
         if (backendHasIt) {
-          delete pendingReactionsRef.current[msgId]
+          // Keep pending alive to protect against stale background polling for 10s
           return backendReactions
         }
         return pending.reactions
       } else {
         const backendHasChosen = backendReactions.find(r => r.chosen)
         if (!backendHasChosen) {
-          delete pendingReactionsRef.current[msgId]
+          // Keep pending alive to protect against stale background polling for 10s
           return backendReactions
         }
         return pending.reactions
@@ -2211,6 +2211,7 @@ export default function CRMChat({ token, onAuthFailed }) {
       const d = await res.json();
       console.log('apiStatus', d);
       if (!d.ok && !d.unchanged) {
+        alert('Lỗi thả emoji từ Telegram: ' + (d.error || 'Unknown error'));
         delete pendingReactionsRef.current[msgId];
         setMsgs(prev => prev.map(m => m.id === msgId ? originalMsg : m));
       }
