@@ -961,12 +961,13 @@ app.post('/api/ai/transcribe-voice', requireAuth, async (req,res) => {
     const form = new FormData();
     form.append('file', buffer, { filename: 'audio.ogg', contentType: 'audio/ogg' });
     form.append('model', 'whisper-large-v3');
+    form.append('response_format', 'verbose_json');
 
     const response = await axios.post('https://api.groq.com/openai/v1/audio/transcriptions', form, {
       headers: { ...form.getHeaders(), Authorization: 'Bearer ' + GROQ_KEY }
     })
     
-    res.json({ ok: true, text: response.data.text })
+    res.json({ ok: true, text: response.data.text, language: response.data.language })
   } catch(e) {
     log('transcribe error: ' + (e.response?.data?.error?.message || e.message))
     res.status(500).json({ error: e.response?.data?.error?.message || e.message })

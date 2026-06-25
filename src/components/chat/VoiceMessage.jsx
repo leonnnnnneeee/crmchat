@@ -18,7 +18,10 @@ export default function VoiceMessage({ msg, chatId, token }) {
 
   // Transcription state
   const cacheKey = `transcript_${msg.id}`;
+  const langCacheKey = `transcript_lang_${msg.id}`;
   const [transcript, setTranscript] = useState(localStorage.getItem(cacheKey) || null);
+  const [language, setLanguage] = useState(localStorage.getItem(langCacheKey) || null);
+  const [isExpanded, setIsExpanded] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
 
   const fileId = msg.media?.document?.id || '';
@@ -86,9 +89,15 @@ export default function VoiceMessage({ msg, chatId, token }) {
     return `${m}:${s.toString().padStart(2, '0')}`;
   };
 
-  const transcribeVoice = async (e) => {
+  const handleToggleTranscript = async (e) => {
     e.stopPropagation();
-    if (transcribing || transcript) return;
+    if (transcribing) return;
+    
+    if (transcript) {
+      setIsExpanded(!isExpanded);
+      return;
+    }
+
     setTranscribing(true);
     try {
       const res = await fetch('/api/ai/transcribe-voice', {
@@ -100,6 +109,11 @@ export default function VoiceMessage({ msg, chatId, token }) {
       if (data.ok && data.text) {
         setTranscript(data.text);
         localStorage.setItem(cacheKey, data.text);
+        if (data.language) {
+          setLanguage(data.language);
+          localStorage.setItem(langCacheKey, data.language);
+        }
+        setIsExpanded(true);
       } else {
         alert('Transcription failed: ' + (data.error || 'Unknown error'));
       }
@@ -188,38 +202,45 @@ export default function VoiceMessage({ msg, chatId, token }) {
             })}
           </div>
           
-          {/* Bottom Row: Duration & Transcribe Button */}
+          {/* Bottom Row: Duration */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div style={{ fontSize: 11, color: msg.fromMe ? 'rgba(255,255,255,0.8)' : TG.textMuted }}>
               {formatTime(displayTime)}
             </div>
-            
-            {/* Transcribe Button */}
-            {!transcript && (
-              <div 
-                onClick={transcribeVoice}
-                style={{
-                  fontSize: 14, fontWeight: 'bold', color: msg.fromMe ? '#fff' : TG.blueLight,
-                  cursor: transcribing ? 'default' : 'pointer',
-                  opacity: transcribing ? 0.5 : 1,
-                  padding: '0 4px'
-                }}
-                title="Transcribe Voice Message"
-              >
-                {transcribing ? '...' : 'A'}
-              </div>
-            )}
           </div>
+        </div>
+
+        {/* Transcribe Button Toggle */}
+        <div 
+          onClick={handleToggleTranscript}
+          style={{
+            width: 32, height: 32, borderRadius: '50%',
+            background: isExpanded ? (msg.fromMe ? '#fff' : TG.blueLight) : 'transparent',
+            color: isExpanded ? (msg.fromMe ? '#7c3aed' : '#fff') : (msg.fromMe ? '#fff' : TG.blueLight),
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            cursor: transcribing ? 'default' : 'pointer',
+            opacity: transcribing ? 0.5 : 1,
+            fontWeight: 'bold', fontSize: 15,
+            transition: 'all 0.2s', flexShrink: 0
+          }}
+          title="Toggle Transcript"
+        >
+          {transcribing ? '...' : 'Aa'}
         </div>
       </div>
 
-      {/* Transcript Text */}
-      {transcript && (
+      {/* Collapsible Transcript Text */}
+      {isExpanded && transcript && (
         <div style={{ 
           marginTop: 8, padding: '8px 12px', background: 'rgba(0,0,0,0.15)', 
           borderRadius: 8, fontSize: 13, color: '#fff', borderLeft: `2px solid ${msg.fromMe ? '#fff' : TG.blueLight}`
         }}>
           {transcript}
+          {language && language.toLowerCase() !== 'english' && (
+            <div style={{ fontSize: 11, opacity: 0.6, marginTop: 4, fontStyle: 'italic' }}>
+              Detected: {language}
+            </div>
+          )}
         </div>
       )}
     </div>
