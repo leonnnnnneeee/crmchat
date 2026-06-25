@@ -205,8 +205,16 @@ export default function MessageList(props) {
                       </div>
                       {msg.reactions && msg.reactions.length > 0 && (
                         <div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:4,marginLeft: msg.fromMe?0:12,marginRight: msg.fromMe?12:0,justifyContent:msg.fromMe?"flex-end":"flex-start"}}>
-                          {msg.reactions.map((r, idx)=>(
-                            <span key={`${r.emoticon}-${idx}`} onClick={(e)=>{ e.stopPropagation(); toggleReaction(sel.id, selTopic?.id || null, msg.id, r.emoticon); }}
+                          {msg.reactions.map((r, idx)=>{
+                            const isCustom = r.type === 'custom';
+                            const keyStr = isCustom ? r.customEmojiId : r.emoticon;
+                            
+                            return (
+                            <span key={`${keyStr}-${idx}`} onClick={(e)=>{ 
+                                e.stopPropagation(); 
+                                const payload = isCustom ? { type: 'custom', customEmojiId: r.customEmojiId } : r.emoticon;
+                                toggleReaction(sel.id, selTopic?.id || null, msg.id, payload); 
+                              }}
                               style={{
                                 background: r.chosen ? "rgba(124,58,237,.3)" : "rgba(0,0,0,.4)",
                                 border: r.chosen ? "1px solid rgba(124,58,237,.5)" : "1px solid rgba(255,255,255,.05)",
@@ -215,16 +223,20 @@ export default function MessageList(props) {
                                 boxShadow: "0 1px 2px rgba(0,0,0,.2)"
                               }}>
                               <span style={{display:'flex', alignItems:'center', gap:2}}>
-                                {msg.recentReactions?.filter(rr => rr.emoticon === r.emoticon).slice(0, 3).map((rr, rrIdx) => (
+                                {msg.recentReactions?.filter(rr => (rr.type === 'custom' ? rr.customEmojiId === r.customEmojiId : rr.emoticon === r.emoticon)).slice(0, 3).map((rr, rrIdx) => (
                                   <span key={rrIdx} style={{display:'inline-flex', borderRadius:'50%', overflow:'hidden', width:16, height:16}}>
                                     <Avatar chatId={rr.peerId} size={16} name="" />
                                   </span>
                                 ))}
-                                {r.emoticon}
+                                {isCustom ? (
+                                  <img src={r.thumbnailUrl} style={{width:18, height:18, objectFit:'contain'}} onError={(e)=>{e.target.style.display='none'}} alt="custom_emoji" />
+                                ) : (
+                                  r.emoticon
+                                )}
                               </span>
                               {r.count > 0 ? <span style={{fontSize:12, fontWeight:500}}>{r.count}</span> : ""}
                             </span>
-                          ))}
+                          )})}
                         </div>
                       )}
                     </div>

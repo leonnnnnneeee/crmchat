@@ -575,7 +575,13 @@ app.get('/api/telegram/available-reactions', requireAuth, async (req, res) => {
     } else if (availableReactions.className === 'ChatReactionsNone') {
       return res.json({ ok: true, source: 'telegram', chatId, allowAll: false, reactionsEnabled: false, reactions: [], fullChatFound: true });
     } else if (availableReactions.className === 'ChatReactionsSome') {
-      const emoticons = availableReactions.reactions.map(r => r.emoticon).filter(Boolean);
+      const emoticons = availableReactions.reactions.map(r => {
+        if (r.className === 'ReactionCustomEmoji') {
+          const docId = r.documentId ? r.documentId.toString() : '';
+          return { type: 'custom', customEmojiId: docId, thumbnailUrl: `/api/telegram/custom-emoji/${docId}` };
+        }
+        return r.emoticon;
+      }).filter(Boolean);
       return res.json({ ok: true, source: 'telegram', chatId, allowAll: false, reactionsEnabled: true, reactions: emoticons, fullChatFound: true });
     }
     
@@ -860,16 +866,30 @@ app.get(['/api/chat/media/:chatId/:msgId', '/api/telegram/media/audio'], require
 function parseReactions(results) {
   if (!results) return [];
   return results.map(r => {
+    const isCustom = r.reaction?.className === 'ReactionCustomEmoji';
+    
     let emojiStr = '';
     if (typeof r.reaction === 'string') emojiStr = r.reaction;
     else if (r.reaction?.emoticon) emojiStr = r.reaction.emoticon;
-    else if (r.reaction?.className) emojiStr = r.reaction.className;
-    
+    else if (r.reaction?.className === 'ReactionEmoji') emojiStr = r.reaction.emoticon;
+
+    if (isCustom) {
+      const documentId = r.reaction.documentId ? r.reaction.documentId.toString() : '';
+      return {
+        type: 'custom',
+        customEmojiId: documentId,
+        thumbnailUrl: `/api/telegram/custom-emoji/${documentId}`,
+        count: r.count || 0,
+        chosen: typeof r.chosenOrder === 'number' || r.chosen === true
+      };
+    }
+
     const emojiMap = { 'Like': '👍', 'Laugh': '😂', 'Heart': '❤️', 'Fire': '🔥', 'Pray': '🙏', 'Smile': '🥰', 'Dislike': '👎', 'Cool': '😎' };
     const finalEmoji = emojiMap[emojiStr] || emojiStr || '';
     if (!finalEmoji) return null;
     
     return {
+      type: 'emoji',
       emoticon: finalEmoji,
       count: r.count || 0,
       chosen: typeof r.chosenOrder === 'number' || r.chosen === true
@@ -880,17 +900,30 @@ function parseReactions(results) {
 function parseRecentReactions(recentReactions) {
   if (!recentReactions) return [];
   return recentReactions.map(rr => {
+    const isCustom = rr.reaction?.className === 'ReactionCustomEmoji';
+    
     let emojiStr = '';
     if (typeof rr.reaction === 'string') emojiStr = rr.reaction;
     else if (rr.reaction?.emoticon) emojiStr = rr.reaction.emoticon;
-    else if (rr.reaction?.className) emojiStr = rr.reaction.className;
-    
+    else if (rr.reaction?.className === 'ReactionEmoji') emojiStr = rr.reaction.emoticon;
+
+    if (isCustom) {
+      const documentId = rr.reaction.documentId ? rr.reaction.documentId.toString() : '';
+      return {
+        peerId: rr.peerId?.userId?.toString() || rr.peerId?.channelId?.toString() || null,
+        type: 'custom',
+        customEmojiId: documentId,
+        thumbnailUrl: `/api/telegram/custom-emoji/${documentId}`
+      };
+    }
+
     const emojiMap = { 'Like': '👍', 'Laugh': '😂', 'Heart': '❤️', 'Fire': '🔥', 'Pray': '🙏', 'Smile': '🥰', 'Dislike': '👎', 'Cool': '😎' };
     const finalEmoji = emojiMap[emojiStr] || emojiStr || '';
     if (!finalEmoji) return null;
     
     return {
       peerId: rr.peerId?.userId?.toString() || rr.peerId?.channelId?.toString() || null,
+      type: 'emoji',
       emoticon: finalEmoji
     };
   }).filter(Boolean);
@@ -1541,10 +1574,20 @@ app.post(['/api/chat/react', '/api/telegram/messages/react'], requireAuth, async
     const {Api} = require('telegram/tl')
     
     let reactionArr = [];
+    const parseEmojiParam = (e) => {
+      if (typeof e === 'object' && e !== null) {
+        if (e.type === 'custom') return new Api.ReactionCustomEmoji({ documentId: BigInt(e.customEmojiId) });
+      } else if (typeof e === 'string') {
+        return new Api.ReactionEmoji({ emoticon: e });
+      }
+      return null;
+    };
+
     if (Array.isArray(emoji)) {
-      reactionArr = emoji.map(e => new Api.ReactionEmoji({ emoticon: e }));
+      reactionArr = emoji.map(parseEmojiParam).filter(Boolean);
     } else if (emoji) {
-      reactionArr = [new Api.ReactionEmoji({ emoticon: emoji })];
+      const parsed = parseEmojiParam(emoji);
+      if (parsed) reactionArr = [parsed];
     }
     
     log(`[Reaction] Debug: chatId=${chatId}, messageId=${messageId}, resolvedPeer=${entity?.className}, peerId=${entity?.id || entity?.channelId || entity?.userId}`);
@@ -1866,3 +1909,39 @@ process.on('uncaughtException', (err) => {
 })
 
 app.listen(PORT, () => log('Listening on port ' + PORT))
+
+// ── CUSTOM EMOJI MEDIA ──
+app.get('/api/telegram/custom-emoji/:documentId', requireAuth, async (req, res) => {
+  if (!_session) return res.status(401).json({ error: 'Not connected' });
+  const { documentId } = req.params;
+  
+  try {
+    const client = await getClient();
+    const { Api } = require('telegram/tl');
+    const { Buffer } = require('buffer');
+
+    // Basic memory cache could go here, but for simplicity we stream it
+    const result = await client.invoke(new Api.messages.GetCustomEmojiDocuments({
+      documentId: [BigInt(documentId)]
+    }));
+
+    if (!result || !result.length) {
+      return res.status(404).send('Not found');
+    }
+
+    const document = result[0];
+    const buffer = await client.downloadMedia(document, { workers: 1 });
+    
+    if (!buffer) {
+      return res.status(404).send('Could not download media');
+    }
+
+    // Custom emojis are typically WEBP or TGS. Let's try to detect format from mime
+    res.set('Content-Type', document.mimeType || 'image/webp');
+    res.set('Cache-Control', 'public, max-age=31536000'); // Cache for 1 year
+    res.send(buffer);
+  } catch (e) {
+    console.log('[Reactions] Failed to fetch custom emoji:', documentId, e.message);
+    res.status(500).json({ error: e.message });
+  }
+});

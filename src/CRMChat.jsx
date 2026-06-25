@@ -326,8 +326,40 @@ function ContextMenu({x,y,msg,allowedReactions,onDelete,onCopy,onReply,onClose,o
   }
   
   const filteredEmojis = search 
-    ? fullEmojis.filter(e => e.includes(search) || 'smile like heart fire ok'.includes(search)) // basic fake search
+    ? fullEmojis.filter(e => {
+        const str = typeof e === 'string' ? e : '';
+        return str.toLowerCase().includes(search.toLowerCase()) || 'smile like heart fire ok'.includes(search.toLowerCase())
+      }) 
     : fullEmojis;
+
+  const renderEmojiButton = (emoji) => {
+    const isCustom = emoji && emoji.type === 'custom';
+    const key = isCustom ? emoji.customEmojiId : emoji;
+    const content = isCustom ? (
+      <img src={emoji.thumbnailUrl} style={{width:24, height:24, objectFit:'contain'}} onError={(e)=>e.target.style.display='none'} alt="custom_emoji" />
+    ) : (
+      emoji
+    );
+    
+    return (
+      <button type="button" key={key} onClick={(e) => { 
+        console.log('emojiClickStarted', { selectedMessageId: msg?.id, selectedEmoji: emoji });
+        e.stopPropagation(); 
+        e.preventDefault(); 
+        onReact?.(emoji); 
+        setTimeout(() => onClose(), 50); 
+      }}
+      style={{
+        background:'transparent', border:'none',
+        fontSize:24,cursor:'pointer',padding:4,borderRadius:8,
+        transition:'transform 0.1s', display:'flex', alignItems:'center', justifyContent:'center'
+      }}
+      onMouseEnter={e=>e.currentTarget.style.background='rgba(124,58,237,.2)'}
+      onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+        {content}
+      </button>
+    );
+  };
 
   if (allowedReactions) {
     if (allowedReactions.status === 'loading') {
@@ -381,24 +413,7 @@ function ContextMenu({x,y,msg,allowedReactions,onDelete,onCopy,onReply,onClose,o
           </div>
           <div style={{flex:1, overflowY:'auto', padding:'8px'}}>
             <div style={{display:'grid', gridTemplateColumns:'repeat(7, 1fr)', gap:4}}>
-              {filteredEmojis.map(emoji => (
-                <button type="button" key={emoji} onClick={(e) => { 
-                  console.log('emojiClickStarted', { selectedMessageId: msg?.id, selectedEmoji: emoji });
-                  e.stopPropagation(); 
-                  e.preventDefault(); 
-                  onReact?.(emoji); 
-                  setTimeout(() => onClose(), 50); 
-                }}
-                style={{
-                  background:'transparent', border:'none',
-                  fontSize:24,cursor:'pointer',padding:4,borderRadius:8,
-                  transition:'transform 0.1s', display:'flex', alignItems:'center', justifyContent:'center'
-                }}
-                onMouseEnter={e=>e.currentTarget.style.background='rgba(124,58,237,.2)'}
-                onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-                  {emoji}
-                </button>
-              ))}
+              {filteredEmojis.map(renderEmojiButton)}
             </div>
           </div>
         </div>
@@ -411,24 +426,7 @@ function ContextMenu({x,y,msg,allowedReactions,onDelete,onCopy,onReply,onClose,o
           ) : (!reactionsNotAllowed && emojisToRender.length > 0) ? (
             <div onClick={(e) => { e.stopPropagation(); e.preventDefault(); }} style={{display:'flex', gap:4, padding:'8px 12px', borderBottom:'1px solid rgba(124,58,237,.2)', flexWrap:'wrap', justifyContent:'center', marginBottom:4}}>
               {isFallback && <div style={{width:'100%', fontSize:10, color:'#6b4d94', textAlign:'center', marginBottom:4}}>Using fallback reactions ({fallbackReason})</div>}
-              {emojisToRender.map(emoji => (
-                <button type="button" key={emoji} onClick={(e) => { 
-                  console.log('emojiClickStarted', { selectedMessageId: msg?.id, selectedEmoji: emoji });
-                  e.stopPropagation(); 
-                  e.preventDefault(); 
-                  onReact?.(emoji); 
-                  setTimeout(() => onClose(), 50); 
-                }}
-                style={{
-                  background:'transparent', border:'none',
-                  fontSize:22,cursor:'pointer',padding:4,borderRadius:8,
-                  transition:'transform 0.1s', display:'inline-block'
-                }}
-                onMouseEnter={e=>e.currentTarget.style.transform='scale(1.2)'}
-                onMouseLeave={e=>e.currentTarget.style.transform='scale(1)'}>
-                  {emoji}
-                </button>
-              ))}
+              {emojisToRender.map(renderEmojiButton)}
               
               {/* Expand button */}
               {fullEmojis.length > emojisToRender.length && (
@@ -2314,6 +2312,14 @@ export default function CRMChat({ token, onAuthFailed }) {
     console.log('selectedEmoji', emoji);
     console.log('allowedReactions', allowed);
     
+    const isCustom = emoji && emoji.type === 'custom';
+    const compareEmoji = (e1, e2) => {
+      if (typeof e1 === 'object' && e1.type === 'custom' && typeof e2 === 'object' && e2.type === 'custom') {
+        return e1.customEmojiId === e2.customEmojiId;
+      }
+      return e1 === e2;
+    };
+
     let validationResult = 'allowed';
     if (allowed) {
       if (allowed.ok) {
@@ -2322,7 +2328,7 @@ export default function CRMChat({ token, onAuthFailed }) {
         } else if (!allowed.allowAll) {
           if (!allowed.reactions || allowed.reactions.length === 0) {
             validationResult = 'not_allowed';
-          } else if (!allowed.reactions.includes(emoji)) {
+          } else if (!allowed.reactions.some(r => compareEmoji(r, emoji))) {
             validationResult = 'not_allowed';
           }
         }
@@ -2434,7 +2440,7 @@ export default function CRMChat({ token, onAuthFailed }) {
                 ...prev,
                 [targetChatId]: {
                   ...current,
-                  reactions: current.reactions.filter(e => e !== emoji)
+                  reactions: current.reactions.filter(e => !compareEmoji(e, emoji))
                 }
               };
             }
