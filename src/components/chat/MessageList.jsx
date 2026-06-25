@@ -206,7 +206,7 @@ export default function MessageList(props) {
                       {msg.reactions && msg.reactions.length > 0 && (
                         <div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:4,marginLeft: msg.fromMe?0:12,marginRight: msg.fromMe?12:0,justifyContent:msg.fromMe?"flex-end":"flex-start"}}>
                           {msg.reactions.map((r, idx)=>(
-                            <span key={`${r.emoticon}-${idx}`} onClick={(e)=>{ e.stopPropagation(); toggleReaction(msg.id, r.emoticon); }}
+                            <span key={`${r.emoticon}-${idx}`} onClick={(e)=>{ e.stopPropagation(); toggleReaction(sel.id, selTopic?.id || null, msg.id, r.emoticon); }}
                               style={{
                                 background: r.chosen ? "rgba(124,58,237,.3)" : "rgba(0,0,0,.4)",
                                 border: r.chosen ? "1px solid rgba(124,58,237,.5)" : "1px solid rgba(255,255,255,.05)",

@@ -2131,69 +2131,64 @@ export default function CRMChat({ token, onAuthFailed }) {
       selectedMessageId: msgId,
       selectedEmoji: emoji,
     });
+    if (!msgId) {
+      console.error('Error: Message ID is missing');
+      alert('Error: Cannot react because message ID is missing.');
+      return;
+    }
     
-    let newReactionsToLog = [];
-    let payloadEmoji = null;
-    let originalMsg = null;
-    let originalReactions = [];
+    // Calculate new state synchronously using msgsRef to avoid React 18 batching issues
+    const currentMsgs = msgsRef.current || [];
+    const msgIndex = currentMsgs.findIndex(m => m.id === msgId);
     
-    console.log(`[Reaction Click] msgId=${msgId}, clickedEmoji=${emoji}`);
+    if (msgIndex === -1) {
+      console.log('Reaction failed: Message not found in local msgs state', msgId);
+      return;
+    }
     
-    setMsgs(prevMsgs => {
-      const msgIndex = prevMsgs.findIndex(m => m.id === msgId)
-      if (msgIndex === -1) {
-        console.log('Reaction failed: Message not found in local msgs state', msgId);
-        return prevMsgs;
-      }
-      const msg = prevMsgs[msgIndex]
-      originalMsg = msg;
-      originalReactions = msg.reactions || []
-      
-      const existing = originalReactions.find(r => r.emoticon === emoji)
-      const currentMyReaction = originalReactions.find(r => r.chosen);
-      console.log('currentMyReaction', currentMyReaction?.emoticon || null);
-      
-      let newReactions = [...originalReactions]
-      
-      if (existing && existing.chosen) {
-        // Toggle off the same emoji
-        if (existing.count <= 1) {
-          newReactions = newReactions.filter(r => r.emoticon !== emoji)
-        } else {
-          newReactions = newReactions.map(r => r.emoticon === emoji ? { ...r, count: r.count - 1, chosen: false } : r)
-        }
+    const originalMsg = currentMsgs[msgIndex];
+    const originalReactions = originalMsg.reactions || [];
+    
+    const existing = originalReactions.find(r => r.emoticon === emoji);
+    const currentMyReaction = originalReactions.find(r => r.chosen);
+    console.log('currentMyReaction', currentMyReaction?.emoticon || null);
+    
+    let newReactions = [...originalReactions];
+    
+    if (existing && existing.chosen) {
+      if (existing.count <= 1) {
+        newReactions = newReactions.filter(r => r.emoticon !== emoji);
       } else {
-        // Un-choose any previously chosen emoji (enforce 1 reaction per user)
-        newReactions = newReactions.map(r => {
-          if (r.chosen) {
-            return { ...r, count: r.count - 1, chosen: false };
-          }
-          return r;
-        }).filter(r => r.count > 0);
-        
-        const newExisting = newReactions.find(r => r.emoticon === emoji)
-        if (newExisting) {
-          newReactions = newReactions.map(r => r.emoticon === emoji ? { ...r, count: r.count + 1, chosen: true } : r)
-        } else {
-          newReactions.push({ emoticon: emoji, count: 1, chosen: true })
-        }
+        newReactions = newReactions.map(r => r.emoticon === emoji ? { ...r, count: r.count - 1, chosen: false } : r);
       }
+    } else {
+      newReactions = newReactions.map(r => {
+        if (r.chosen) return { ...r, count: r.count - 1, chosen: false };
+        return r;
+      }).filter(r => r.count > 0);
       
-      newReactionsToLog = newReactions;
-      
-      const chosenEmojiObj = newReactions.find(r => r.chosen);
-      payloadEmoji = chosenEmojiObj ? chosenEmojiObj.emoticon : null;
-      
-      const updatedMsgs = [...prevMsgs]
-      updatedMsgs[msgIndex] = { ...msg, reactions: newReactions }
-      msgsCacheRef.current[selRef.current?.id + (selTopicRef.current ? '_' + selTopicRef.current.id : '')] = updatedMsgs;
-      
-      // Cache optimistic reaction for merging
-      pendingReactionsRef.current[msgId] = { timestamp: Date.now(), reactions: newReactions };
-      
-      console.log('optimisticReactions', newReactions);
-      return updatedMsgs;
-    })
+      const newExisting = newReactions.find(r => r.emoticon === emoji);
+      if (newExisting) {
+        newReactions = newReactions.map(r => r.emoticon === emoji ? { ...r, count: r.count + 1, chosen: true } : r);
+      } else {
+        newReactions.push({ emoticon: emoji, count: 1, chosen: true });
+      }
+    }
+    
+    const chosenEmojiObj = newReactions.find(r => r.chosen);
+    const payloadEmoji = chosenEmojiObj ? chosenEmojiObj.emoticon : null;
+    
+    console.log('optimisticReactions', newReactions);
+    
+    // Cache optimistic reaction for merging immediately
+    pendingReactionsRef.current[msgId] = { timestamp: Date.now(), reactions: newReactions };
+    
+    // Apply optimistic update strictly by messageId
+    setMsgs(prevMsgs => {
+      const updated = prevMsgs.map(m => m.id === msgId ? { ...m, reactions: newReactions } : m);
+      msgsCacheRef.current[targetChatId + (targetTopicId ? '_' + targetTopicId : '')] = updated;
+      return updated;
+    });
     
     console.log('refetch reaction payload', {
       chatId: targetChatId,
