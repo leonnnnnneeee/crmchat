@@ -1,6 +1,6 @@
 // v-edit2-083448
 // v035029
-import { useState, useEffect, useRef, useMemo, useCallback, useDeferredValue } from "react"
+import React, { useState, useEffect, useRef, useMemo, useCallback, useDeferredValue } from "react"
 import ForumTopicsView from './components/chat/ForumTopicsView';
 import ChatHeader from './components/chat/ChatHeader';
 import MessageList from './components/chat/MessageList';
