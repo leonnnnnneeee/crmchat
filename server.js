@@ -941,6 +941,17 @@ app.get('/api/chat/messages/:id', requireAuth, async (req,res) => {
     const maxId = parseInt(req.query.maxId) || 0
     const opts = { limit: 40 }
     if (maxId > 0) opts.offsetId = maxId
+    
+    let freshOutboxMaxId = parseInt(req.query.readOutboxMaxId) || 0;
+    try {
+      const peerDialogs = await client.invoke(new Api.messages.GetPeerDialogs({ peers: [entity] }));
+      if (peerDialogs && peerDialogs.dialogs && peerDialogs.dialogs.length > 0) {
+        freshOutboxMaxId = peerDialogs.dialogs[0].readOutboxMaxId || freshOutboxMaxId;
+      }
+    } catch (e) {
+      log('GetPeerDialogs error: ' + e.message);
+    }
+    
     const msgs = await withTimeout(client.getMessages(entity, opts), 12000, 'getMessages')
     const results = msgs.reverse()
       .map(m => {
@@ -998,7 +1009,7 @@ app.get('/api/chat/messages/:id', requireAuth, async (req,res) => {
           seenAt: null,
           seenTimeAvailable: false,
           seenTimeUnavailableReason: 'Telegram API did not provide exact read timestamp',
-          normalizedStatus: m.out ? (m.id <= (parseInt(req.query.readOutboxMaxId) || 0) ? 'seen' : 'sent') : null,
+          normalizedStatus: m.out ? (m.id <= freshOutboxMaxId ? 'seen' : 'sent') : null,
         }
       })
       .filter(m => m.text || m.isPhoto || m.isVideo || m.isDoc)
@@ -1603,6 +1614,16 @@ app.get('/api/telegram/messages/around', requireAuth, async (req, res) => {
       return res.status(404).json({ ok: false, code: "PINNED_MESSAGE_UNAVAILABLE", error: "Pinned message is unavailable or deleted" });
     }
     
+    let freshOutboxMaxId = 0;
+    try {
+      const peerDialogs = await client.invoke(new Api.messages.GetPeerDialogs({ peers: [entity] }));
+      if (peerDialogs && peerDialogs.dialogs && peerDialogs.dialogs.length > 0) {
+        freshOutboxMaxId = peerDialogs.dialogs[0].readOutboxMaxId || 0;
+      }
+    } catch (e) {
+      log('GetPeerDialogs error: ' + e.message);
+    }
+    
     const results = msgs.reverse()
       .map(m => {
         const isPhoto = m.media?.className === 'MessageMediaPhoto'
@@ -1652,7 +1673,8 @@ app.get('/api/telegram/messages/around', requireAuth, async (req, res) => {
             description: m.media.webpage.description
           } : null,
           topicId: m.replyTo?.replyToMsgId || null,
-          isPinned: !!m.pinned
+          isPinned: !!m.pinned,
+          normalizedStatus: m.out ? (m.id <= freshOutboxMaxId ? 'seen' : 'sent') : null,
         }
       })
       

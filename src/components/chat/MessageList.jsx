@@ -224,7 +224,7 @@ export default function MessageList(props) {
                           <span style={{fontSize:11,color:'rgba(255,255,255,.5)'}}>{fmtMsgTime(msg.date)}</span>
                           {msg.fromMe && (() => {
                             const maxId = sel?.readOutboxMaxId || 0;
-                            const isRead = msg.id <= maxId;
+                            const isRead = msg.normalizedStatus === 'seen' || msg.id <= maxId;
                             const status = msg.pending ? 'sending' : msg.failed ? 'failed' : isRead ? 'read' : 'sent';
                             
                             // Debug logs as requested
