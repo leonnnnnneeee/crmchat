@@ -966,6 +966,10 @@ app.get('/api/chat/messages/:id', requireAuth, async (req,res) => {
           senderAccessHash: m.sender?.accessHash ? m.sender.accessHash.toString() : null,
           reactions: parseReactions(m.reactions?.results) || [],
           recentReactions: parseRecentReactions(m.reactions?.recentReactions) || [],
+          // Telegram API does not provide exact per-message read timestamps for basic messages
+          readAt: null,
+          seenAt: null,
+          seenTimeAvailable: false,
         }
       })
       .filter(m => m.text || m.isPhoto || m.isVideo || m.isDoc)
@@ -1767,7 +1771,10 @@ async function startTGListener() {
             action: m.action ? true : false,
             // Try to resolve sender info if possible
             senderId: m.senderId ? m.senderId.toString() : null,
-            topicId: (m.replyTo?.forumTopic ? m.replyTo.replyToMsgId : m.replyTo?.replyToTopId) || null
+            topicId: (m.replyTo?.forumTopic ? m.replyTo.replyToMsgId : m.replyTo?.replyToTopId) || null,
+            readAt: null,
+            seenAt: null,
+            seenTimeAvailable: false
           }
           
           if (m.media) {
