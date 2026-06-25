@@ -283,7 +283,7 @@ function ContextMenu({x,y,msg,onDelete,onCopy,onReply,onClose,onDeleteAll,onSele
       </div>
 
   return (
-    <div ref={ref} style={{
+    <div ref={ref} onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()} style={{
       position:'fixed',left:ax,top:ay,zIndex:9999,
       background:'#1a0b2e',border:'1px solid rgba(124,58,237,.2)',
       borderRadius:12,boxShadow:'0 8px 32px rgba(0,0,0,0.6)',
