@@ -543,9 +543,7 @@ function ContextMenu({x,y,msg,chatId,token,allowedReactions,readOutboxMaxId,onDe
 
             if (status === 'read') {
               timeText = 'Seen';
-              if (readInfo.loading) {
-                timeText = 'Fetching read time...';
-              } else if (readInfo.error) {
+              if (readInfo.error) {
                 errorText = readInfo.error;
               } else if (readInfo.data) {
                 if (readInfo.data.type === 'private' && readInfo.data.date) {
@@ -778,7 +776,7 @@ function AISuggestPanel({text,suggestions,analysis,alternative,messages,loading,
 
 
 // ── Link Preview ──
-function LinkPreview({url}) {
+function LinkPreview({url, webPage}) {
   const [meta,setMeta] = useState(null)
   const [failed,setFailed] = useState(false)
   const [isVisible, setIsVisible] = useState(false)
@@ -796,6 +794,16 @@ function LinkPreview({url}) {
   }, [])
 
   useEffect(()=>{
+    if(webPage) {
+      setMeta({
+        title: webPage.title || '',
+        desc: webPage.description || '',
+        domain: webPage.siteName || (() => { try { return new URL(webPage.displayUrl || webPage.url || url).hostname.replace('www.','') } catch { return url } })(),
+        img: null // Telegram API needs dedicated fetch for webPage photo, omit for now to keep it fast
+      });
+      return;
+    }
+    
     if(!isVisible || meta||failed||!url) return
     if(linkCache[url]) { setMeta(linkCache[url]); return }
     fetch('https://api.allorigins.win/get?url='+encodeURIComponent(url))
@@ -812,19 +820,21 @@ function LinkPreview({url}) {
         setMeta(result)
       })
       .catch(()=>setFailed(true))
-  },[url])
+  },[url, webPage, isVisible])
+  
   if(!meta||failed) return <div ref={ref} />
+  
   return (
-    <a href={url} target="_blank" rel="noreferrer"
+    <a href={webPage?.url || url} target="_blank" rel="noreferrer"
       style={{display:"block",textDecoration:"none",marginTop:6}}>
       <div ref={ref} style={{background:"rgba(0,0,0,.2)",borderRadius:8,overflow:"hidden",
-        border:"1px solid rgba(255,255,255,.08)"}}>
+        border:"1px solid rgba(255,255,255,.08)", borderLeft: "3px solid #3b82f6"}}>
         {meta.img&&<img src={meta.img} alt="" style={{width:"100%",maxHeight:120,objectFit:"cover",display:"block"}}
           onError={e=>e.target.style.display="none"}/>}
-        <div style={{padding:"6px 10px"}}>
-          <div style={{fontSize:11,color:"#a78bfa",marginBottom:2}}>{meta.domain}</div>
-          {meta.title&&<div style={{fontSize:13,fontWeight:600,color:"#fff",marginBottom:2,lineHeight:1.3}}>{meta.title.slice(0,80)}</div>}
-          {meta.desc&&<div style={{fontSize:12,color:"rgba(255,255,255,.6)",lineHeight:1.4}}>{meta.desc.slice(0,100)}</div>}
+        <div style={{padding:"8px 12px"}}>
+          <div style={{fontSize:12,color:"#3b82f6",marginBottom:4,fontWeight:500}}>{meta.domain}</div>
+          {meta.title&&<div style={{fontSize:14,fontWeight:600,color:"#fff",marginBottom:4,lineHeight:1.3}}>{meta.title}</div>}
+          {meta.desc&&<div style={{fontSize:13,color:"rgba(255,255,255,.7)",lineHeight:1.4}}>{meta.desc.length > 150 ? meta.desc.slice(0, 150) + '...' : meta.desc}</div>}
         </div>
       </div>
     </a>
@@ -1567,74 +1577,106 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
 
 const URL_REGEX = /(https?:\/\/[^\s]+|www\.[^\s]+|[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(?:\/[^\s]*)?)/gi;
 
-function renderMessageText(text, searchStr) {
+function renderMessageText(text, searchStr, entities = []) {
   if (!text) return '';
   
   const parts = [];
   let lastIndex = 0;
   
-  text.replace(URL_REGEX, (match, p1, offset) => {
-    let url = match;
-    let trailing = '';
-    while (/[.,?!;'"]$/.test(url)) {
-      trailing = url.slice(-1) + trailing;
-      url = url.slice(0, -1);
-    }
-    
-    const isEmail = text.slice(0, offset).match(/\S+@$/);
-    if (isEmail) return match; 
-    
-    if (offset > lastIndex) {
-      parts.push({ type: 'text', content: text.slice(lastIndex, offset) });
-    }
-    
-    let href = url;
-    if (!href.match(/^https?:\/\//i)) {
-      href = 'https://' + href;
-    }
-    
-    parts.push({ type: 'link', content: url, href });
-    
-    if (trailing) {
-      parts.push({ type: 'text', content: trailing });
-    }
-    
-    lastIndex = offset + match.length;
-    return match;
-  });
-  
-  if (lastIndex < text.length) {
-    parts.push({ type: 'text', content: text.slice(lastIndex) });
+  if (entities && entities.length > 0) {
+    const sorted = [...entities].sort((a,b) => a.offset - b.offset);
+    sorted.forEach((ent) => {
+      if (ent.offset > lastIndex) {
+        parts.push({ type: 'text', content: text.substring(lastIndex, ent.offset) });
+      }
+      const content = text.substring(ent.offset, ent.offset + ent.length);
+      let href = ent.url || content;
+      if (ent.className === 'MessageEntityTextUrl' || ent.className === 'MessageEntityUrl') {
+        if (!href.match(/^https?:\/\//i)) href = 'https://' + href;
+        parts.push({ type: 'link', content, href });
+      } else if (ent.className === 'MessageEntityBold') {
+        parts.push({ type: 'bold', content });
+      } else if (ent.className === 'MessageEntityItalic') {
+        parts.push({ type: 'italic', content });
+      } else if (ent.className === 'MessageEntityCode' || ent.className === 'MessageEntityPre') {
+        parts.push({ type: 'code', content });
+      } else {
+        parts.push({ type: 'text', content });
+      }
+      lastIndex = Math.max(lastIndex, ent.offset + ent.length);
+    });
+  } else {
+    text.replace(URL_REGEX, (match, p1, offset) => {
+      let url = match;
+      let trailing = '';
+      while (/[.,?!;'"]$/.test(url)) {
+        trailing = url.slice(-1) + trailing;
+        url = url.slice(0, -1);
+      }
+      const isEmail = text.slice(0, offset).match(/\S+@$/);
+      if (isEmail) return match; 
+      if (offset > lastIndex) {
+        parts.push({ type: 'text', content: text.slice(lastIndex, offset) });
+      }
+      let href = url;
+      if (!href.match(/^https?:\/\//i)) href = 'https://' + href;
+      parts.push({ type: 'link', content: url, href });
+      if (trailing) {
+        parts.push({ type: 'text', content: trailing });
+      }
+      lastIndex = offset + match.length;
+      return match;
+    });
   }
   
-  const renderPart = (part, idx) => {
+  if (lastIndex < text.length) {
+    parts.push({ type: 'text', content: text.substring(lastIndex) });
+  }
+  
+  const renderContent = (content) => {
+    const lines = content.split('\n');
+    return lines.map((line, lineIdx) => {
+      let renderedLine = line;
+      if (searchStr && line.toLowerCase().includes(searchStr.toLowerCase())) {
+        const searchParts = line.split(new RegExp(`(${searchStr})`, 'gi'));
+        renderedLine = (
+          <span>
+            {searchParts.map((sp, i) => 
+              sp.toLowerCase() === searchStr.toLowerCase() 
+                ? <mark key={i} style={{background:"#f59e0b",color:"#000",borderRadius:2}}>{sp}</mark> 
+                : sp
+            )}
+          </span>
+        );
+      }
+      return (
+        <React.Fragment key={lineIdx}>
+          {lineIdx > 0 && <br />}
+          {renderedLine}
+        </React.Fragment>
+      );
+    });
+  };
+  
+  return parts.map((part, idx) => {
     if (part.type === 'link') {
       return (
         <a key={idx} href={part.href} target="_blank" rel="noopener noreferrer" 
            onClick={e => e.stopPropagation()}
-           className="msg-link">
-          {part.content}
+           className="msg-link"
+           style={{ color: '#8b5cf6', textDecoration: 'none' }}
+           onMouseEnter={e => e.currentTarget.style.textDecoration = 'underline'}
+           onMouseLeave={e => e.currentTarget.style.textDecoration = 'none'}>
+          {renderContent(part.content)}
         </a>
       );
     }
+    if (part.type === 'bold') return <strong key={idx}>{renderContent(part.content)}</strong>;
+    if (part.type === 'italic') return <em key={idx}>{renderContent(part.content)}</em>;
+    if (part.type === 'code') return <code key={idx} style={{background: "rgba(0,0,0,0.1)", padding: "2px 4px", borderRadius: 4, fontFamily: "monospace", fontSize: "0.9em"}}>{renderContent(part.content)}</code>;
     
-    if (searchStr && part.content.toLowerCase().includes(searchStr.toLowerCase())) {
-      const searchParts = part.content.split(new RegExp(`(${searchStr})`, 'gi'));
-      return (
-        <span key={idx}>
-          {searchParts.map((sp, i) => 
-            sp.toLowerCase() === searchStr.toLowerCase() 
-              ? <mark key={i} style={{background:"#f59e0b",color:"#000",borderRadius:2}}>{sp}</mark> 
-              : sp
-          )}
-        </span>
-      );
-    }
-    
-    return <span key={idx}>{part.content}</span>;
-  };
-  
-  return parts.map(renderPart);
+    return <span key={idx} style={{whiteSpace: 'pre-wrap'}}>{renderContent(part.content)}</span>;
+  });
 }
 
 export default function CRMChat({ token, onAuthFailed }) {

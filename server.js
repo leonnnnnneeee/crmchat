@@ -966,6 +966,30 @@ app.get('/api/chat/messages/:id', requireAuth, async (req,res) => {
           senderAccessHash: m.sender?.accessHash ? m.sender.accessHash.toString() : null,
           reactions: parseReactions(m.reactions?.results) || [],
           recentReactions: parseRecentReactions(m.reactions?.recentReactions) || [],
+          entities: m.entities ? m.entities.map(e => ({
+            className: e.className,
+            offset: e.offset,
+            length: e.length,
+            url: e.url,
+            language: e.language,
+            userId: e.userId ? e.userId.toString() : null,
+            customEmojiId: e.customEmojiId ? e.customEmojiId.toString() : null
+          })) : [],
+          fwdFrom: m.fwdFrom ? {
+            fromId: m.fwdFrom.fromId ? (m.fwdFrom.fromId.userId?.toString() || m.fwdFrom.fromId.channelId?.toString()) : null,
+            fromName: m.fwdFrom.fromName || null,
+            date: m.fwdFrom.date,
+            postAuthor: m.fwdFrom.postAuthor || null
+          } : null,
+          webPage: m.media?.className === 'MessageMediaWebPage' && m.media.webpage ? {
+            className: m.media.webpage.className,
+            url: m.media.webpage.url,
+            displayUrl: m.media.webpage.displayUrl,
+            type: m.media.webpage.type,
+            siteName: m.media.webpage.siteName,
+            title: m.media.webpage.title,
+            description: m.media.webpage.description
+          } : null,
           // Telegram API does not provide exact per-message read timestamps for basic messages
           messageId: m.id,
           isOutgoing: m.out,
@@ -1603,6 +1627,30 @@ app.get('/api/telegram/messages/around', requireAuth, async (req, res) => {
           senderAccessHash: m.sender?.accessHash ? m.sender.accessHash.toString() : null,
           reactions: parseReactions(m.reactions?.results) || [],
           recentReactions: parseRecentReactions(m.reactions?.recentReactions) || [],
+          entities: m.entities ? m.entities.map(e => ({
+            className: e.className,
+            offset: e.offset,
+            length: e.length,
+            url: e.url,
+            language: e.language,
+            userId: e.userId ? e.userId.toString() : null,
+            customEmojiId: e.customEmojiId ? e.customEmojiId.toString() : null
+          })) : [],
+          fwdFrom: m.fwdFrom ? {
+            fromId: m.fwdFrom.fromId ? (m.fwdFrom.fromId.userId?.toString() || m.fwdFrom.fromId.channelId?.toString()) : null,
+            fromName: m.fwdFrom.fromName || null,
+            date: m.fwdFrom.date,
+            postAuthor: m.fwdFrom.postAuthor || null
+          } : null,
+          webPage: m.media?.className === 'MessageMediaWebPage' && m.media.webpage ? {
+            className: m.media.webpage.className,
+            url: m.media.webpage.url,
+            displayUrl: m.media.webpage.displayUrl,
+            type: m.media.webpage.type,
+            siteName: m.media.webpage.siteName,
+            title: m.media.webpage.title,
+            description: m.media.webpage.description
+          } : null,
           topicId: m.replyTo?.replyToMsgId || null,
           isPinned: !!m.pinned
         }

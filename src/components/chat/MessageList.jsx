@@ -202,13 +202,20 @@ export default function MessageList(props) {
                             ))}
                           </div>
                         )}
+                        {/* Forwarded Header */}
+                        {msg.fwdFrom && (
+                          <div style={{color: '#8b5cf6', fontSize: 13, marginBottom: 4, paddingLeft: 8, borderLeft: '2px solid #8b5cf6', display: 'flex', flexDirection: 'column'}}>
+                            <span style={{fontSize: 11, fontWeight: 500, opacity: 0.8}}>Forwarded from</span>
+                            <span style={{fontWeight: 600}}>{msg.fwdFrom.fromName || `User ${msg.fwdFrom.fromId}`}</span>
+                          </div>
+                        )}
                         {(()=>{
                           const displayText = editedMsgs[msg.id] || msg.text || ''
-                          return renderMessageText(displayText, chatSearch)
+                          return renderMessageText(displayText, chatSearch, msg.entities)
                         })()}
                         {/* Link preview */}
-                        {msg.text && (msg.text.includes('http://') || msg.text.includes('https://')) && (
-                          <LinkPreview url={(msg.text.match(/https?:\/\/\S+/)||[''])[0]}/>
+                        {(msg.webPage || (msg.text && (msg.text.includes('http://') || msg.text.includes('https://')))) && (
+                          <LinkPreview webPage={msg.webPage} url={(msg.text?.match(/https?:\/\/\S+/)||[''])[0]}/>
                         )}
                         <div className="bfoot">
                           {(msg.edited||editedMsgs[msg.id])&&(
