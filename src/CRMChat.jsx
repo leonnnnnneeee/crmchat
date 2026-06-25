@@ -256,7 +256,12 @@ function ChatContextMenu({x,y,chat,onClose,
 function ContextMenu({x,y,msg,onDelete,onCopy,onReply,onClose,onDeleteAll,onSelect,onForward,onReact,onPin,onInfo,onEdit}) {
   const ref = useRef(null)
   useEffect(()=>{
-    const h = e => { if(ref.current&&!ref.current.contains(e.target)) onClose() }
+    const h = e => { 
+      // Do not close if clicking inside the context menu (including emojis)
+      if(ref.current && !ref.current.contains(e.target)) {
+        onClose() 
+      }
+    }
     const k = e => { if(e.key==='Escape') onClose() }
     document.addEventListener('mousedown',h)
     document.addEventListener('keydown',k)
@@ -284,19 +289,21 @@ function ContextMenu({x,y,msg,onDelete,onCopy,onReply,onClose,onDeleteAll,onSele
       borderRadius:12,boxShadow:'0 8px 32px rgba(0,0,0,0.6)',
       display:'flex',flexDirection:'column',padding:'6px 0',minWidth:180
     }}>
-      <div style={{display:'flex', gap:4, padding:'8px 12px', borderBottom:'1px solid rgba(124,58,237,.2)', flexWrap:'wrap', justifyContent:'center', marginBottom:4}}>
+      <div onClick={(e) => { e.stopPropagation(); e.preventDefault(); }} style={{display:'flex', gap:4, padding:'8px 12px', borderBottom:'1px solid rgba(124,58,237,.2)', flexWrap:'wrap', justifyContent:'center', marginBottom:4}}>
         {['👍', '❤️', '😂', '🔥', '🙏', '😎', '👎', '🥰'].map(emoji => (
-          <div key={emoji} onClick={(e) => { 
+          <button type="button" key={emoji} onClick={(e) => { 
+            console.log('emojiClickStarted', { selectedMessageId: msg?.id, selectedEmoji: emoji });
             e.stopPropagation(); 
             e.preventDefault(); 
             onReact?.(emoji); 
-            onClose(); 
+            // Give React time to apply optimistic state before unmounting
+            setTimeout(() => onClose(), 50); 
           }} 
-               style={{cursor:'pointer', fontSize:22, padding:6, borderRadius:8, transition:'0.2s', background:'transparent'}} 
+               style={{cursor:'pointer', fontSize:22, padding:6, borderRadius:8, transition:'0.2s', background:'transparent', border:'none', outline:'none', zIndex: 10000, pointerEvents:'auto'}} 
                onMouseEnter={e=>e.currentTarget.style.background='rgba(124,58,237,.2)'} 
                onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
             {emoji}
-          </div>
+          </button>
         ))}
       </div>
       <Item icon='↩️' label='Reply'          action={onReply}/>
@@ -2117,12 +2124,12 @@ export default function CRMChat({ token, onAuthFailed }) {
 
   const sendingRef = useRef(false)
 
-  const toggleReaction = async (msgId, emoji) => {
-    console.log('emojiClicked', {
-      chatId: sel?.chatId || sel?.id,
-      topicId: selTopic?.id,
-      messageId: msgId,
-      emoji: emoji,
+  const toggleReaction = async (targetChatId, targetTopicId, msgId, emoji) => {
+    console.log('reactionHandlerCalled', {
+      chatId: targetChatId,
+      topicId: targetTopicId,
+      selectedMessageId: msgId,
+      selectedEmoji: emoji,
     });
     
     let newReactionsToLog = [];
@@ -2189,10 +2196,10 @@ export default function CRMChat({ token, onAuthFailed }) {
     })
     
     console.log('refetch reaction payload', {
-      chatId: sel.id,
+      chatId: targetChatId,
       messageId: msgId,
       emoji: payloadEmoji,
-      topicId: selTopic?.id || null
+      topicId: targetTopicId
     });
 
     try {
@@ -2200,14 +2207,14 @@ export default function CRMChat({ token, onAuthFailed }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
         body: JSON.stringify({
-          chatId: sel.id,
+          chatId: targetChatId,
           messageId: msgId,
           emoji: payloadEmoji,
-          topicId: selTopic?.id || null
+          topicId: targetTopicId
         })
       });
       const d = await res.json();
-      console.log('API response/error', d);
+      console.log('apiStatus', d);
       if (!d.ok && !d.unchanged) {
         delete pendingReactionsRef.current[msgId];
         setMsgs(prev => prev.map(m => m.id === msgId ? originalMsg : m));
