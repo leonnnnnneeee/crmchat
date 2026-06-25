@@ -449,14 +449,14 @@ function ContextMenu({x,y,msg,allowedReactions,readOutboxMaxId,onDelete,onCopy,o
             const isRead = msg.id <= readOutboxMaxId;
             const status = msg.pending ? 'sending' : msg.failed ? 'failed' : isRead ? 'read' : 'sent';
             
-            let timeText = 'Unknown time';
+            let timeText = 'Unknown status';
             // TODO: implement real seenAt if Telegram supports per-message read receipts
             const seenAt = null; 
+            const rawReadData = null; // Telegram API does not provide per-message read receipts in basic messages
+            const seenTimeAvailable = !!seenAt;
             
-            const timestampToUse = isRead ? seenAt : msg.date;
-            
-            if (timestampToUse) {
-              const d = new Date(timestampToUse * 1000);
+            const formatTime = (ts) => {
+              const d = new Date(ts * 1000);
               const now = new Date();
               const isToday = d.getDate() === now.getDate() && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
               const yesterday = new Date(now);
@@ -464,14 +464,23 @@ function ContextMenu({x,y,msg,allowedReactions,readOutboxMaxId,onDelete,onCopy,o
               const isYesterday = d.getDate() === yesterday.getDate() && d.getMonth() === yesterday.getMonth() && d.getFullYear() === yesterday.getFullYear();
               
               const timeStr = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-              if (isToday) timeText = `Today at ${timeStr}`;
-              else if (isYesterday) timeText = `Yesterday at ${timeStr}`;
-              else timeText = `${d.toLocaleString('en-US', { month: 'short', day: 'numeric' })} at ${timeStr}`;
-            } else {
-              timeText = isRead ? 'Seen' : 'Sent';
+              if (isToday) return `Today at ${timeStr}`;
+              if (isYesterday) return `Yesterday at ${timeStr}`;
+              return `${d.toLocaleString('en-US', { month: 'short', day: 'numeric' })} at ${timeStr}`;
+            };
+
+            if (status === 'read') {
+              timeText = seenTimeAvailable ? formatTime(seenAt) : 'Seen';
+            } else if (status === 'sent') {
+              // Wait, if sent, Telegram Web often shows "Sent at <time>" or just the sent time. But the user explicitly said "If sent but not seen: show 'Sent'".
+              timeText = 'Sent';
+            } else if (status === 'sending') {
+              timeText = 'Sending';
+            } else if (status === 'failed') {
+              timeText = 'Failed';
             }
             
-            console.log(`[Context Menu Debug] selectedMessageId=${msg.id} isOutgoing=${msg.fromMe} rawStatus=${msg.pending ? 'pending' : msg.failed ? 'failed' : 'sent'} normalizedStatus=${status} seenAt=${seenAt || 'unavailable'} formattedSeenTime="${timeText}" contextMenuSeenRowRendered=true`);
+            console.log(`[Context Menu Debug] selectedMessageId=${msg.id} isOutgoing=${msg.fromMe} rawStatus=${msg.pending ? 'pending' : msg.failed ? 'failed' : 'sent'} normalizedStatus=${status} rawReadData=${rawReadData} seenAt=${seenAt} readAt=${seenAt} seenTimeAvailable=${seenTimeAvailable} formattedSeenTime="${timeText}" contextMenuSeenRowRendered=true`);
             
             return (
               <>
