@@ -1,6 +1,11 @@
-// v-rxmerge-104635
+// v-edit2-083448
 // v035029
-import { useState, useEffect, useRef, useCallback, useMemo } from "react"
+import { useState, useEffect, useRef, useMemo, useCallback, useDeferredValue } from "react"
+import ForumTopicsView from './components/chat/ForumTopicsView';
+import ChatHeader from './components/chat/ChatHeader';
+import MessageList from './components/chat/MessageList';
+import Composer from './components/chat/Composer';
+import CRMRightPanel from './components/chat/CRMRightPanel';
 
 const TG = {
   bg:"#120929", panel:"#1a0533", surface:"#1e0a3c", elevated:"#2d1155",
@@ -34,12 +39,28 @@ const TEMPLATES = [
   {id:"t13", cat:"Closing",     label:"Closing",                  text:"Based on what we've discussed, I think a bundled Coincu PR + CMC News package makes the most sense. Want me to put together a quick proposal?"},
 ]
 
+// ── Global Keyboard/Paste Helpers ──
+export const allowShortcuts = (e) => {
+  if ((e.metaKey || e.ctrlKey) && ['v','c','x','a'].includes(e.key.toLowerCase())) {
+    e.stopPropagation()
+  }
+}
+
+export const handlePaste = (e) => {
+  const clipboardData = e.clipboardData || window.clipboardData
+  if (clipboardData && clipboardData.files && clipboardData.files.length > 0) {
+    e.preventDefault()
+    alert('TODO: Implement file/image upload from paste')
+  }
+}
+
 // ── Avatar — loads real TG photo, falls back to colored initials ──
 const photoCache = {}
 const linkCache = {}
+let sharedMediaCache = {}
 let _authToken = ''
 
-function Avatar({name, chatId, username, size=40}) {
+function Avatar({name, chatId, username, accessHash, size=40}) {
   const colors=["#c03d33","#4fad2d","#d09306","#168acd","#8544d6","#cd4073","#2996ad","#ce671b"]
   const colorIdx = (name||"?").charCodeAt(0) % colors.length
   const initials = (name||"?").split(" ").map(w=>w[0]).slice(0,2).join("").toUpperCase()
@@ -49,7 +70,10 @@ function Avatar({name, chatId, username, size=40}) {
   useEffect(()=>{
     if (!chatId || !_authToken || failed) return
     if (photoCache[chatId]) { setPhotoUrl(photoCache[chatId]); return }
-    const qs = username ? `?username=${encodeURIComponent(username)}` : ""
+    const qsObj = new URLSearchParams()
+    if (username) qsObj.append('username', username)
+    if (accessHash) qsObj.append('accessHash', accessHash)
+    const qs = qsObj.toString() ? `?${qsObj.toString()}` : ""
     fetch(`/api/chat/photo/${chatId}${qs}`, {headers:{"x-auth-token":_authToken}})
       .then(r => { if (!r.ok) throw new Error("no photo"); return r.blob() })
       .then(blob => {
@@ -58,7 +82,7 @@ function Avatar({name, chatId, username, size=40}) {
         setPhotoUrl(url)
       })
       .catch(() => setFailed(true))
-  }, [chatId])
+  }, [chatId, failed, username, accessHash])
 
   if (photoUrl && !failed) {
     return (
@@ -254,19 +278,23 @@ function ContextMenu({x,y,msg,onDelete,onCopy,onReply,onClose,onDeleteAll,onSele
   return (
     <div ref={ref} style={{
       position:'fixed',left:ax,top:ay,zIndex:9999,
-      background:'#1a0533',border:'1px solid #3d1f6a',borderRadius:12,
-      padding:'4px 0',minWidth:200,
-      boxShadow:'0 8px 32px rgba(0,0,0,.7)',
+      background:'#1a0b2e',border:'1px solid rgba(124,58,237,.2)',
+      borderRadius:12,boxShadow:'0 8px 32px rgba(0,0,0,0.6)',
+      display:'flex',flexDirection:'column',padding:'6px 0',minWidth:180
     }}>
-      {/* Quick reactions */}
-      <div style={{display:'flex',gap:2,padding:'6px 10px',borderBottom:'1px solid #2d1155',flexWrap:'wrap'}}>
-        {['👍','❤️','😂','🔥','💪','✅','🙏','😎'].map(e=>(
-          <span key={e} onClick={()=>{onReact?.(e);onClose()}}
-            style={{fontSize:18,cursor:'pointer',padding:'2px 5px',borderRadius:6,transition:'background .1s'}}
-            onMouseEnter={ev=>ev.target.style.background='#2d1155'}
-            onMouseLeave={ev=>ev.target.style.background='transparent'}>
-            {e}
-          </span>
+      <div style={{display:'flex', gap:4, padding:'8px 12px', borderBottom:'1px solid rgba(124,58,237,.2)', flexWrap:'wrap', justifyContent:'center', marginBottom:4}}>
+        {['👍', '❤️', '😂', '🔥', '🙏', '😎', '👎', '🥰'].map(emoji => (
+          <div key={emoji} onClick={(e) => { 
+            e.stopPropagation(); 
+            e.preventDefault(); 
+            onReact?.(emoji); 
+            onClose(); 
+          }} 
+               style={{cursor:'pointer', fontSize:22, padding:6, borderRadius:8, transition:'0.2s', background:'transparent'}} 
+               onMouseEnter={e=>e.currentTarget.style.background='rgba(124,58,237,.2)'} 
+               onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+            {emoji}
+          </div>
         ))}
       </div>
       <Item icon='↩️' label='Reply'          action={onReply}/>
@@ -286,16 +314,23 @@ function ContextMenu({x,y,msg,onDelete,onCopy,onReply,onClose,onDeleteAll,onSele
 
 
 // ── AI Suggest Panel ──
-function AISuggestPanel({text,analysis,alternative,messages,loading,onUse,onUseAlt,onUseAll,onRegenerate,onClose,hasResearch}) {
+function AISuggestPanel({text,suggestions,analysis,alternative,messages,loading,onUse,onUseAlt,onUseAll,onRegenerate,onClose,hasResearch,aiInstruction,setAiInstruction,aiError}) {
   const [editIdx,setEditIdx] = useState(null)
   const [edited,setEdited]   = useState({})
 
-  if(!text && !loading) return null
+  if(!text && !loading && (!suggestions || suggestions.length === 0) && !aiError && !aiInstruction) return null
 
-  const msgs = (messages && messages.length > 0) ? messages : [
-    ...(text ? [{text}] : []),
-    ...(alternative ? [{text:alternative}] : [])
-  ]
+  // Support both new suggestions array and old text/alternative format
+  let msgs = []
+  if (suggestions && suggestions.length > 0) {
+    msgs = suggestions
+  } else {
+    msgs = (messages && messages.length > 0) ? messages.map(m => ({ text: m.text, label: 'MSG' })) : [
+      ...(text ? [{text, label: 'SUGGESTION 1'}] : []),
+      ...(alternative ? [{text:alternative, label: 'SUGGESTION 2'}] : [])
+    ]
+  }
+
   const getMsg = i => edited[i] !== undefined ? edited[i] : (msgs[i]?.text || '')
 
   return (
@@ -314,10 +349,54 @@ function AISuggestPanel({text,analysis,alternative,messages,loading,onUse,onUseA
           style={{background:"none",border:"none",color:"#6b7280",cursor:"pointer",fontSize:14,flexShrink:0}}>✕</button>
       </div>
 
-      {loading ? (
+      {/* Command Bar */}
+      <div style={{padding:"8px 12px", borderBottom:"1px solid rgba(124,58,237,.15)", display:"flex", flexDirection:"column", gap:8}}>
+        <div style={{display:"flex", gap:8}}>
+          <input 
+            type="text" 
+            placeholder="Tell AI what you want to reply, e.g. offer commission, ask budget, mention CMC..."
+            value={aiInstruction||""}
+            onChange={(e)=>{setAiInstruction&&setAiInstruction(e.target.value);}}
+            onPaste={handlePaste}
+            onKeyDown={(e)=>{allowShortcuts(e); if(e.key==='Enter'&&!loading) onRegenerate()}}
+            style={{flex:1, background:"rgba(0,0,0,.2)", border:"1px solid rgba(124,58,237,.3)", borderRadius:6, padding:"6px 10px", color:"#f0e6ff", fontSize:13, outline:"none"}}
+          />
+          <button onClick={onRegenerate} disabled={loading} style={{background:"#7c3aed", color:"#fff", border:"none", borderRadius:6, padding:"0 12px", fontSize:13, fontWeight:600, cursor:loading?"not-allowed":"pointer", opacity:loading?0.5:1}}>
+            {loading ? "..." : "Generate"}
+          </button>
+        </div>
+        
+        {/* Quick Command Chips */}
+        <div style={{display:"flex", gap:6, overflowX:"auto", paddingBottom:2}} className="no-scrollbar">
+          {["Offer commission", "Mention CMC News", "Ask budget", "Ask timeline", "Softer", "More direct", "Don't sell yet", "Follow up"].map(chip => (
+            <button key={chip} 
+              onClick={()=>{
+                 const current = aiInstruction || "";
+                 const sep = current && !current.endsWith(" ") ? ", " : "";
+                 setAiInstruction && setAiInstruction(current + sep + chip);
+              }}
+              style={{background:"rgba(124,58,237,.15)", border:"1px solid rgba(124,58,237,.3)", borderRadius:12, padding:"3px 8px", color:"#c4a8e8", fontSize:11, whiteSpace:"nowrap", cursor:"pointer", flexShrink:0}}>
+              {chip}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Error State */}
+      {aiError && (
+        <div style={{padding:"16px", background:"rgba(229,57,53,.1)", display:"flex", flexDirection:"column", alignItems:"center", gap:12}}>
+          <div style={{color:"#f87171", fontSize:13, fontWeight:600, textAlign:"center"}}>{aiError}</div>
+          <button onClick={onRegenerate} disabled={loading} style={{background:"#ef4444", color:"#fff", border:"none", borderRadius:6, padding:"6px 16px", fontSize:13, fontWeight:600, cursor:loading?"not-allowed":"pointer", opacity:loading?0.5:1}}>
+            {loading ? "Retrying..." : "Retry"}
+          </button>
+        </div>
+      )}
+
+      {/* Reply Options */}
+      {!aiError && (loading ? (
         <div style={{padding:"12px 14px",display:"flex",gap:8,alignItems:"center",color:"#9b7ec8",fontSize:13}}>
           <span style={{animation:"spin 1s linear infinite",display:"inline-block"}}>⏳</span>
-          Analyzing{hasResearch?' & researching project':''}...
+          Generating{hasResearch?' & researching':''} options...
         </div>
       ) : (
         <div style={{padding:"8px 10px",display:"flex",flexDirection:"column",gap:6}}>
@@ -326,8 +405,8 @@ function AISuggestPanel({text,analysis,alternative,messages,loading,onUse,onUseA
               border:"1px solid rgba(124,58,237,.2)",overflow:"hidden"}}>
               <div style={{padding:"3px 10px 0",display:"flex",alignItems:"center",
                 justifyContent:"space-between"}}>
-                <span style={{fontSize:10,color:"#7c3aed",fontWeight:700,letterSpacing:.5}}>
-                  MSG {i+1}
+                <span style={{fontSize:10,color:"#7c3aed",fontWeight:700,letterSpacing:.5,textTransform:"uppercase"}}>
+                  {msg.label || `OPTION ${i+1}`}
                 </span>
                 <button onClick={()=>setEditIdx(editIdx===i?null:i)}
                   style={{background:"none",border:"none",color:"#6b7280",cursor:"pointer",fontSize:11}}>
@@ -337,6 +416,8 @@ function AISuggestPanel({text,analysis,alternative,messages,loading,onUse,onUseA
               {editIdx===i ? (
                 <textarea value={getMsg(i)}
                   onChange={e=>setEdited(p=>({...p,[i]:e.target.value}))}
+                  onPaste={handlePaste}
+                  onKeyDown={allowShortcuts}
                   style={{width:"100%",background:"transparent",border:"none",
                     padding:"4px 10px 8px",color:"#f0e6ff",fontSize:13,
                     lineHeight:1.5,resize:"none",outline:"none",
@@ -361,22 +442,14 @@ function AISuggestPanel({text,analysis,alternative,messages,loading,onUse,onUseA
             </div>
           ))}
           <div style={{display:"flex",gap:6,marginTop:2}}>
-            {msgs.length>1&&onUseAll&&(
-              <button onClick={()=>onUseAll(msgs.map((_,i)=>getMsg(i)))}
-                style={{flex:1,padding:"6px",background:"rgba(124,58,237,.2)",color:"#c4a8e8",
-                  border:"1px solid rgba(124,58,237,.35)",borderRadius:8,cursor:"pointer",
-                  fontSize:12,fontWeight:600}}>
-                📨 Send all in sequence
-              </button>
-            )}
             <button onClick={onRegenerate}
               style={{padding:"6px 12px",background:"transparent",color:"#6b7280",
                 border:"1px solid #374151",borderRadius:8,cursor:"pointer",fontSize:11}}>
-              ↻ Retry
+              ↻ Regenerate
             </button>
           </div>
         </div>
-      )}
+      ))}
     </div>
   )
 }
@@ -386,8 +459,22 @@ function AISuggestPanel({text,analysis,alternative,messages,loading,onUse,onUseA
 function LinkPreview({url}) {
   const [meta,setMeta] = useState(null)
   const [failed,setFailed] = useState(false)
+  const [isVisible, setIsVisible] = useState(false)
+  const ref = useRef(null)
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) {
+        setIsVisible(true)
+        observer.disconnect()
+      }
+    }, { rootMargin: '200px' })
+    if (ref.current) observer.observe(ref.current)
+    return () => observer.disconnect()
+  }, [])
+
   useEffect(()=>{
-    if(meta||failed||!url) return
+    if(!isVisible || meta||failed||!url) return
     if(linkCache[url]) { setMeta(linkCache[url]); return }
     fetch('https://api.allorigins.win/get?url='+encodeURIComponent(url))
       .then(r=>r.json())
@@ -404,11 +491,11 @@ function LinkPreview({url}) {
       })
       .catch(()=>setFailed(true))
   },[url])
-  if(!meta||failed) return null
+  if(!meta||failed) return <div ref={ref} />
   return (
     <a href={url} target="_blank" rel="noreferrer"
       style={{display:"block",textDecoration:"none",marginTop:6}}>
-      <div style={{background:"rgba(0,0,0,.2)",borderRadius:8,overflow:"hidden",
+      <div ref={ref} style={{background:"rgba(0,0,0,.2)",borderRadius:8,overflow:"hidden",
         border:"1px solid rgba(255,255,255,.08)"}}>
         {meta.img&&<img src={meta.img} alt="" style={{width:"100%",maxHeight:120,objectFit:"cover",display:"block"}}
           onError={e=>e.target.style.display="none"}/>}
@@ -428,11 +515,24 @@ const blobCache = new Map()
 function ChatPhoto({msg, chatId, authToken, onImageClick}) {
   const msgId = msg.id
   const [retryCnt, setRetryCnt] = useState(0)
-  const [status, setStatus] = useState(blobCache.has(msgId) ? 'loaded' : 'loading')
+  const [status, setStatus] = useState(blobCache.has(msgId) ? 'loaded' : 'pending')
   const [imgSrc, setImgSrc] = useState(msg.photoUrl || msg.mediaUrl || blobCache.get(msgId) || '')
+  const [isVisible, setIsVisible] = useState(false)
+  const ref = useRef(null)
 
   useEffect(() => {
-    if (imgSrc && status === 'loaded') return
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) {
+        setIsVisible(true)
+        observer.disconnect()
+      }
+    }, { rootMargin: '400px' })
+    if (ref.current) observer.observe(ref.current)
+    return () => observer.disconnect()
+  }, [])
+
+  useEffect(() => {
+    if (!isVisible || (imgSrc && status === 'loaded')) return
     
     let isMounted = true
     let objectUrl = ''
@@ -440,7 +540,7 @@ function ChatPhoto({msg, chatId, authToken, onImageClick}) {
     const fetchMedia = async () => {
       setStatus('loading')
       try {
-        const url = `/api/chat/media/${chatId}/${msgId}?t=${authToken}&r=${retryCnt}`
+        const url = `/api/chat/media/${chatId}/${msgId}?token=${authToken}&r=${retryCnt}`
         console.log(`[ChatPhoto] Fetching media for msgId=${msgId}, url=${url}`)
         const res = await fetch(url)
         
@@ -480,11 +580,11 @@ function ChatPhoto({msg, chatId, authToken, onImageClick}) {
     return () => {
       isMounted = false
     }
-  }, [msgId, chatId, authToken, retryCnt])
+  }, [msgId, chatId, authToken, retryCnt, isVisible])
 
   return (
-    <div style={{position:'relative',marginBottom:4,minHeight:status==='loaded'?0:80,background:status==='loading'?'rgba(124,58,237,.1)':'transparent',borderRadius:8,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden',maxWidth:520}}>
-      {status==='loading' && (
+    <div ref={ref} style={{position:'relative',marginBottom:4,minHeight:(status==='loaded'||status==='pending')?0:80,background:(status==='loading'||status==='pending')?'rgba(124,58,237,.1)':'transparent',borderRadius:8,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden',maxWidth:520}}>
+      {(status==='loading' || status==='pending') && (
         <div style={{position:'absolute',color:'#7c3aed',fontSize:20,zIndex:1}}>⏳</div>
       )}
       {status==='loaded' && imgSrc && (
@@ -498,7 +598,12 @@ function ChatPhoto({msg, chatId, authToken, onImageClick}) {
       )}
       {status==='error' && (
         <div style={{padding:'8px 12px',color:'#9b7ec8',fontSize:12,cursor:'pointer',textAlign:'center',background:'rgba(124,58,237,.1)',borderRadius:8,width:'100%'}} 
-             onClick={()=>setRetryCnt(c=>c+1)}>
+             onClick={()=>{
+                blobCache.delete(msgId);
+                setImgSrc('');
+                setRetryCnt(c=>c+1);
+                setStatus('pending');
+             }}>
           📷 Tap to retry
         </div>
       )}
@@ -510,10 +615,15 @@ const isPhotoMsg = (m) => !!(m.isPhoto || m.photo || m.image || m.media?.type ==
 const isVideoMsg = (m) => !!(m.isVideo || m.video || m.media?.type === 'video' || m.attachments?.some?.(a => a.type === 'video'));
 const isDocMsg = (m) => !!(m.isDoc || m.document || m.file || m.media?.type === 'document' || m.media?.type === 'file' || m.attachments?.some?.(a => a.type === 'document' || a.type === 'file'));
 const isGifMsg = (m) => !!(m.isGif || m.gif || m.media?.type === 'gif' || m.attachments?.some?.(a => a.type === 'gif'));
-const isLinkMsg = (m) => !!(m.url || m.links?.length > 0 || m.entities?.some?.(e => e.type === 'url') || (m.text && /(https?:\/\/[^\s]+)/.test(m.text)));
+const isLinkMsg = (m) => !!(m.url || m.links?.length > 0 || m.entities?.some?.(e => e.type === 'url' || e.className === 'MessageEntityTextUrl' || e.className === 'MessageEntityUrl') || (m.text && /(https?:\/\/[^\s]+)/.test(m.text)));
+
+const removeDiacritics = (str) => {
+  if (!str) return "";
+  return str.toString().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+};
 
 function SharedMediaModal({ initialTab, msgs, data, onClose, token, setLightbox, jumpToMessage, chats }) {
-  const [activeTab, setActiveTab] = useState(initialTab === 'photos' || initialTab === 'videos' ? 'media' : initialTab || 'media');
+  const [activeTab, setActiveTab] = useState(initialTab || 'photos');
 
   useEffect(() => {
     const handleEsc = (e) => { if (e.key === 'Escape') onClose() }
@@ -522,14 +632,15 @@ function SharedMediaModal({ initialTab, msgs, data, onClose, token, setLightbox,
   }, [onClose])
 
   const tabs = [
-    { id: 'media', label: 'Media' },
+    { id: 'photos', label: 'Photos' },
+    { id: 'videos', label: 'Videos' },
     { id: 'files', label: 'Files' },
     { id: 'links', label: 'Links' },
     { id: 'gifs', label: 'GIFs' },
     { id: 'groups', label: 'Groups' }
   ];
 
-  const filteredMedia = useMemo(() => {
+  const filtered = useMemo(() => {
     if (!msgs || !Array.isArray(msgs)) return [];
     return msgs.filter(m => {
       const currentChat = chats?.find(c => c.id === data?.chatId);
@@ -538,7 +649,8 @@ function SharedMediaModal({ initialTab, msgs, data, onClose, token, setLightbox,
       
       if (isGroupChat && !isProfileOfGroup && m.senderId && m.senderId.toString() !== data?.id?.toString()) return false;
       
-      if (activeTab === 'media' && (isPhotoMsg(m) || isVideoMsg(m))) return true;
+      if (activeTab === 'photos' && isPhotoMsg(m)) return true;
+      if (activeTab === 'videos' && isVideoMsg(m)) return true;
       if (activeTab === 'files' && isDocMsg(m)) return true;
       if (activeTab === 'links' && isLinkMsg(m)) return true;
       if (activeTab === 'gifs' && isGifMsg(m)) return true;
@@ -555,7 +667,7 @@ function SharedMediaModal({ initialTab, msgs, data, onClose, token, setLightbox,
         <div style={{padding:'16px 24px',display:'flex',alignItems:'center',gap:16}}>
           <button onClick={onClose} style={{background:'transparent',border:'none',color:'#9b7ec8',cursor:'pointer',fontSize:24}}>←</button>
           <div style={{fontSize:18,fontWeight:600,color:'#fff'}}>Shared Media</div>
-          <div style={{marginLeft:'auto',color:'#9b7ec8',fontSize:14}}>{filteredMedia.length > 0 ? `${filteredMedia.length} items` : ''}</div>
+          <div style={{marginLeft:'auto',color:'#9b7ec8',fontSize:14}}>{filtered.length > 0 ? `${filtered.length} items` : ''}</div>
         </div>
         <div style={{display:'flex',overflowX:'auto',padding:'0 16px',gap:24,scrollbarWidth:'none'}}>
           {tabs.map(t => (
@@ -567,22 +679,22 @@ function SharedMediaModal({ initialTab, msgs, data, onClose, token, setLightbox,
       </div>
 
       {/* Body */}
-      <div style={{flex:1,overflowY:'auto',padding:24,display:(activeTab==='media'||activeTab==='gifs')?'grid':'flex',flexDirection:'column',gridTemplateColumns:'repeat(auto-fill, minmax(100px, 1fr))',gap:8}}>
+      <div style={{flex:1,overflowY:'auto',padding:24,display:(activeTab==='photos'||activeTab==='videos'||activeTab==='gifs')?'grid':'flex',flexDirection:'column',gridTemplateColumns:'repeat(auto-fill, minmax(100px, 1fr))',gap:8}}>
         
         {activeTab === 'groups' && (
           <div style={{color:'#9b7ec8',textAlign:'center',marginTop:40,gridColumn:'1 / -1'}}>Not loaded. Full history API pending.</div>
         )}
 
-        {filteredMedia.length === 0 && activeTab !== 'groups' && (
+        {filtered.length === 0 && activeTab !== 'groups' && (
           <div style={{color:'#9b7ec8',textAlign:'center',marginTop:40,gridColumn:'1 / -1',display:'flex',flexDirection:'column',alignItems:'center',gap:12}}>
             <div>No {activeTab} found in loaded history.</div>
             <button style={{background:'transparent',border:'1px solid rgba(124,58,237,.5)',color:'#9b7ec8',padding:'6px 12px',borderRadius:6,cursor:'pointer',fontSize:13}} onClick={()=>alert('TODO: Fetch full history API')}>Load More</button>
           </div>
         )}
         
-        {filteredMedia.map(m => {
-          if (activeTab === 'media') {
-            if (isPhotoMsg(m)) {
+        {filtered.map(m => {
+          if (activeTab === 'photos' || activeTab === 'videos') {
+            if (activeTab === 'photos' && isPhotoMsg(m)) {
               return (
                 <div key={m.id} style={{aspectRatio:'1/1',background:'rgba(124,58,237,.1)',borderRadius:8,overflow:'hidden',position:'relative'}}>
                   <ChatPhoto msg={m} chatId={data.chatId} authToken={token} onImageClick={(src)=>setLightbox(src)}/>
@@ -590,7 +702,7 @@ function SharedMediaModal({ initialTab, msgs, data, onClose, token, setLightbox,
                 </div>
               )
             }
-            if (isVideoMsg(m)) {
+            if (activeTab === 'videos' && isVideoMsg(m)) {
               return (
                 <div key={m.id} style={{aspectRatio:'1/1',background:'rgba(124,58,237,.1)',borderRadius:8,overflow:'hidden',display:'flex',alignItems:'center',justifyContent:'center',position:'relative'}}>
                   <video style={{width:'100%',height:'100%',objectFit:'cover'}} src={`/api/chat/media/${data.chatId}/${m.id}?t=${token}`}/>
@@ -641,46 +753,50 @@ function SharedMediaModal({ initialTab, msgs, data, onClose, token, setLightbox,
   )
 }
 
-function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs, onOpenMedia }) {
+function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs, messagesLoaded, hasMore, onOpenMedia, setLightbox }) {
   const [status, setStatus] = useState(null)
   const [showMore, setShowMore] = useState(false)
+  const [fullProfile, setFullProfile] = useState(null)
+  const [activeTab, setActiveTab] = useState('media')
   
-  const isGroupProfile = data?.isGroup;
+  const isTopicInfo = data?.isTopic;
+  const isGroupProfile = !isTopicInfo && data?.chatId && data?.id && data.chatId.toString() !== data.id.toString();
+
+  const handleMediaClick = (m) => {
+    if (m.isPhoto || m.isVideo) {
+      if (setLightbox) setLightbox(`/api/chat/media/${data.chatId}/${m.id}?t=${token}`);
+    } else if (m.isDoc) {
+      window.open(`/api/chat/media/${data.chatId}/${m.id}?t=${token}`, '_blank');
+    }
+  };
   
   useEffect(() => {
-    const handleEsc = (e) => { if (e.key === 'Escape') onClose() }
-    window.addEventListener('keydown', handleEsc)
-    return () => window.removeEventListener('keydown', handleEsc)
-  }, [onClose])
-
-  const counts = useMemo(() => {
-    let photos = 0, videos = 0, files = 0, links = 0, gifs = 0;
-    console.log("CALC MEDIA", { msgsLength: msgs?.length, isGroupProfile, data });
-    if (msgs && Array.isArray(msgs)) {
-      msgs.forEach(m => {
-        const currentChat = chats?.find(c => c.id === data?.chatId);
-        const isGroupChat = currentChat?.isGroup || currentChat?.isChannel;
-        const isProfileOfGroup = data?.id?.toString() === data?.chatId?.toString();
-        
-        if (isGroupChat && !isProfileOfGroup && m.senderId && m.senderId.toString() !== data?.id?.toString()) return;
-
-        if (isPhotoMsg(m)) photos++;
-        if (isVideoMsg(m)) videos++;
-        if (isDocMsg(m)) files++;
-        if (isLinkMsg(m)) links++;
-        if (isGifMsg(m)) gifs++;
+    if (!data?.chatId) return
+    let isMounted = true
+    fetch(`/api/chat/profile/${data.chatId}`, { headers: {'x-auth-token': token} })
+      .then(async r => {
+        const ct = r.headers.get('content-type');
+        if (ct && ct.includes('text/html')) throw new Error('API route not found or backend returned HTML');
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
       })
-    }
-    return { photos, videos, files, links, gifs, groups: data?.commonGroups?.length || null };
-  }, [msgs, data?.id, data?.chatId, data?.commonGroups, chats]);
+      .then(d => { if(isMounted && d.ok && d.full) setFullProfile(d.full) })
+      .catch(e => console.error(e))
+    return () => { isMounted = false }
+  }, [data?.chatId, token])
 
   useEffect(() => {
     if (!data?.id) return
     let isMounted = true
     fetch(`/api/chat/status/${data.id}`, { headers: {'x-auth-token': token} })
-      .then(r => r.json())
+      .then(async r => {
+        const ct = r.headers.get('content-type');
+        if (ct && ct.includes('text/html')) throw new Error('API route not found or backend returned HTML');
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
       .then(d => { if(isMounted) setStatus(d.status) })
-      .catch(e => { if(isMounted) setStatus('User info not available') })
+      .catch(e => { if(isMounted) setStatus('') })
     return () => { isMounted = false }
   }, [data?.id, token])
 
@@ -689,6 +805,157 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
     window.addEventListener('keydown', handleEsc)
     return () => window.removeEventListener('keydown', handleEsc)
   }, [onClose])
+
+  const [tabData, setTabData] = useState({ media: [], files: [], links: [], groups: [] });
+  const [tabLoading, setTabLoading] = useState({ media: false, files: false, links: false, groups: false });
+  const [tabHasMore, setTabHasMore] = useState({ media: true, files: true, links: true, groups: true });
+  const [tabOffsetId, setTabOffsetId] = useState({ media: 0, files: 0, links: 0, groups: 0 });
+  const [tabError, setTabError] = useState({ media: null, files: null, links: null, groups: null });
+
+  useEffect(() => {
+    if (!data) return;
+    const keyBase = `${data.chatId}_${data.topicId||''}_${data.id}`;
+    
+    const initialTabData = { media: [], files: [], links: [], groups: [] };
+    const initialTabHasMore = { media: true, files: true, links: true, groups: true };
+    const initialTabOffsetId = { media: 0, files: 0, links: 0, groups: 0 };
+    const initialTabError = { media: null, files: null, links: null, groups: null };
+
+    ['media', 'files', 'links', 'groups'].forEach(t => {
+      const c = sharedMediaCache[`${keyBase}_${t}`];
+      if (c) {
+        initialTabData[t] = c.items;
+        initialTabHasMore[t] = c.hasMore;
+        initialTabOffsetId[t] = c.nextCursor;
+        initialTabError[t] = c.error;
+      }
+    });
+
+    setTabData(initialTabData);
+    setTabHasMore(initialTabHasMore);
+    setTabOffsetId(initialTabOffsetId);
+    setTabError(initialTabError);
+  }, [data?.id, data?.chatId, data?.topicId]);
+
+  useEffect(() => {
+    if (!data?.chatId && activeTab !== 'groups') return;
+    if (!data?.id && activeTab === 'groups') return;
+    if (tabData[activeTab].length === 0 && tabHasMore[activeTab] && !tabLoading[activeTab]) {
+      loadMore(activeTab);
+    }
+  }, [activeTab, data?.chatId, data?.id, tabData]);
+
+  const loadMore = (tab) => {
+    if (tabLoading[tab] || !tabHasMore[tab]) return;
+    setTabLoading(prev => ({...prev, [tab]: true}));
+    
+    let isMounted = true;
+
+    if (tab === 'groups') {
+      const accessHashQuery = data.accessHash ? `?accessHash=${data.accessHash}` : '';
+      const usernameQuery = data.username ? (data.accessHash ? `&username=${data.username}` : `?username=${data.username}`) : '';
+      
+      fetch(`/api/chat/common_groups/${data.id}${accessHashQuery}${usernameQuery}`, { headers: {'x-auth-token': token} })
+        .then(async r => {
+          const ct = r.headers.get('content-type');
+          if (ct && ct.includes('text/html')) throw new Error('API route not found or backend returned HTML');
+          if (!r.ok) {
+            const err = await r.json().catch(()=>({}));
+            throw new Error(err.error || `HTTP ${r.status}`);
+          }
+          return r.json()
+        })
+        .then(d => {
+          if (isMounted && d.ok) {
+             setTabData(prev => {
+               const updated = d.groups || [];
+               sharedMediaCache[`${data.chatId}_${data.topicId||''}_${data.id}_groups`] = { items: updated, hasMore: false, nextCursor: 0, error: null };
+               return {...prev, groups: updated};
+             });
+             setTabHasMore(prev => ({...prev, groups: false}));
+             setTabError(prev => ({...prev, groups: null}));
+          }
+        })
+        .catch(e => {
+          console.error(e);
+          if (isMounted) setTabError(prev => ({...prev, groups: e.message}));
+        })
+        .finally(() => {
+          if (isMounted) setTabLoading(prev => ({...prev, groups: false}));
+        });
+      return () => { isMounted = false; };
+    }
+
+    if (!data?.chatId) {
+      setTabLoading(prev => ({...prev, [tab]: false}));
+      return;
+    }
+
+    const fromUserQuery = isGroupProfile ? `&userId=${data.id}` : '';
+    const accessHashQuery = (isGroupProfile && data.accessHash) ? `&accessHash=${data.accessHash}` : '';
+    const topicIdQuery = isTopicInfo ? `&topicId=${data.topicId}` : '';
+    
+    fetch(`/api/telegram/shared-media?chatId=${data.chatId}&type=${tab}${fromUserQuery}${accessHashQuery}${topicIdQuery}&cursor=${tabOffsetId[tab]}&limit=30`, { headers: {'x-auth-token': token} })
+      .then(async r => {
+        const ct = r.headers.get('content-type');
+        if (ct && ct.includes('text/html')) throw new Error('API route not found or backend returned HTML');
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
+      .then(d => {
+        if (isMounted && d.ok) {
+           const items = d.items || d.media || [];
+           const nextCursor = d.nextCursor || d.nextOffsetId || 0;
+           setTabData(prev => {
+             // Deduplicate by id just in case
+             const existingIds = new Set(prev[tab].map(m => m.id));
+             const newItems = items.filter(m => !existingIds.has(m.id));
+             const updated = [...prev[tab], ...newItems];
+             sharedMediaCache[`${data.chatId}_${data.topicId||''}_${data.id}_${tab}`] = {
+               items: updated,
+               hasMore: d.hasMore,
+               nextCursor: nextCursor,
+               error: null
+             };
+             return {...prev, [tab]: updated};
+           });
+           setTabHasMore(prev => ({...prev, [tab]: d.hasMore}));
+           setTabOffsetId(prev => ({...prev, [tab]: nextCursor}));
+        } else if (isMounted && !d.ok) {
+           setTabError(prev => ({...prev, [tab]: d.error || 'Failed to fetch'}));
+        }
+      })
+      .catch(e => {
+        console.error(e);
+        if (isMounted) {
+            setTabError(prev => {
+                sharedMediaCache[`${data.chatId}_${data.topicId||''}_${data.id}_${tab}`] = { 
+                    items: tabData[tab], hasMore: tabHasMore[tab], nextCursor: tabOffsetId[tab], error: e.message 
+                };
+                return {...prev, [tab]: e.message};
+            });
+        }
+      })
+      .finally(() => {
+        if (isMounted) setTabLoading(prev => ({...prev, [tab]: false}));
+      });
+      
+    return () => { isMounted = false; };
+  };
+
+  const getSenderId = (m) => m.senderId || m.fromId || m.userId || m.peerId || m.author?.id || m.sender?.id || m.from?.id;
+
+  const groupMediaMsgs = useMemo(() => {
+    if (!isGroupProfile || !msgs) return [];
+    return msgs.filter(m => (getSenderId(m) || '').toString() === data?.id?.toString());
+  }, [msgs, isGroupProfile, data?.id]);
+
+  const fallbackData = useMemo(() => ({
+    media: groupMediaMsgs.filter(m => m.hasMedia && (m.isPhoto || m.isVideo)),
+    files: groupMediaMsgs.filter(m => m.isDoc && !m.isVideo),
+    links: groupMediaMsgs.filter(m => m.webpageUrl),
+    groups: []
+  }), [groupMediaMsgs]);
 
   if (!data) return null
 
@@ -700,140 +967,280 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
       setTimeout(() => inputRef?.current?.focus(), 100)
     } else {
       alert('Cannot open DM, user info missing / backend API pending')
-      // TODO: Call backend to create/resolve DM by ID when API is added
     }
   }
 
+  const bio = fullProfile?.fullUser?.about || fullProfile?.fullChat?.about || data.bio || data.about;
+  const businessHoursObj = fullProfile?.fullUser?.businessWorkHours;
+  const businessHours = businessHoursObj ? `${businessHoursObj.timezoneId} (${businessHoursObj.openNow ? 'Open Now' : 'Closed'})` : null;
+  const location = fullProfile?.fullUser?.businessLocation?.address;
+
+  const isFallback = isGroupProfile && tabError[activeTab] === 'SENDER_NOT_FOUND';
+
+  const tabs = isTopicInfo ? [
+    { id: 'media', label: `Media`, count: tabData.media.length, hasMore: tabHasMore.media },
+    { id: 'files', label: `Files`, count: tabData.files.length, hasMore: tabHasMore.files },
+    { id: 'links', label: `Links`, count: tabData.links.length, hasMore: tabHasMore.links }
+  ] : [
+    { id: 'media', label: `Media`, count: isFallback ? fallbackData.media.length : tabData.media.length, hasMore: !isFallback && tabHasMore.media },
+    { id: 'files', label: `Files`, count: isFallback ? fallbackData.files.length : tabData.files.length, hasMore: !isFallback && tabHasMore.files },
+    { id: 'links', label: `Links`, count: isFallback ? fallbackData.links.length : tabData.links.length, hasMore: !isFallback && tabHasMore.links },
+    { id: 'groups', label: `Groups`, count: tabData.groups.length, hasMore: tabHasMore.groups }
+  ];
+
   return (
-    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.6)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center'}}
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.5)',zIndex:9999,display:'flex',justifyContent:'flex-end'}}
          onClick={(e) => { if(e.target===e.currentTarget) onClose() }}>
-      <div style={{background:'#1a103c',width:380,borderRadius:12,overflow:'hidden',boxShadow:'0 10px 40px rgba(0,0,0,.5)',border:'1px solid rgba(124,58,237,.3)',color:'#fff'}}>
+      <div style={{background:'#1a103c',width:400,height:'100%',display:'flex',flexDirection:'column',boxShadow:'-4px 0 24px rgba(0,0,0,.5)',borderLeft:'1px solid rgba(124,58,237,.2)',animation:'slideInRight 0.2s ease-out',color:'#fff'}}>
         
-        {/* Header (Telegram-like solid block or gradient) */}
-        <div style={{position:'relative', padding:'24px 24px 16px', background:'linear-gradient(180deg, rgba(124,58,237,.2) 0%, #1a103c 100%)', display:'flex', flexDirection:'column', alignItems:'center'}}>
-          <div style={{position:'absolute', top:12, right:12}}>
-            <button onClick={onClose} style={{background:'transparent',border:'none',color:'#9b7ec8',cursor:'pointer',fontSize:24}}>&times;</button>
+        {/* Header */}
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'16px 20px',borderBottom:'1px solid rgba(124,58,237,.2)'}}>
+          <div style={{display:'flex',alignItems:'center',gap:16}}>
+            <button onClick={onClose} style={{background:'none',border:'none',color:'#9b7ec8',cursor:'pointer',fontSize:20}}>✕</button>
+            <div style={{fontSize:16,fontWeight:600}}>{isTopicInfo ? 'Topic Info' : 'User Info'}</div>
           </div>
-          <Avatar name={data.name||'User'} chatId={data.id} username={data.username} size={90}/>
-          <div style={{fontSize:22,fontWeight:700,marginTop:12,textAlign:'center'}}>{data.name||'Unknown User'}</div>
-          <div style={{fontSize:14,color:status==='online'?'#4caf50':'#9b7ec8',marginTop:4}}>
-            {status ? status : 'Loading status...'}
-          </div>
+          <button style={{background:'none',border:'none',color:'#9b7ec8',cursor:'not-allowed',fontSize:18}}>✎</button>
         </div>
 
-        {/* Action Buttons Row */}
-        <div style={{display:'flex', justifyContent:'space-around', padding:'12px 24px'}}>
-          <div onClick={handleMessage} style={{display:'flex', flexDirection:'column', alignItems:'center', cursor:'pointer', color:'#e0d4f5', gap:4}}>
-            <div style={{width:40,height:40,borderRadius:'50%',background:'rgba(124,58,237,.2)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18}}>💬</div>
-            <span style={{fontSize:12}}>Message</span>
-          </div>
-          <div onClick={()=>alert('Mute feature coming soon')} style={{display:'flex', flexDirection:'column', alignItems:'center', cursor:'pointer', color:'#e0d4f5', gap:4}}>
-            <div style={{width:40,height:40,borderRadius:'50%',background:'rgba(124,58,237,.2)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18}}>🔕</div>
-            <span style={{fontSize:12}}>Mute</span>
-          </div>
-          <div onClick={()=>alert('Call feature coming soon')} style={{display:'flex', flexDirection:'column', alignItems:'center', cursor:'pointer', color:'#e0d4f5', gap:4}}>
-            <div style={{width:40,height:40,borderRadius:'50%',background:'rgba(124,58,237,.2)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18}}>📞</div>
-            <span style={{fontSize:12}}>Call</span>
-          </div>
-          <div style={{position:'relative'}}>
-            <div onClick={()=>setShowMore(!showMore)} style={{display:'flex', flexDirection:'column', alignItems:'center', cursor:'pointer', color:'#e0d4f5', gap:4}}>
-              <div style={{width:40,height:40,borderRadius:'50%',background:'rgba(124,58,237,.2)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18}}>⋯</div>
-              <span style={{fontSize:12}}>More</span>
-            </div>
-            {showMore && (
-              <div style={{position:'absolute',top:'100%',right:0,marginTop:8,background:'#2a1b54',borderRadius:8,padding:8,minWidth:160,boxShadow:'0 4px 12px rgba(0,0,0,.5)',zIndex:10}}>
-                <div onClick={()=>{navigator.clipboard.writeText(data.id);setShowMore(false);alert('ID Copied')}} style={{padding:'8px 12px',cursor:'pointer',fontSize:13,color:'#fff',borderRadius:4}} onMouseEnter={e=>e.currentTarget.style.background='rgba(124,58,237,.4)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>Copy User ID</div>
-                {data.username && <div onClick={()=>{navigator.clipboard.writeText('@'+data.username);setShowMore(false);alert('Username Copied')}} style={{padding:'8px 12px',cursor:'pointer',fontSize:13,color:'#fff',borderRadius:4}} onMouseEnter={e=>e.currentTarget.style.background='rgba(124,58,237,.4)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>Copy Username</div>}
-                <div onClick={()=>{alert('Add to contacts pending');setShowMore(false)}} style={{padding:'8px 12px',cursor:'pointer',fontSize:13,color:'#fff',borderRadius:4}} onMouseEnter={e=>e.currentTarget.style.background='rgba(124,58,237,.4)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>Add to Contacts</div>
-                <div onClick={()=>{alert('CRM Note feature pending');setShowMore(false)}} style={{padding:'8px 12px',cursor:'pointer',fontSize:13,color:'#fff',borderRadius:4}} onMouseEnter={e=>e.currentTarget.style.background='rgba(124,58,237,.4)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>Add CRM Note</div>
+        <div style={{flex:1, overflowY:'auto'}}>
+          {/* Top Profile */}
+          <div style={{padding:'20px',display:'flex',gap:16,alignItems:'center'}}>
+            {isTopicInfo ? (
+              <div style={{width: 72, height: 72, borderRadius: '50%', background: '#2b5278', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 32, fontWeight: 600}}>
+                #
               </div>
+            ) : (
+              <Avatar name={data.name||'User'} chatId={data.id} username={data.username} accessHash={data.accessHash} size={72}/>
             )}
+            <div style={{minWidth: 0, flex: 1}}>
+              <div style={{fontSize:18,fontWeight:600,display:'flex',alignItems:'center',gap:4}}>
+                <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                  {isTopicInfo ? data.topicTitle : (data.name||'Unknown User')}
+                </span>
+                {!isTopicInfo && fullProfile?.fullUser?.verified && <span style={{color:'#0088cc',fontSize:14,flexShrink:0}}>✓</span>}
+              </div>
+              <div style={{fontSize:13,color:status==='online'?'#4caf50':'#9b7ec8',marginTop:6,display:'flex',alignItems:'center',gap:8,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                {isTopicInfo ? (
+                  <span style={{background: 'rgba(124,58,237,.2)', color: '#b395e3', padding: '2px 8px', borderRadius: 12, fontSize: 12}}>
+                    in {data.name}
+                  </span>
+                ) : (status ? status : 'last seen recently')}
+              </div>
+            </div>
           </div>
-        </div>
 
-        {/* Separator After Action Buttons */}
-        <div style={{height: 8, background: '#0d0618', width: '100%'}} />
+          {/* Action Buttons Row */}
+          {!isTopicInfo && (
+          <div style={{display:'flex', justifyContent:'space-around', padding:'12px 20px', borderBottom:'1px solid rgba(124,58,237,.2)'}}>
+            <div onClick={handleMessage} style={{display:'flex', flexDirection:'column', alignItems:'center', cursor:'pointer', color:'#7c3aed', gap:4}}>
+              <div style={{width:40,height:40,borderRadius:'50%',background:'rgba(124,58,237,.1)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18}}>💬</div>
+              <span style={{fontSize:12}}>Message</span>
+            </div>
+            <div style={{display:'flex', flexDirection:'column', alignItems:'center', cursor:'not-allowed', color:'#9b7ec8', gap:4, opacity: 0.4}}>
+              <div style={{width:40,height:40,borderRadius:'50%',background:'rgba(124,58,237,.1)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18}}>🔕</div>
+              <span style={{fontSize:12}}>Mute</span>
+            </div>
+            <div style={{display:'flex', flexDirection:'column', alignItems:'center', cursor:'not-allowed', color:'#9b7ec8', gap:4, opacity: 0.4}}>
+              <div style={{width:40,height:40,borderRadius:'50%',background:'rgba(124,58,237,.1)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18}}>📞</div>
+              <span style={{fontSize:12}}>Call</span>
+            </div>
+            <div style={{position:'relative'}}>
+              <div onClick={()=>setShowMore(!showMore)} style={{display:'flex', flexDirection:'column', alignItems:'center', cursor:'pointer', color:'#7c3aed', gap:4}}>
+                <div style={{width:40,height:40,borderRadius:'50%',background:'rgba(124,58,237,.1)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18}}>⋯</div>
+                <span style={{fontSize:12}}>More</span>
+              </div>
+              {showMore && (
+                <div style={{position:'absolute',top:'100%',right:0,marginTop:8,background:'#2a1b54',borderRadius:8,padding:8,minWidth:160,boxShadow:'0 4px 12px rgba(0,0,0,.5)',zIndex:10}}>
+                  <div onClick={()=>{navigator.clipboard.writeText(data.id);setShowMore(false)}} style={{padding:'8px 12px',cursor:'pointer',fontSize:13,color:'#fff',borderRadius:4}} onMouseEnter={e=>e.currentTarget.style.background='rgba(124,58,237,.4)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>Copy User ID</div>
+                  {data.username && <div onClick={()=>{navigator.clipboard.writeText('@'+data.username);setShowMore(false)}} style={{padding:'8px 12px',cursor:'pointer',fontSize:13,color:'#fff',borderRadius:4}} onMouseEnter={e=>e.currentTarget.style.background='rgba(124,58,237,.4)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>Copy Username</div>}
+                  <div style={{padding:'8px 12px',cursor:'not-allowed',fontSize:13,color:'#fff',borderRadius:4,opacity:0.4}}>Add to Contacts</div>
+                </div>
+              )}
+            </div>
+          </div>
+          )}
 
-        {/* Info Body */}
-        <div style={{padding:'16px 24px 24px', display:'flex', flexDirection:'column', gap:16}}>
-          {data.phone && (
-            <div>
-              <div style={{fontSize:16, color:'#fff'}}>{data.phone}</div>
-              <div style={{fontSize:13, color:'#9b7ec8'}}>Phone</div>
+          <div style={{height: 8, background: '#0d0618', width: '100%', flexShrink:0}} />
+
+          {/* Info Card */}
+          {!isTopicInfo && (
+            <div style={{padding:'16px 20px',display:'flex',flexDirection:'column',gap:16}}>
+              {data.phone && <div><div style={{fontSize:15}}>{data.phone}</div><div style={{fontSize:13,color:'#9b7ec8'}}>Phone</div></div>}
+              {data.username && <div><div style={{fontSize:15}}>@{data.username}</div><div style={{fontSize:13,color:'#9b7ec8'}}>Username</div></div>}
+              {bio && <div><div style={{fontSize:15, lineHeight:1.4, wordBreak:'break-word'}}>{bio}</div><div style={{fontSize:13,color:'#9b7ec8'}}>Bio</div></div>}
+              {businessHours && <div><div style={{fontSize:15,color:'#4caf50'}}>{businessHours}</div><div style={{fontSize:13,color:'#9b7ec8'}}>Business Hours</div></div>}
+              {location && <div><div style={{fontSize:15, lineHeight:1.4}}>{location}</div><div style={{fontSize:13,color:'#9b7ec8'}}>Location</div></div>}
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginTop:4}}>
+                <span style={{fontSize:15}}>Notifications</span>
+                <div style={{width:36,height:20,background:'#7c3aed',borderRadius:10,position:'relative'}}><div style={{width:16,height:16,background:'#fff',borderRadius:'50%',position:'absolute',top:2,right:2}}/></div>
+              </div>
             </div>
           )}
-          {data.username && (
-            <div>
-              <div style={{fontSize:16, color:'#fff'}}>@{data.username}</div>
-              <div style={{fontSize:13, color:'#9b7ec8'}}>Username</div>
+
+          {!isTopicInfo && <div style={{height: 8, background: '#0d0618', width: '100%', flexShrink:0}} />}
+
+          {isTopicInfo && (
+            <div style={{padding:'16px 20px',display:'flex',flexDirection:'column',gap:16}}>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                <div style={{display:'flex',flexDirection:'column',gap:4}}>
+                  <div style={{fontSize:15,color:'#7dd3fc',wordBreak:'break-all'}}>https://t.me/c/{data.chatId?.toString()?.replace('-100','')}/{data.topicId}</div>
+                  <div style={{fontSize:13,color:'#9b7ec8'}}>Link</div>
+                </div>
+                <div style={{display:'flex',gap:12,color:'#9b7ec8',fontSize:18}}>
+                  <div style={{cursor:'pointer'}} onClick={()=>{navigator.clipboard.writeText(`https://t.me/c/${data.chatId?.toString()?.replace('-100','')}/${data.topicId}`)}}>📋</div>
+                  <div style={{cursor:'pointer'}}>▣</div>
+                </div>
+              </div>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginTop:4}}>
+                <span style={{fontSize:15}}>Notifications</span>
+                <div style={{width:36,height:20,background:'#7c3aed',borderRadius:10,position:'relative'}}><div style={{width:16,height:16,background:'#fff',borderRadius:'50%',position:'absolute',top:2,right:2}}/></div>
+              </div>
             </div>
           )}
-          {(data.bio || data.about) && (
-            <div>
-              <div style={{fontSize:15, color:'#fff', lineHeight:1.4}}>{data.bio || data.about}</div>
-              <div style={{fontSize:13, color:'#9b7ec8'}}>Bio</div>
-            </div>
-          )}
-          
-          {/* Separator Before Shared Media */}
-          {((data.phone || data.username || data.bio || data.about) ? (
-            <div style={{height: 8, background: '#0d0618', width: 'calc(100% + 48px)', margin: '16px -24px 8px'}} />
-          ) : (
-            <div style={{height: 8, background: 'transparent', width: 'calc(100% + 48px)', margin: '0px -24px 8px'}} />
-          ))}
-          
-          {/* Shared Media */}
-          <div style={{width: 'calc(100% + 48px)', margin: '0 -24px', paddingBottom: 8}}>
-            <div onClick={()=>onOpenMedia('media')} style={{display:'flex', alignItems:'center', padding:'12px 24px', cursor:'pointer'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.05)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-              <svg style={{width:24, height:24, fill:'none', stroke:'#9b7ec8', strokeWidth:1.5, strokeLinecap:'round', strokeLinejoin:'round', marginRight:24}} viewBox="0 0 24 24">
-                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
-              </svg>
-              <span style={{fontSize:15, color:'#e0d4f5'}}>{counts.photos} photo{counts.photos!==1?'s':''}</span>
-            </div>
+
+          {isTopicInfo && <div style={{height: 8, background: '#0d0618', width: '100%', flexShrink:0}} />}
+
+          {/* Tab Bar */}
+          <div style={{display:'flex',padding:'0 20px',borderBottom:'1px solid rgba(124,58,237,.2)',overflowX:'auto',scrollbarWidth:'none'}}>
+            {tabs.map(t => (
+              <div key={t.id} onClick={()=>setActiveTab(t.id)} style={{padding:'16px 12px',cursor:'pointer',color:activeTab===t.id?'#7c3aed':'#9b7ec8',borderBottom:activeTab===t.id?'2px solid #7c3aed':'2px solid transparent',fontWeight:activeTab===t.id?600:400,whiteSpace:'nowrap',transition:'0.2s'}}>
+                {t.label} {t.count > 0 && <span style={{fontSize:12, background:activeTab===t.id?'rgba(124,58,237,.2)':'rgba(255,255,255,0.1)', padding:'2px 6px', borderRadius:10, marginLeft:4}}>{t.count}</span>}
+              </div>
+            ))}
+          </div>
+
+          {/* Tab Content */}
+          <div style={{padding:20}}>
+            {!isGroupProfile && activeTab === 'groups' && tabLoading.groups && tabData.groups.length === 0 && (
+              <div style={{padding:20,textAlign:'center',color:'#9b7ec8',fontSize:13}}>Loading common groups...</div>
+            )}
+            {!isGroupProfile && activeTab === 'groups' && !tabLoading.groups && tabData.groups.length === 0 && !tabError.groups && (
+              <div style={{padding:20,textAlign:'center',color:'#9b7ec8',fontSize:13}}>No groups in common</div>
+            )}
             
-            <div onClick={()=>onOpenMedia('media')} style={{display:'flex', alignItems:'center', padding:'12px 24px', cursor:'pointer'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.05)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-              <svg style={{width:24, height:24, fill:'none', stroke:'#9b7ec8', strokeWidth:1.5, strokeLinecap:'round', strokeLinejoin:'round', marginRight:24}} viewBox="0 0 24 24">
-                <polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
-              </svg>
-              <span style={{fontSize:15, color:'#e0d4f5'}}>{counts.videos} video{counts.videos!==1?'s':''}</span>
-            </div>
+            {tabError[activeTab] && !isFallback && (
+              <div style={{padding:20,textAlign:'center',color:'#e53935',fontSize:13}}>Error: {tabError[activeTab]}</div>
+            )}
 
-            <div onClick={()=>onOpenMedia('files')} style={{display:'flex', alignItems:'center', padding:'12px 24px', cursor:'pointer'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.05)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-              <svg style={{width:24, height:24, fill:'none', stroke:'#9b7ec8', strokeWidth:1.5, strokeLinecap:'round', strokeLinejoin:'round', marginRight:24}} viewBox="0 0 24 24">
-                <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/>
-              </svg>
-              <span style={{fontSize:15, color:'#e0d4f5'}}>{counts.files} file{counts.files!==1?'s':''}</span>
-            </div>
+            {isFallback && activeTab !== 'groups' && (
+              <div style={{padding:12,textAlign:'center',background:'rgba(229,57,53,.1)',color:'#e53935',fontSize:12,margin:'0 16px',borderRadius:8}}>
+                Backend full history search unavailable.<br/>Loaded group messages only.
+              </div>
+            )}
 
-            <div onClick={()=>onOpenMedia('links')} style={{display:'flex', alignItems:'center', padding:'12px 24px', cursor:'pointer'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.05)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-              <svg style={{width:24, height:24, fill:'none', stroke:'#9b7ec8', strokeWidth:1.5, strokeLinecap:'round', strokeLinejoin:'round', marginRight:24}} viewBox="0 0 24 24">
-                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
-              </svg>
-              <span style={{fontSize:15, color:'#e0d4f5'}}>{counts.links} shared link{counts.links!==1?'s':''}</span>
-            </div>
+            {activeTab === 'media' && (
+              <div style={{display:'flex', flexDirection:'column', gap:16}}>
+                <div style={{display:'grid',gridTemplateColumns:'repeat(3, 1fr)',gap:4}}>
+                  {(isFallback ? fallbackData.media : tabData.media).map(m => (
+                    <div key={m.id} style={{aspectRatio:'1/1',background:'rgba(124,58,237,.1)',cursor:'pointer',position:'relative'}} onClick={()=>handleMediaClick(m)}>
+                      <ChatPhoto msg={m} chatId={data.chatId} authToken={token} onImageClick={()=>{}}/>
+                      {m.isVideo && <div style={{position:'absolute',top:'50%',left:'50%',transform:'translate(-50%,-50%)',color:'#fff',fontSize:24,textShadow:'0 2px 8px rgba(0,0,0,0.5)'}}>▶</div>}
+                    </div>
+                  ))}
+                </div>
+                {tabLoading.media ? (
+                  <div style={{textAlign:'center',color:'#9b7ec8',paddingTop:10}}>Loading media...</div>
+                ) : !isFallback && tabHasMore.media ? (
+                  <div onClick={()=>loadMore('media')} style={{textAlign:'center',color:'#7c3aed',cursor:'pointer',padding:8,background:'rgba(124,58,237,.1)',borderRadius:8}}>Load More</div>
+                ) : (isFallback ? fallbackData.media.length === 0 : tabData.media.length === 0) && (
+                  <div style={{textAlign:'center',color:'#9b7ec8',paddingTop:10}}>No media found</div>
+                )}
+              </div>
+            )}
+            {activeTab === 'files' && (
+              <div style={{display:'flex',flexDirection:'column',gap:12}}>
+                {(isFallback ? fallbackData.files : tabData.files).map(m => (
+                  <div key={m.id} onClick={()=>handleMediaClick(m)} style={{display:'flex',alignItems:'center',gap:12,cursor:'pointer',background:'rgba(124,58,237,.1)',padding:12,borderRadius:8}}>
+                    <div style={{width:40,height:40,borderRadius:8,background:'#7c3aed',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20}}>📄</div>
+                    <div style={{flex:1,overflow:'hidden'}}>
+                      <div style={{fontSize:14,fontWeight:500,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{m.fileName || 'Document'}</div>
+                      <div style={{fontSize:12,color:'#9b7ec8'}}>{new Date(m.date*1000).toLocaleString()} • {m.fileSize ? (m.fileSize/1024).toFixed(1)+' KB' : ''}</div>
+                    </div>
+                  </div>
+                ))}
+                {tabLoading.files ? (
+                  <div style={{textAlign:'center',color:'#9b7ec8',paddingTop:10}}>Loading files...</div>
+                ) : !isFallback && tabHasMore.files ? (
+                  <div onClick={()=>loadMore('files')} style={{textAlign:'center',color:'#7c3aed',cursor:'pointer',padding:8,background:'rgba(124,58,237,.1)',borderRadius:8}}>Load More</div>
+                ) : (isFallback ? fallbackData.files.length === 0 : tabData.files.length === 0) && (
+                  <div style={{textAlign:'center',color:'#9b7ec8',paddingTop:10}}>No files found</div>
+                )}
+              </div>
+            )}
+            {activeTab === 'links' && (
+              <div style={{display:'flex',flexDirection:'column',gap:12}}>
+                {(isFallback ? fallbackData.links : tabData.links).map((m, i) => {
+                  const urlMatch = m.webpageUrl || (m.text ? m.text.match(/(https?:\/\/[^\s]+)/) : null);
+                  const finalUrl = typeof urlMatch === 'string' ? urlMatch : (urlMatch ? urlMatch[0] : '#');
+                  
+                  if (!finalUrl || finalUrl === '#') return null;
 
-            <div onClick={()=>onOpenMedia('gifs')} style={{display:'flex', alignItems:'center', padding:'12px 24px', cursor:'pointer'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.05)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-              <svg style={{width:24, height:24, fill:'none', stroke:'#9b7ec8', strokeWidth:1.5, strokeLinecap:'round', strokeLinejoin:'round', marginRight:24}} viewBox="0 0 24 24">
-                <rect x="2" y="6" width="20" height="12" rx="2" ry="2"/><text x="12" y="15" fill="none" stroke="#9b7ec8" strokeWidth="1" textAnchor="middle" fontSize="9" fontWeight="bold">GIF</text>
-              </svg>
-              <span style={{fontSize:15, color:'#e0d4f5'}}>{counts.gifs} GIF{counts.gifs!==1?'s':''}</span>
-            </div>
-
-            {!isGroupProfile && (
-              <div onClick={()=>onOpenMedia('groups')} style={{display:'flex', alignItems:'center', padding:'12px 24px', cursor:'pointer'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.05)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-                <svg style={{width:24, height:24, fill:'none', stroke:'#9b7ec8', strokeWidth:1.5, strokeLinecap:'round', strokeLinejoin:'round', marginRight:24}} viewBox="0 0 24 24">
-                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-                </svg>
-                <span style={{fontSize:15, color:'#e0d4f5'}}>{counts.groups !== null ? `${counts.groups} Groups in common` : 'Groups in common (Unavailable)'}</span>
+                  return (
+                    <div key={i} onClick={()=>window.open(finalUrl, '_blank')} style={{display:'flex',gap:12,background:'rgba(124,58,237,.1)',padding:12,borderRadius:8,alignItems:'center',cursor:'pointer'}}>
+                      <div style={{width:40,height:40,borderRadius:8,background:'rgba(124,58,237,.2)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18}}>🔗</div>
+                      <div style={{flex:1,overflow:'hidden'}}>
+                        <div style={{fontSize:14,fontWeight:500,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',color:'#7dd3fc'}}>{m.webpageTitle || m.webpageUrl || 'Link'}</div>
+                        <div style={{fontSize:12,color:'#9b7ec8'}}>{new Date(m.date*1000).toLocaleString()}</div>
+                      </div>
+                    </div>
+                  )
+                })}
+                {tabLoading.links ? (
+                  <div style={{textAlign:'center',color:'#9b7ec8',paddingTop:10}}>Loading links...</div>
+                ) : !isFallback && tabHasMore.links ? (
+                  <div onClick={()=>loadMore('links')} style={{textAlign:'center',color:'#7c3aed',cursor:'pointer',padding:8,background:'rgba(124,58,237,.1)',borderRadius:8}}>Load More</div>
+                ) : (isFallback ? fallbackData.links.length === 0 : tabData.links.length === 0) && (
+                  <div style={{textAlign:'center',color:'#9b7ec8',paddingTop:10}}>No links found</div>
+                )}
+              </div>
+            )}
+            {activeTab === 'groups' && (
+              <div style={{display:'flex',flexDirection:'column',gap:12}}>
+                {tabData.groups.map(g => (
+                  <div key={g.id} onClick={() => {
+                      const chat = chats.find(c => c.id.toString() === g.id.toString());
+                      if (chat) {
+                        setSel(chat);
+                        onClose();
+                        setTimeout(() => inputRef?.current?.focus(), 100);
+                      } else {
+                        // If chat not in local list, fallback to basic sel logic
+                        setSel({ id: g.id, title: g.title, isGroup: true, username: g.username });
+                        onClose();
+                      }
+                    }} 
+                    style={{display:'flex',alignItems:'center',gap:12,cursor:'pointer',background:'rgba(124,58,237,.1)',padding:12,borderRadius:8,transition:'0.2s'}}
+                    onMouseEnter={e=>e.currentTarget.style.background='rgba(124,58,237,.2)'} 
+                    onMouseLeave={e=>e.currentTarget.style.background='rgba(124,58,237,.1)'}>
+                    <Avatar name={g.title} chatId={g.id} username={g.username} accessHash={g.accessHash} size={40} />
+                    <div style={{flex:1,overflow:'hidden'}}>
+                      <div style={{fontSize:15,fontWeight:600,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',color:'#fff'}}>{g.title}</div>
+                      <div style={{fontSize:13,color:'#9b7ec8'}}>{g.participantsCount} members</div>
+                    </div>
+                  </div>
+                ))}
+                {tabLoading.groups ? (
+                  <div style={{textAlign:'center',color:'#9b7ec8',paddingTop:10}}>Loading groups...</div>
+                ) : tabError.groups ? (
+                  <div style={{textAlign:'center',color:'#f87171',paddingTop:10}}>Unavailable ({tabError.groups})</div>
+                ) : tabData.groups.length === 0 && (
+                  <div style={{textAlign:'center',color:'#9b7ec8',paddingTop:10}}>No groups in common</div>
+                )}
               </div>
             )}
           </div>
         </div>
-
       </div>
+      <style>{`
+        @keyframes slideInRight {
+          from { transform: translateX(100%); }
+          to { transform: translateX(0); }
+        }
+      `}</style>
     </div>
   )
 }
+
 
 const URL_REGEX = /(https?:\/\/[^\s]+|www\.[^\s]+|[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(?:\/[^\s]*)?)/gi;
 
@@ -907,7 +1314,7 @@ function renderMessageText(text, searchStr) {
   return parts.map(renderPart);
 }
 
-export default function CRMChat({token}) {
+export default function CRMChat({ token, onAuthFailed }) {
   _authToken = token
   const [theme,setTheme]=useState(()=>localStorage.getItem('crm_theme')||'dark')
   useEffect(()=>{
@@ -932,10 +1339,43 @@ export default function CRMChat({token}) {
     try { return JSON.parse(localStorage.getItem('crm_selTopic')) || null } catch { return null }
   })
   const [loadingTopics,setLoadingTopics]=useState(false)
+  const [topicError,setTopicError]=useState(false)
+  const [forceNormalView,setForceNormalView]=useState(false)
   const [topicSearch,setTopicSearch]=useState("")
   const [topicCtxMenu,setTopicCtxMenu]=useState(null)
   const [msgs,setMsgs]=useState([])
+  const msgsCacheRef = useRef({})
   const [search,setSearch]=useState(() => localStorage.getItem('crm_search') || '')
+  const [globalMatches, setGlobalMatches] = useState([])
+  const [isGlobalSearching, setIsGlobalSearching] = useState(false)
+  const [hasSearchedGlobal, setHasSearchedGlobal] = useState(true)
+
+  useEffect(() => {
+    setGlobalMatches([])
+    if (!search.trim()) {
+       setHasSearchedGlobal(true)
+       return
+    }
+    setHasSearchedGlobal(false)
+
+    const delay = setTimeout(async () => {
+      setIsGlobalSearching(true)
+      try {
+        const url = `/api/telegram/search?q=${encodeURIComponent(search.trim())}`
+        const res = await fetch(url, { headers: { 'x-auth-token': token } })
+        if (res.ok) {
+          const data = await res.json()
+          setGlobalMatches(data)
+        }
+      } catch (e) {
+        console.error('Global search error', e)
+      } finally {
+        setIsGlobalSearching(false)
+        setHasSearchedGlobal(true)
+      }
+    }, 600)
+    return () => clearTimeout(delay)
+  }, [search, token])
 
   useEffect(() => {
     if (sel) localStorage.setItem('crm_sel', JSON.stringify(sel))
@@ -955,12 +1395,16 @@ export default function CRMChat({token}) {
     localStorage.setItem('crm_search', search)
   }, [search])
   const [input,setInput]=useState("")
+  const [pastedFile,setPastedFile]=useState(null)
+  const [filePreview,setFilePreview]=useState(null)
   const inputRef = useRef(null)
+  const fileInputRef = useRef(null)
   const leftColScrollRef = useRef(null)
   const hasRestoredSidebarScroll = useRef(false)
   const [sending,setSending]=useState(false)
   const [loadChats,setLoadChats]=useState(true)
   const [loadMsgs,setLoadMsgs]=useState(false)
+  const [messagesLoaded,setMessagesLoaded]=useState(false)
   const [loadingMore,setLoadingMore]=useState(false)
   const [hasMoreChats,setHasMoreChats]=useState(true)
   const [hasMore,setHasMore]=useState(true)
@@ -980,9 +1424,12 @@ export default function CRMChat({token}) {
         const data = await res.json()
         if (isMounted && data.status) {
           setOnlineStatus(data.status)
+        } else if (isMounted) {
+          setOnlineStatus('')
         }
       } catch (e) {
         console.error("status fetch error:", e)
+        if (isMounted) setOnlineStatus('')
       }
     }
     
@@ -997,21 +1444,84 @@ export default function CRMChat({token}) {
   const [showScrollBtn,setShowScrollBtn]=useState(false)
   const firstUnreadRef=useRef(null)
   const [readChats,setReadChats]=useState(new Set())
+  const [localReadState,setLocalReadState]=useState(() => JSON.parse(localStorage.getItem('crm_read_state') || '{}'))
+  useEffect(() => { localStorage.setItem('crm_read_state', JSON.stringify(localReadState)) }, [localReadState])
   const [chatFolders,setChatFolders]=useState({})   // {chatId: folderName}
   const [confirmLeave,setConfirmLeave]=useState(null) // chat to confirm leave
   const [previewChat,setPreviewChat]=useState(null)   // chat preview modal // chatIds marked as read this session
   const [showMembers,setShowMembers]=useState(false)
   const [memberSearch,setMemberSearch]=useState("")
+  const [chatMembersCache, setChatMembersCache] = useState({})
+  const [loadingMembers, setLoadingMembers] = useState(false)
+  const [membersError, setMembersError] = useState(null)
+
+  const fetchMembers = useCallback(async () => {
+    if (!sel || (!sel.isGroup && !sel.isChannel)) return
+    setLoadingMembers(true)
+    setMembersError(null)
+    console.log(`[Members API] Fetching members for ${sel.id}...`)
+    try {
+      const res = await fetch(`/api/chat/members/${sel.id}`, { headers: { "x-auth-token": token }})
+      console.log(`[Members API] URL: /api/chat/members/${sel.id}, Status: ${res.status}`)
+      
+      if (res.status === 401) {
+        setMembersError("TOKEN_EXPIRED")
+        return
+      }
+      if (res.status === 403) {
+        setMembersError("Unable to load members due to Telegram permission limits.")
+        return
+      }
+      
+      const data = await res.json()
+      if (data.ok) {
+        setChatMembersCache(p => ({...p, [sel.id]: data.members}))
+      } else {
+        if (data.error === 'No session' || data.error === 'TG_SESSION_EXPIRED' || data.error?.includes('SESSION')) {
+          setMembersError("TG_SESSION_EXPIRED")
+        } else {
+          setMembersError(data.error || "Failed to load members")
+        }
+      }
+    } catch(e) {
+      console.log(`[Members API] Error:`, e)
+      setMembersError(e.message)
+    } finally {
+      setLoadingMembers(false)
+    }
+  }, [sel, token])
+
+  useEffect(() => {
+    if (showMembers && sel && (sel.isGroup || sel.isChannel)) {
+      if (!chatMembersCache[sel.id]) {
+        fetchMembers()
+      } else {
+        setMembersError(null)
+      }
+    }
+  }, [showMembers, sel, fetchMembers, chatMembersCache])
+
   const [notifPerm,setNotifPerm]=useState(false)
   const [showTmpl,setShowTmpl]=useState(false)
   const [tmplCat,setTmplCat]=useState("all")
   const [aiText,setAiText]=useState("")
-  const [aiAnalysis,setAiAnalysis]=useState("")
-  const [aiAlt,setAiAlt]=useState("")
-  const [aiLoading,setAiLoading]=useState(false)
+  const [aiSuggestions,setAiSuggestions]=useState([])
+  const [aiAnalysis, setAiAnalysis] = useState('')
+  const [aiAlt, setAiAlt] = useState('')
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiError, setAiError] = useState(null)
+  const [aiInstruction,setAiInstruction]=useState("")
   const msgsRef = useRef([])
   useEffect(()=>{ msgsRef.current = msgs },[msgs])
-  const [showProfile,setShowProfile]=useState(true)
+  const [showProfile,setShowProfile]=useState(()=>{
+    try{
+      const s=localStorage.getItem('tg_show_crm')
+      return s?JSON.parse(s):true
+    }catch{return true}
+  })
+  useEffect(()=>{
+    localStorage.setItem('tg_show_crm',JSON.stringify(showProfile))
+  },[showProfile])
   const [stages,setStages]=useState({})
   const [tags,setTags]=useState({})
   const [leadSource,setLeadSource]=useState({})
@@ -1033,7 +1543,6 @@ export default function CRMChat({token}) {
   const [editedMsgs,setEditedMsgs]=useState({})
   const [forwardMsg,setForwardMsg]=useState(null)
   const [reactions,setReactions]=useState({})
-  const [myReactions,setMyReactions]=useState({}) // {msgId: emoji | null}
   const [chatSearch,setChatSearch]=useState('')
   const [chatSearchOpen,setChatSearchOpen]=useState(false)
   const [globalSearch,setGlobalSearch]=useState('')
@@ -1047,6 +1556,19 @@ export default function CRMChat({token}) {
   const [scheduleOpen,setScheduleOpen]=useState(false)
   const [scheduleTime,setScheduleTime]=useState('')
   const [scheduledMsgs,setScheduledMsgs]=useState([])
+
+  const searchGifs = async (query) => {
+    // Dummy function since searchGifs was missing
+    if (!query) return setGifs([])
+    setGifs([])
+  }
+
+  const sendScheduled = async () => {
+    // Dummy function since sendScheduled was missing
+    alert('Scheduled send is not yet implemented.')
+    setScheduleOpen(false)
+    setScheduleTime('')
+  }
   const [pollOpen,setPollOpen]=useState(false)
   const [pollQuestion,setPollQuestion]=useState('')
   const [pollOptions,setPollOptions]=useState(['',''])
@@ -1068,14 +1590,15 @@ export default function CRMChat({token}) {
   const fetchChats = useCallback(async (append=false) => {
     if (loadingChatsRef.current) return
     loadingChatsRef.current = true
-    if (!append) setLoadChats(true)
+    if (!append && chatsRef.current.length === 0) setLoadChats(true)
+    console.time('fetchChats')
     
     try {
       let url = "/api/chat/list?limit=50"
       if (append && chatsRef.current.length > 0) {
         const lastChat = chatsRef.current[chatsRef.current.length - 1]
         if (lastChat && lastChat.date) {
-           url += "&offsetDate=" + lastChat.date
+           url += `&offsetDate=${lastChat.date}&offsetId=${lastChat.msgId || 0}&offsetPeer=${lastChat.id}`
         }
       }
       const r = await fetch(url,{headers:{"x-auth-token":token}})
@@ -1085,20 +1608,35 @@ export default function CRMChat({token}) {
         else if (!append) setHasMoreChats(true)
         
         setChats(prev => {
+          let updatedData = d
           if (append) {
              const newChats = d.filter(c1 => !prev.some(c2 => c2.id === c1.id))
-             return [...prev, ...newChats]
+             updatedData = [...prev, ...newChats]
           }
-          return d
+          
+          // Override unread with localReadState if applicable
+          return updatedData.map(c => {
+             const readTime = localReadState[c.id];
+             if (readTime && (!c.lastMessageAt || c.lastMessageAt * 1000 <= readTime)) {
+                return { ...c, unread: 0 }
+             }
+             return c;
+          })
         })
         
         setSel(prevSel => {
            if (!prevSel && !append && d.length > 0) return d[0]
+           // If selected chat exists but not in new fetch, keep it active (pagination/search handling)
            return prevSel
         })
+      } else if (d && d.error === 'AUTH_FAILED') {
+        if (typeof onAuthFailed === 'function') onAuthFailed()
+      } else {
+        // Handle server error returning non-array
+        console.error("fetchChats invalid response:", d)
       }
-    } catch(e) { console.error("chats:",e) }
-    
+    } catch(e) { console.error("fetchChats error:", e) }
+    console.timeEnd('fetchChats')
     if (!append) setLoadChats(false)
     loadingChatsRef.current = false
   }, [token])
@@ -1107,6 +1645,7 @@ export default function CRMChat({token}) {
 
   // Load messages when chat selected
   const prevSelId = useRef(sel?.id || null)
+  const prevSelTopicId = useRef(selTopic?.id || null)
   const hasRestoredScroll = useRef(false)
   const isNearBottom = useRef(true)
   const scrollPositions = useRef(JSON.parse(localStorage.getItem('crm_scroll_positions') || '{}'))
@@ -1115,78 +1654,201 @@ export default function CRMChat({token}) {
   useEffect(() => {
     if (chats.length > 0 && !hasRestoredSidebarScroll.current && leftColScrollRef.current) {
       hasRestoredSidebarScroll.current = true
-      const savedScroll = localStorage.getItem('crm_leftCol_scroll')
-      if (savedScroll) {
-        leftColScrollRef.current.scrollTop = parseInt(savedScroll, 10)
-      }
+      leftColScrollRef.current.scrollTop = parseInt(localStorage.getItem('crm_leftcol_scroll') || '0', 10)
     }
   }, [chats])
+
+  const markChatAsRead = useCallback((chatId, topicId = null, maxMsgId = 0) => {
+    const readKey = chatId + (topicId ? '_' + topicId : '')
+    setReadChats(prev => new Set(prev).add(readKey))
+    
+    const now = Date.now()
+    setLocalReadState(prev => ({...prev, [chatId]: now}))
+    
+    setChats(prev => prev.map(c => {
+      if (c.id === chatId) {
+        // Only zero out unread if it's the main chat or we are reading the forum (simplified)
+        return { ...c, unread: 0 }
+      }
+      return c
+    }))
+    
+    setSel(prev => {
+      if (prev && prev.id === chatId) {
+        return { ...prev, unread: 0 }
+      }
+      return prev
+    })
+    
+    if (topicId) {
+      setSelTopic(prev => prev && prev.id === topicId ? { ...prev, unread: 0 } : prev)
+    }
+
+    fetch('/api/chat/read', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'x-auth-token': token},
+      body: JSON.stringify({ chatId, maxId: maxMsgId })
+    }).catch(err => console.error("Auto read error", err))
+  }, [token])
 
   const handleScroll = (e) => {
     const { scrollTop, scrollHeight, clientHeight } = e.target
     isNearBottom.current = scrollHeight - scrollTop - clientHeight < 150
     if (sel?.id) {
-      scrollPositions.current[sel.id] = scrollTop
+      const scrollKey = sel.id + (selTopic ? '_' + selTopic.id : '')
+      scrollPositions.current[scrollKey] = scrollTop
       clearTimeout(saveScrollTimeout.current)
       saveScrollTimeout.current = setTimeout(() => {
         localStorage.setItem('crm_scroll_positions', JSON.stringify(scrollPositions.current))
       }, 300)
     }
     // Mark as read if user has scrolled past the unread separator or reached bottom
-    if (sel?.unread > 0 && !readChats.has(sel.id)) {
+    const unreadCount = selTopic ? (selTopic.unread || 0) : (sel?.unread || 0)
+    const readKey = sel?.id + (selTopic ? '_' + selTopic.id : '')
+    if (unreadCount > 0 && !readChats.has(readKey)) {
+      const maxMsgId = msgsRef.current.length > 0 ? Math.max(...msgsRef.current.map(m => m.id)) : 0;
       if (isNearBottom.current) {
-        setReadChats(p => new Set([...p, sel.id]))
-        setChats(p => p.map(c => c.id===sel.id ? {...c, unread:0} : c))
+        console.log(`[Unread Debug] Marking ${sel.id} as read. Old count: ${unreadCount}, maxId: ${maxMsgId}`);
+        markChatAsRead(sel.id, selTopic?.id, maxMsgId)
+      } else if (firstUnreadRef.current) {
+        const rect = firstUnreadRef.current.getBoundingClientRect()
+        if (rect.top < window.innerHeight) {
+          console.log(`[Unread Debug] Marking ${sel.id} as read (scrolled past). Old count: ${unreadCount}, maxId: ${maxMsgId}`);
+          markChatAsRead(sel.id, selTopic?.id, maxMsgId)
+        }
       }
     }
   }
 
   useEffect(()=>{
-    if(sel && sel.isForum && selTopic) {
-      setMsgs([]); setAiText(""); setAiAnalysis(""); setAiAlt(""); setReplyTo(null)
-      hasRestoredScroll.current = false
-      loadMessages(sel, selTopic.id)
-    }
-  },[selTopic, token])
-
-  useEffect(()=>{
     if(!sel) return
     let currentTopic = selTopic
+    let chatOrTopicChanged = false
+    
     if (prevSelId.current !== sel.id) {
        currentTopic = null
        setSelTopic(null)
+       chatOrTopicChanged = true
        prevSelId.current = sel.id
+       prevSelTopicId.current = null
+       setForceNormalView(false)
+       setTopicError(false)
+    } else if (prevSelTopicId.current !== selTopic?.id) {
+       prevSelTopicId.current = selTopic?.id
+       chatOrTopicChanged = true
+    }
+    
+    if (chatOrTopicChanged) {
+      hasRestoredScroll.current = false
+      const cacheKey = sel.id + (currentTopic ? '_' + currentTopic.id : '')
+      if (msgsCacheRef.current[cacheKey]) {
+        setMsgs(msgsCacheRef.current[cacheKey])
+        setMessagesLoaded(true)
+        setLoadMsgs(false)
+      } else {
+        setMsgs([])
+        setMessagesLoaded(false)
+        setLoadMsgs(true)
+      }
+    }
+    
+    if (sel.isForum && !currentTopic && !forceNormalView) {
+      setLoadingTopics(true)
+      setTopicError(false)
+      fetch(`/api/chat/topics/${sel.id}`, { headers: {"x-auth-token": token} })
+        .then(r=>{
+          if (!r.ok) throw new Error('Failed to fetch')
+          return r.json()
+        })
+        .then(d=>{
+          const tList = Array.isArray(d) ? d : []
+          setTopics(p=>({...p, [sel.id]: tList}))
+          setLoadingTopics(false)
+          if (tList.length === 0) {
+            setForceNormalView(true)
+            loadMessages(sel, null)
+          }
+        })
+        .catch(e=>{
+          setLoadingTopics(false)
+          setForceNormalView(true)
+          loadMessages(sel, null)
+        })
+      return
     }
 
-    setMsgs([]); setAiText(""); setAiAnalysis(""); setAiAlt(""); setReplyTo(null)
-    hasRestoredScroll.current = false
-    
-    // Load messages directly — topic handling is separate
-    // Forum topics loaded on demand when user clicks Topics tab
-
     loadMessages(sel, currentTopic?.id || null)
-  },[sel, selTopic, token])
+  },[sel, selTopic, token, forceNormalView])
+
+  const activeAiRequest = useRef(null);
+
+  // Clear AI suggestions when chat or context changes
+  const clientMsgsCount = (msgs||[]).filter(m => !m.fromMe && !m.deleted).length;
+  const lastClientMsgText = clientMsgsCount > 0 ? (msgs||[]).filter(m => !m.fromMe && !m.deleted).pop().text : "";
+
+  useEffect(()=>{
+    setAiSuggestions([]); setAiText(""); setAiError(null); setAiInstruction("");
+    activeAiRequest.current = null;
+  },[sel?.id, selTopic?.id])
+
+  useEffect(()=>{
+    // Don't clear instruction, just clear the suggestions/error because the context changed
+    if (aiSuggestions.length > 0 || aiError || aiText) {
+      setAiSuggestions([]); setAiText(""); setAiError(null);
+    }
+  },[msgs?.length, lastClientMsgText])
+
+  // Clear AI error when command input changes, but keep suggestions until Generate is clicked
+  useEffect(() => {
+    if (aiError) {
+      setAiError(null);
+    }
+  }, [aiInstruction]);
 
 
   useEffect(()=>{
     if(!msgs.length) return
     if(!hasRestoredScroll.current) {
       hasRestoredScroll.current = true
-      if(firstUnreadRef.current && sel?.unread > 0) {
+      const unreadCount = selTopic ? (selTopic.unread || 0) : (sel?.unread || 0)
+      if(firstUnreadRef.current && unreadCount > 0) {
         firstUnreadRef.current.scrollIntoView({behavior:"auto", block:"center"})
+        
+        // Wait a tick for layout, then check if the unread divider is visible
+        setTimeout(() => {
+           if (firstUnreadRef.current) {
+             const rect = firstUnreadRef.current.getBoundingClientRect()
+             if (rect.top < window.innerHeight) {
+               const maxMsgId = msgsRef.current.length > 0 ? Math.max(...msgsRef.current.map(m => m.id)) : 0;
+               markChatAsRead(sel.id, selTopic?.id, maxMsgId)
+             }
+           }
+        }, 100)
       } else {
-        const savedScroll = scrollPositions.current[sel?.id]
+        const scrollKey = sel?.id + (selTopic ? '_' + selTopic.id : '')
+        const savedScroll = scrollPositions.current[scrollKey]
         if (savedScroll !== undefined) {
           const container = document.querySelector('.msgs')
           if (container) container.scrollTop = savedScroll
         } else {
           endRef.current?.scrollIntoView({behavior:"auto"})
         }
+        
+        // If unreadCount > 0 but we scrolled to the bottom (or no unread separator), mark as read
+        if (unreadCount > 0) {
+           setTimeout(() => {
+             const container = document.querySelector('.msgs')
+             if (!container || container.scrollHeight - container.scrollTop - container.clientHeight < 150) {
+               const maxMsgId = msgsRef.current.length > 0 ? Math.max(...msgsRef.current.map(m => m.id)) : 0;
+               markChatAsRead(sel.id, selTopic?.id, maxMsgId)
+             }
+           }, 100)
+        }
       }
     } else if(!loadingMore && isNearBottom.current) {
       endRef.current?.scrollIntoView({behavior:"smooth"})
     }
-  },[msgs, loadingMore, sel?.unread, sel?.id])
+  },[msgs, loadingMore, sel?.unread, selTopic?.unread, sel?.id, selTopic?.id])
 
   useEffect(()=>{
     if (inputRef.current) {
@@ -1201,6 +1863,141 @@ export default function CRMChat({token}) {
   // Send message — send then reload (no polling = no duplicates)
   const loadingRef = useRef(false)
   const loadingMoreRef = useRef(false)
+  const selRef = useRef(sel)
+  const selTopicRef = useRef(selTopic)
+  useEffect(() => { selRef.current = sel; selTopicRef.current = selTopic }, [sel, selTopic])
+
+  // Real-time SSE Connection
+  useEffect(() => {
+    if (!token) return
+    
+    let sse = null
+    let retryCount = 0
+    let reconnectTimeout = null
+
+    const connectSSE = () => {
+      sse = new EventSource('/api/chat/stream?token=' + encodeURIComponent(token))
+      
+      sse.onopen = () => {
+        retryCount = 0
+        // When reconnecting, fetch chats again to catch up
+        fetchChats()
+        if (selRef.current) {
+           loadMessages(selRef.current)
+        }
+      }
+
+      sse.onmessage = (e) => {
+        try {
+          const data = JSON.parse(e.data)
+          if (data.type === 'new_message') {
+            const msg = data.message
+            
+            // 1. Update chats list and unread count
+            setChats(prev => {
+              const newChats = [...prev]
+              const idx = newChats.findIndex(c => c.id === msg.chatId)
+              if (idx > -1) {
+                const c = newChats[idx]
+                // Only increment unread if not currently in that chat
+                if (selRef.current?.id !== msg.chatId && !msg.fromMe) {
+                  c.unread = (c.unread || 0) + 1
+                }
+                c.lastMessage = msg.hasMedia ? '[Media]' : msg.text
+                c.lastMessageAt = msg.date
+                c.date = msg.date
+                
+                // Move chat to top (below pinned chats)
+                const updatedChat = newChats.splice(idx, 1)[0]
+                const lastPinnedIdx = newChats.map(x=>x.pinned).lastIndexOf(true)
+                if (updatedChat.pinned) {
+                   // Keep it sorted by date inside pinned
+                   const insertIdx = newChats.findIndex((x, i) => i <= lastPinnedIdx && x.date < msg.date)
+                   newChats.splice(insertIdx === -1 ? lastPinnedIdx + 1 : insertIdx, 0, updatedChat)
+                } else {
+                   const insertIdx = newChats.findIndex((x, i) => i > lastPinnedIdx && x.date < msg.date)
+                   newChats.splice(insertIdx === -1 ? newChats.length : insertIdx, 0, updatedChat)
+                }
+              }
+              return newChats
+            })
+
+            // 2. Append to msgs if in active chat
+            const isSameChat = selRef.current?.id === msg.chatId;
+            const isSameTopic = !selRef.current?.isForum || (msg.topicId && selTopicRef.current?.id === msg.topicId) || (!msg.topicId && !selTopicRef.current);
+            
+            if (isSameChat && isSameTopic) {
+              setMsgs(prev => {
+                if (prev.some(m => m.id === msg.id)) return prev
+                const updated = [...prev, msg]
+                const nextState = updated.sort((a,b) => a.date - b.date)
+                msgsCacheRef.current[selRef.current.id + (selTopicRef.current ? '_' + selTopicRef.current.id : '')] = nextState
+                return nextState
+              })
+              
+              // Regenerate AI Reply if we are in the chat
+              setAiSuggestions([])
+              setAiText('')
+
+              // Mark as read immediately if window has focus and message is incoming
+              if (!msg.fromMe && document.hasFocus()) {
+                markChatAsRead(msg.chatId, msg.topicId, msg.id)
+              }
+            }
+          }
+          else if (data.type === 'delete_messages') {
+             const { ids, chatId } = data
+             if (selRef.current?.id === chatId) {
+                setMsgs(prev => {
+                  const nextState = prev.filter(m => !ids.includes(m.id))
+                  msgsCacheRef.current[selRef.current.id + (selTopicRef.current ? '_' + selTopicRef.current.id : '')] = nextState
+                  return nextState
+                })
+             }
+          }
+          else if (data.type === 'update_reactions') {
+            const { chatId, msgId, topicId, reactions, recentReactions } = data;
+            const isSameChat = selRef.current?.id === chatId;
+            const isSameTopic = !selRef.current?.isForum || (topicId && selTopicRef.current?.id === topicId) || (!topicId && !selTopicRef.current);
+            
+            if (isSameChat && isSameTopic) {
+              setMsgs(prev => {
+                const idx = prev.findIndex(m => m.id === msgId);
+                if (idx === -1) return prev;
+                
+                // Only update if the reaction stringified content actually changed (optional optimization)
+                const updatedMsgs = [...prev];
+                updatedMsgs[idx] = { 
+                  ...updatedMsgs[idx], 
+                  reactions: reactions || [],
+                  recentReactions: recentReactions || []
+                };
+                msgsCacheRef.current[selRef.current.id + (selTopicRef.current ? '_' + selTopicRef.current.id : '')] = updatedMsgs;
+                return updatedMsgs;
+              });
+            }
+          }
+        } catch (err) {
+          console.error('SSE parse error:', err)
+        }
+      }
+
+      sse.onerror = () => {
+        sse.close()
+        // Exponential backoff reconnect
+        const delay = Math.min(10000, 1000 * Math.pow(2, retryCount++))
+        reconnectTimeout = setTimeout(connectSSE, delay)
+      }
+    }
+
+    connectSSE()
+
+    return () => {
+      clearTimeout(reconnectTimeout)
+      if (sse) sse.close()
+    }
+  }, [token])
+
   async function loadMessages(chat, topicId=null, append=false) {
     if(!chat) return
     if(!append && loadingRef.current) return
@@ -1211,9 +2008,10 @@ export default function CRMChat({token}) {
       setLoadingMore(true)
     } else {
       loadingRef.current = true
-      setLoadMsgs(true)
+      if (msgsRef.current.length === 0) setLoadMsgs(true)
       setHasMore(true)
     }
+    console.time('loadMessages')
     
     try {
       let url, qs = chat.username ? '?username='+encodeURIComponent(chat.username) : ''
@@ -1236,34 +2034,23 @@ export default function CRMChat({token}) {
         if(d.length < 40) setHasMore(false)
         else if(!append) setHasMore(true)
 
-        // Merge TG reactions from message data into reactions state
-        setReactions(prev => {
-          const updated = {...prev}
-          d.forEach(m => {
-            if(m.reactions && Object.keys(m.reactions).length > 0) {
-              // Merge server reactions with local optimistic state
-              // Keep whichever has higher counts (don't overwrite optimistic)
-              const local = prev[m.id] || {}
-              const merged = {...m.reactions}
-              Object.keys(local).forEach(e => {
-                if((local[e]||0) > (merged[e]||0)) merged[e] = local[e]
-              })
-              updated[m.id] = merged
-            }
-          })
-          return updated
-        })
         setMsgs(prev => {
+          let nextState;
           if(append) {
             const newMsgs = d.filter(m1 => !prev.some(m2 => m2.id === m1.id))
-            return [...newMsgs, ...prev]
+            nextState = [...newMsgs, ...prev]
           } else {
             const stillPending = prev.filter(m => m.pending && m.id < 0 && !d.some(s=>s.text===m.text&&s.fromMe))
-            return [...d, ...stillPending]
+            nextState = [...d, ...stillPending]
           }
+          msgsCacheRef.current[chat.id + (topicId ? '_' + topicId : '')] = nextState;
+          return nextState;
         })
+      } else if (d && d.error === 'AUTH_FAILED') {
+        if (typeof onAuthFailed === 'function') onAuthFailed()
       }
     } catch(e) { console.error("loadMsgs:",e) }
+    console.timeEnd('loadMessages')
     
     if(append) {
       loadingMoreRef.current = false
@@ -1271,12 +2058,109 @@ export default function CRMChat({token}) {
     } else {
       loadingRef.current = false
       setLoadMsgs(false)
+      setMessagesLoaded(true)
     }
   }
 
   const sendingRef = useRef(false)
+
+  const toggleReaction = async (msgId, emoji) => {
+    console.log('emojiClicked', {
+      chatId: sel?.chatId || sel?.id,
+      topicId: selTopic?.id,
+      messageId: msgId,
+      emoji: emoji,
+    });
+    
+    let newReactionsToLog = [];
+    
+    let payloadEmoji = null;
+    let originalReactions = [];
+    
+    console.log(`[Reaction Click] msgId=${msgId}, clickedEmoji=${emoji}`);
+    
+    setMsgs(prevMsgs => {
+      const msgIndex = prevMsgs.findIndex(m => m.id === msgId)
+      if (msgIndex === -1) {
+        console.log('Reaction failed: Message not found in local msgs state', msgId);
+        return prevMsgs;
+      }
+      const msg = prevMsgs[msgIndex]
+      originalReactions = msg.reactions || []
+      
+      const existing = originalReactions.find(r => r.emoticon === emoji)
+      let newReactions = [...originalReactions]
+      
+      if (existing && existing.chosen) {
+        // Toggle off the same emoji
+        if (existing.count <= 1) {
+          newReactions = newReactions.filter(r => r.emoticon !== emoji)
+        } else {
+          newReactions = newReactions.map(r => r.emoticon === emoji ? { ...r, count: r.count - 1, chosen: false } : r)
+        }
+      } else {
+        // Un-choose any previously chosen emoji (enforce 1 reaction per user)
+        newReactions = newReactions.map(r => {
+          if (r.chosen) {
+            return { ...r, count: r.count - 1, chosen: false };
+          }
+          return r;
+        }).filter(r => r.count > 0);
+        
+        const newExisting = newReactions.find(r => r.emoticon === emoji)
+        if (newExisting) {
+          newReactions = newReactions.map(r => r.emoticon === emoji ? { ...r, count: r.count + 1, chosen: true } : r)
+        } else {
+          newReactions.push({ emoticon: emoji, count: 1, chosen: true })
+        }
+      }
+      
+      newReactionsToLog = newReactions;
+      
+      const chosenEmojiObj = newReactions.find(r => r.chosen);
+      payloadEmoji = chosenEmojiObj ? chosenEmojiObj.emoticon : null;
+      
+      const updatedMsgs = [...prevMsgs]
+      updatedMsgs[msgIndex] = { ...msg, reactions: newReactions }
+      msgsCacheRef.current[selRef.current?.id + (selTopicRef.current ? '_' + selTopicRef.current.id : '')] = updatedMsgs;
+      return updatedMsgs;
+    })
+    
+    console.log('updated reactions', newReactionsToLog);
+    
+    try {
+      const payload = { chatId: sel?.chatId || sel?.id, topicId: selTopic?.id, msgId, emoji: payloadEmoji, username: sel?.username };
+      console.log('API request payload', payload);
+      
+      const res = await fetch('/api/chat/react', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
+        body: JSON.stringify(payload)
+      })
+      console.log('API status/error', res.status, res.statusText);
+      const resData = await res.json().catch(() => null);
+      
+      if (!res.ok) throw new Error(`API failed: ${res.status} ${resData?.error || ''}`)
+      console.log(`[Reaction Sync] success: msgId=${msgId}, emoji=${JSON.stringify(payloadEmoji)}, tgRes=`, resData?.tgRes)
+    } catch (e) {
+      console.log(`[Reaction Sync] Telegram API error:`, e.message);
+      console.error(e)
+      alert('Lỗi thả emoji: ' + e.message);
+      setMsgs(prevMsgs => {
+        const idx = prevMsgs.findIndex(m => m.id === msgId)
+        if (idx === -1) return prevMsgs;
+        const revertMsgs = [...prevMsgs]
+        revertMsgs[idx] = { ...prevMsgs[idx], reactions: originalReactions }
+        msgsCacheRef.current[selRef.current?.id + (selTopicRef.current ? '_' + selTopicRef.current.id : '')] = revertMsgs;
+        return revertMsgs;
+      })
+    }
+  }
+
   async function send(){
-    const text=input.trim(); if(!text||!sel||!text.length) return
+    const safeInput = (input === "null" || input == null) ? "" : input;
+    const text=safeInput.trim(); 
+    if((!text && !pastedFile) || !sel) return
     // Handle edit mode — call Telegram API
     if(editingMsg) {
       const origId = editingMsg.id
@@ -1314,27 +2198,73 @@ export default function CRMChat({token}) {
     sendingRef.current = true
     setSending(true); setReplyTo(null)
     // Show message instantly (optimistic)
-    const tempMsg = {id: -Date.now(), text, fromMe:true, date:Math.floor(Date.now()/1000), pending:true}
+    const sentDate = Math.floor(Date.now()/1000)
+    const tempMsg = {id: -Date.now(), text, fromMe:true, date:sentDate, pending:true}
     setMsgs(p=>[...p, tempMsg])
+    
+    // Optimistic chat list update
+    let prevChatState = null;
+    setChats(prev => {
+      const idx = prev.findIndex(c => c.id === sel.id)
+      if (idx > -1) {
+        prevChatState = { date: prev[idx].date, lastMsg: prev[idx].lastMsg }
+        const newChats = [...prev]
+        newChats[idx] = { ...newChats[idx], date: sentDate, lastMsg: text }
+        return newChats
+      }
+      return prev
+    })
+
     try {
-      if(selTopic) {
+      if (pastedFile) {
+        const formData = new FormData()
+        formData.append('chatId', sel.id)
+        if (selTopic) formData.append('topicId', selTopic.id)
+        if (sel.username) formData.append('username', sel.username)
+        if (text) formData.append('caption', text)
+        formData.append('file', pastedFile)
+
+        await fetch('/api/chat/send-media', {
+          method: 'POST',
+          headers: { "x-auth-token": token },
+          body: formData
+        })
+        setPastedFile(null)
+        setFilePreview(null)
+      } else if(selTopic) {
         await fetch('/api/chat/topics/'+sel.id+'/'+selTopic.id+'/send', {
           method:"POST", headers:{"Content-Type":"application/json","x-auth-token":token},
-          body:JSON.stringify({text})
+          body:JSON.stringify({text, username: sel.username || undefined})
         })
       } else {
-        await fetch("/api/chat/send",{
+        await fetch('/api/chat/send', {
           method:"POST", headers:{"Content-Type":"application/json","x-auth-token":token},
-          body:JSON.stringify({chatId:sel.id, text})
+          body:JSON.stringify({chatId:sel.id, text, username: sel.username || undefined})
         })
       }
+      
+      // Update message status to remove pending
+      setMsgs(p=>p.map(m=>m.id===tempMsg.id ? {...m, pending:false} : m))
+      
       setTimeout(async()=>{
         loadingRef.current = false
         await loadMessages(sel, selTopic?.id || null)
       }, 200)
     } catch(e) {
+      // Rollback
       setMsgs(p=>p.filter(m=>m.id!==tempMsg.id))
       setInput(text)
+      if (prevChatState) {
+        setChats(prev => {
+          const idx = prev.findIndex(c => c.id === sel.id)
+          if (idx > -1) {
+            const newChats = [...prev]
+            newChats[idx] = { ...newChats[idx], date: prevChatState.date, lastMsg: prevChatState.lastMsg }
+            return newChats
+          }
+          return prev
+        })
+      }
     }
     sendingRef.current = false
     setSending(false)
@@ -1343,7 +2273,7 @@ export default function CRMChat({token}) {
   // AI Summarize
   async function getSummary() {
     if(!sel||!msgs.length) return
-    setAiLoading(true); setAiMode('summarize'); setAiText(''); setAiAlt(''); setAiAnalysis('')
+    setAiLoading(true); setAiText(''); setAiSuggestions([]); setAiAlt(''); setAiAnalysis(''); setAiError(null)
     try {
       const r = await fetch('/api/ai/summarize',{
         method:'POST',
@@ -1358,9 +2288,9 @@ export default function CRMChat({token}) {
   }
 
   // AI Extract Lead Info
-  async function getExtract() {
-    if(!sel||!msgs.length) return
-    setAiLoading(true); setAiMode('extract'); setAiText(''); setAiAlt(''); setAiAnalysis('')
+  const getExtract = async () => {
+    if(!sel) return
+    setAiLoading(true); setAiText(''); setAiSuggestions([]); setAiAlt(''); setAiAnalysis(''); setAiError(null)
     try {
       const r = await fetch('/api/ai/extract',{
         method:'POST',
@@ -1382,28 +2312,97 @@ export default function CRMChat({token}) {
   // AI Suggest — always reads latest msgs from ref
   async function getAI(){
     if(!sel) return
-    setAiText(""); setAiLoading(true)
 
-    // Use msgsRef to get absolute latest messages (not stale closure)
     const allMsgs = (msgsRef.current||[]).filter(m => m.text && !m.deleted && !m.pending)
-    const lastClientMsg = [...allMsgs].reverse().find(m => !m.fromMe)?.text || ""
+    
+    if (!messagesLoaded || allMsgs.length === 0) {
+      setAiError("Context not loaded. Please wait for messages to load before generating.");
+      return;
+    }
+
+    let cmd = (aiInstruction||"").normalize('NFC').trim();
+    // Remove accidental mid-word punctuation like "đang. làm"
+    cmd = cmd.replace(/([a-zA-Z\p{L}])[.,]([a-zA-Z\p{L}])/gu, '$1 $2');
+    cmd = cmd.replace(/\s+/g, ' ');
+    
+    const attemptId = Math.random().toString(36).substring(2, 8);
+    activeAiRequest.current = attemptId;
+
+    console.log("[AI Suggest Generate Click]", {
+      generateAttemptId: attemptId,
+      rawCommand: aiInstruction,
+      normalizedCommand: cmd,
+      isGenerating: aiLoading,
+      selectedChatId: sel.id,
+      messagesCount: allMsgs.length
+    });
+
+    if (cmd.length > 0 && cmd.length < 3) {
+      setAiError("Please enter a clearer instruction.");
+      console.log("[AI Suggest Validation]", { status: "failed", errorMessage: "Instruction too short", commandInput: aiInstruction });
+      return;
+    }
+    console.log("[AI Suggest Validation]", { status: "passed", commandInput: aiInstruction });
+
+    setAiText(""); setAiSuggestions([]); setAiLoading(true); setAiError(null)
+
+    const clientMsgs = allMsgs.filter(m => !m.fromMe)
+    const lastClientMsg = clientMsgs.length > 0 ? clientMsgs[clientMsgs.length-1].text : ""
+
+    const aiPayload = {
+      contactName: sel.name,
+      lastMessage: lastClientMsg,
+      messages: allMsgs.slice(-40).map(m => ({text: m.text, fromMe: m.fromMe})),
+      stage: stages[sel.id] || "Contacted",
+      notes: (notes[sel.id]||[]).map(n=>n.content).join(" | "),
+      instruction: cmd,
+      chatId: sel.id,
+      topicId: selTopic?.id || null
+    };
+
+    console.log("[AI Suggest Request Payload]", {
+      selectedChatId: aiPayload.chatId,
+      selectedTopicId: aiPayload.topicId,
+      messagesSentCount: aiPayload.messages.length,
+      latestCustomerMessage: aiPayload.lastMessage,
+      userCommand: aiPayload.instruction
+    });
 
     try {
       const r = await fetch("/api/ai/suggest", {
         method: "POST",
         headers: {"Content-Type":"application/json","x-auth-token":token},
-        body: JSON.stringify({
-          contactName: sel.name,
-          lastMessage: lastClientMsg,
-          messages: allMsgs.slice(-20).map(m => ({text: m.text, fromMe: m.fromMe})),
-          stage: stages[sel.id] || "Contacted",
-          notes: (notes[sel.id]||[]).map(n=>n.content).join(" | ")
-        })
+        body: JSON.stringify(aiPayload)
       })
       const d = await r.json()
-      if (d.suggestion) setAiText(d.suggestion)
-    } catch(e) { console.error("AI:", e) }
-    setAiLoading(false)
+      
+      // Ignore if a newer request was started
+      if (activeAiRequest.current !== attemptId) {
+        console.log(`[AI Suggest API Response - ${attemptId}] Ignored (stale request)`);
+        return;
+      }
+
+      console.log(`[AI Suggest API Response - ${attemptId}]`, {
+        responseSource: d.source || "unknown",
+        normalizedIntent: d.normalizedIntent,
+        finalPromptPreview: d.finalPromptPreview,
+        suggestionsCount: d.suggestions?.length || 0,
+        errorMessage: d.error || null
+      });
+
+      if (d.ok === false || d.error) {
+        setAiError(d.error || "Failed to generate custom reply. Please try rephrasing your command.");
+      } else if (d.suggestions) {
+        setAiSuggestions(d.suggestions)
+      } else if (d.suggestion) {
+        setAiText(d.suggestion)
+      }
+    } catch(e) { 
+      console.error("AI:", e) 
+      setAiError("Network error connecting to AI service.")
+    } finally {
+      setAiLoading(false)
+    }
   }
 
   // Right-click context menu
@@ -1415,7 +2414,7 @@ export default function CRMChat({token}) {
   async function deleteMsg(idx){
     const msg = msgs[idx]
     if(!msg) return
-    setMsgs(p=>p.map((m,i)=>i===idx?{...m,deleted:true,text:"This message was deleted"}:m))
+    setMsgs(p=>p.filter((m,i)=>i!==idx))
     if(msg.id && msg.id > 0 && msg.fromMe) {
       try {
         await fetch("/api/chat/delete",{
@@ -1429,8 +2428,8 @@ export default function CRMChat({token}) {
   async function deleteAllMsgs(){
     if(!sel || !window.confirm("Delete all your messages in this chat?")) return
     const myMsgs = msgs.filter(m=>m.fromMe && m.id && m.id>0)
-    // Mark all as deleted in UI immediately
-    setMsgs(p=>p.map(m=>m.fromMe?{...m,deleted:true,text:"This message was deleted"}:m))
+    // Remove all my messages from UI immediately
+    setMsgs(p=>p.filter(m=>!m.fromMe))
     // Delete each on server
     for(const msg of myMsgs) {
       try {
@@ -1454,7 +2453,27 @@ export default function CRMChat({token}) {
     setNoteInp("");setAddNote(false)
   }
 
-  const filtered = chats
+  const searchLower = removeDiacritics(search.trim());
+
+  // 1. Log actual chat object structure
+  // 3. Verify which real fields exist
+  if (chats.length > 0 && !window.__loggedChatStructure) {
+    console.log("DEBUG [Chat Object Structure]:", Object.keys(chats[0]), chats[0]);
+    window.__loggedChatStructure = true;
+  }
+
+  // 4. Build a getSearchableText(chat) helper using the real fields
+  const getSearchableText = (c) => {
+    // Only use fields we KNOW exist in the object based on server.js
+    const parts = [
+      c.name,
+      c.username,
+      c.lastMsg
+    ];
+    return removeDiacritics(parts.filter(Boolean).join(" "));
+  };
+
+  const preSearchFiltered = [...chats]
     .sort((a,b) => {
       const ap = (a.isPinned || pinnedChats.has(a.id)) ? 1 : 0
       const bp = (b.isPinned || pinnedChats.has(b.id)) ? 1 : 0
@@ -1472,8 +2491,42 @@ export default function CRMChat({token}) {
       if(folder === 'groups')   return !!(c.isGroup || c.isChannel)
       if(folder === 'personal') return c.isUser === true
       return true
-    })
-    .filter(c => !search || c.name?.toLowerCase().includes(search.toLowerCase()))
+    });
+
+  const deferredSearchLower = useDeferredValue(searchLower);
+
+  const localFiltered = useMemo(() => {
+    return preSearchFiltered.filter(c => {
+      if (!deferredSearchLower) return true;
+      return getSearchableText(c).includes(deferredSearchLower);
+    });
+  }, [preSearchFiltered, deferredSearchLower]);
+
+  const filtered = useMemo(() => {
+    if (!deferredSearchLower) return localFiltered;
+    const localIds = new Set(localFiltered.map(c => c.id));
+    const uniqueGlobals = globalMatches.filter(g => !localIds.has(g.id));
+    return [...localFiltered, ...uniqueGlobals];
+  }, [localFiltered, globalMatches, deferredSearchLower]);
+
+  useEffect(() => {
+    // 2. Log exactly what was requested
+    console.log("DEBUG [Search Flow]:", {
+      searchQuery: search.trim(),
+      activeFilter: folder,
+      rawChatsLength: chats.length,
+      preSearchFilteredLength: preSearchFiltered.length,
+      matchedChatsLength: filtered.length,
+      first5SearchableText: filtered.slice(0, 5).map(c => getSearchableText(c))
+    });
+
+    console.log("[ChatSync Debug]", { total: chats.length, filtered: filtered.length, matchedChats: filtered.length, folder, searchQuery: search.trim(), selId: sel?.id, msgsCount: msgs.length, loadMsgs, messagesLoaded })
+
+    if (chats.length > 0 && !sel) {
+      setSel(filtered.length > 0 ? filtered[0] : chats[0])
+    }
+  }, [chats, filtered, sel, search, folder, preSearchFiltered.length])
+
   const cStage=sel?stages[sel.id]||"Contacted":"New"
   const cProb=sel?probs[sel.id]??50:50
   const cDeal=sel?deals[sel.id]??0:0
@@ -1522,8 +2575,8 @@ export default function CRMChat({token}) {
       display: flex; flex-direction: column;
       height: 100%; max-height: 100%;
       min-height: 0;
-      width: 270px;
-      min-width: 270px;
+      width: 320px;
+      min-width: 320px;
       flex-shrink: 0;
       background: #1a0533;
       border-right: 1px solid #0d0618;
@@ -1592,6 +2645,11 @@ export default function CRMChat({token}) {
       display: flex;
       flex-direction: column;
       gap: 0;
+      background-color: #0e1621;
+      background-image: url('https://web.telegram.org/a/chat-bg-pattern-dark.png');
+      background-size: 512px;
+      background-attachment: scroll;
+      background-blend-mode: overlay;
     }
     .msgs::-webkit-scrollbar { width: 4px; }
     .msgs::-webkit-scrollbar-thumb { background: #2d1155; border-radius: 2px; }
@@ -1600,11 +2658,11 @@ export default function CRMChat({token}) {
     .msg-row {
       display: flex;
       width: 100%;
-      margin-bottom: 12px;
+      margin-bottom: 10px;
     }
     .msg-row.out { justify-content: flex-end; }
     .msg-row.in  { justify-content: flex-start; align-items: flex-end; }
-    .msg-row.grouped { margin-bottom: 3px; }
+    .msg-row.grouped { margin-bottom: 2px; }
 
     /* ── AVATAR ── */
     .msg-avatar {
@@ -1641,10 +2699,10 @@ export default function CRMChat({token}) {
       overflow-wrap: break-word;
       white-space: pre-wrap;
     }
-    .bbl.out { background: #7c3aed; color: #fff; }
-    .bbl.in { background: #1e0a3c; color: #f0e6ff; }
+    .bbl.out { background: #8774e1; color: #fff; box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
+    .bbl.in { background: #212d3b; color: #fff; box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
     .bbl.del { opacity: .5; font-style: italic; }
-    .bbl.rpl { border-left: 3px solid rgba(124,58,237,.5); padding-left: 10px; border-radius: 8px; margin-bottom: 4px; font-size: 13px; }
+    .bbl.rpl { border-left: 3px solid rgba(255,255,255,.5); padding-left: 10px; border-radius: 8px; margin-bottom: 4px; font-size: 13px; }
     .msg-link { color: #7dd3fc; text-decoration: none; word-break: break-word; overflow-wrap: anywhere; }
     .msg-link:hover { text-decoration: underline; }
     .bbl.out .msg-link { color: #e0e7ff; text-decoration: underline; }
@@ -1669,7 +2727,7 @@ export default function CRMChat({token}) {
       margin-left: 14px;
       white-space: nowrap;
       font-size: 11px;
-      opacity: .65;
+      color: rgba(255, 255, 255, 0.5);
       float: right;
     }
 
@@ -1679,12 +2737,12 @@ export default function CRMChat({token}) {
       margin: 20px 0 16px;
     }
     .dsep span {
-      background: rgba(124,58,237,.15);
-      padding: 4px 12px;
-      border-radius: 12px;
-      color: #a78bfa;
-      font-size: 12px;
-      font-weight: 600;
+      background: rgba(0,0,0,0.25);
+      padding: 4px 10px;
+      border-radius: 14px;
+      color: rgba(255,255,255,0.7);
+      font-size: 13px;
+      font-weight: 500;
     }
 
     /* ── REPLY BAR ── */
@@ -1719,60 +2777,63 @@ export default function CRMChat({token}) {
     .ir {
       display: flex;
       align-items: flex-end;
-      gap: 10px;
-      padding: 8px 14px 20px;
-      min-height: 64px;
+      gap: 8px;
+      padding: 10px 16px 14px;
+      min-height: 56px;
     }
 
     /* Icon buttons */
     .ib {
-      width: 34px; height: 34px; flex-shrink: 0;
-      background: transparent; border: none; border-radius: 8px;
+      width: 36px; height: 36px; flex-shrink: 0;
+      background: transparent; border: none; border-radius: 50%;
       cursor: pointer; display: flex; align-items: center; justify-content: center;
-      color: #9b7ec8; font-size: 17px; transition: background .1s;
-      margin-bottom: 3px;
+      color: #9b7ec8; font-size: 20px; transition: background .1s;
+      margin-bottom: 2px;
     }
-    .ib:hover, .ib.on { background: #2d1155; color: #f0e6ff; }
-    .ib.g { font-size: 13px; font-weight: 700; }
+    .ib:hover, .ib.on { background: rgba(255,255,255,0.08); color: #f0e6ff; }
+    .ib.g { font-size: 16px; font-weight: 700; }
 
     /* Textarea */
     .message-input {
       flex: 1; min-width: 0;
-      min-height: 40px; max-height: 250px;
-      padding: 9px 14px;
-      background: #2d1155; border: none; border-radius: 20px;
-      color: #f0e6ff; font-size: 14px; font-family: inherit;
-      line-height: 1.45; resize: none; outline: none;
+      min-height: 40px; max-height: 120px;
+      padding: 10px 14px;
+      background: #23153d; border: none; border-radius: 20px;
+      color: #f0e6ff; font-size: 15px; font-family: inherit;
+      line-height: 20px; resize: none; outline: none;
       overflow-y: auto; box-sizing: border-box;
     }
     .message-input::placeholder { color: #6b4d94; }
 
     /* Send button */
     .sb {
-      width: 38px; height: 38px; flex-shrink: 0;
-      border-radius: 50%; background: #7c3aed; border: none;
+      width: 36px; height: 36px; flex-shrink: 0;
+      border-radius: 50%; background: #8774e1; border: none;
       cursor: pointer; display: flex; align-items: center; justify-content: center;
-      font-size: 17px; color: #fff;
+      font-size: 18px; color: #fff;
       transition: background .15s, opacity .15s;
+      margin-bottom: 2px;
     }
-    .sb:hover { background: #6d2ed5; }
+    .sb:hover { background: #766ac8; }
     .sb:disabled { opacity: .35; cursor: default; }
 
     /* ── RIGHT COL ── */
     .rc {
       display: flex; flex-direction: column;
       overflow-y: auto;
-      width: 280px;
-      min-width: 280px;
+      width: 320px;
+      min-width: 320px;
       flex-shrink: 0;
       background: #1a0533; border-left: 1px solid #0d0618;
       padding: 20px 14px; gap: 14px;
+      box-sizing: border-box; height: 100%;
     }
     .rr  { background: #2d1155; border-radius: 10px; padding: 12px; }
     .ri  { display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 8px 10px; border-radius: 8px; font-size: 13px; font-weight: 600; transition: background .1s; }
     .ri:hover { background: #3d1f6a; }
     .rl  { border-bottom: 1px solid #0d0618; margin: 4px 0; }
-    .qb  { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; border: none; text-align: left; transition: background .15s; width: 100%; }
+    .qb  { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; border: none; text-align: left; transition: background .15s; width: 100%; background: #2d1155; color: #f0e6ff; margin-bottom: 4px; }
+    .qb:hover { background: #3d1f6a; }
     .ti  { padding: 8px 12px; cursor: pointer; border-radius: 8px; font-size: 13px; transition: background .1s; color: #f0e6ff; border-bottom: 1px solid #2d1155; }
     .ti:hover { background: #2d1155; }
     .tmpl-panel { position: absolute; bottom: 100%; right: 0; background: #1a0533; border: 1px solid #3d1f6a; border-radius: 12px; padding: 8px 0; min-width: 300px; max-height: 300px; overflow-y: auto; box-shadow: 0 8px 24px rgba(0,0,0,.5); z-index: 100; }
@@ -1818,6 +2879,69 @@ export default function CRMChat({token}) {
       alert('Message not currently loaded in DOM.');
     }
   }, []);
+
+
+  const handleKeyDown = useCallback((e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      if (input.trim() || pastedFile) {
+        send();
+      }
+    }
+  }, [input, pastedFile, send]);
+
+  const handleComposerPaste = useCallback((e) => {
+    const clipboardData = e.clipboardData || window.clipboardData
+    if (clipboardData && clipboardData.files && clipboardData.files.length > 0) {
+      e.preventDefault()
+      const file = clipboardData.files[0]
+      setPastedFile(file)
+      if (file.type.startsWith('image/')) {
+        setFilePreview(URL.createObjectURL(file))
+      } else {
+        setFilePreview(null)
+      }
+    }
+  }, [])
+
+  const handleFileChange = useCallback((e) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      setPastedFile(file)
+      if (file.type.startsWith('image/')) {
+        setFilePreview(URL.createObjectURL(file))
+      } else {
+        setFilePreview(null)
+      }
+    }
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }, [])
+
+  const chatProps = {
+    sel, selTopic, setSelTopic, TG, setProfilePreview, setShowMembers, onlineStatus, setChatSearchOpen, showProfile, setShowProfile,
+    topics, loadingTopics, topicSearch, setTopicSearch, topicError, setTopicCtxMenu, topicCtxMenu, setSel,
+    loadMsgs, messagesLoaded, msgs, hasMore, loadMessages, handleScroll, handleCtx, selectMode, setSelectedMsgs, selectedMsgs,
+    fmtDateSep, isPhotoMsg, isVideoMsg, isDocMsg, setLightbox, token, reactions, setReactions, toggleReaction, editedMsgs, fmtMsgTime,
+    editingMsg, setEditingMsg, input, setInput, replyTo, setReplyTo, forwardMsg, setForwardMsg, inputRef, handleKeyDown, send, aiLoading, getAI,
+    emojiOpen, setEmojiOpen, showTmpl, setShowTmpl, recording, recordSecs, fileInputRef, handleFileChange, mediaRecRef, recordTimerRef, setRecording, setRecordSecs,
+    pastedFile, setPastedFile, filePreview, setFilePreview, handleComposerPaste,
+    cStage, stages, setStages, tags, cProb, probs, setProbs, cDeal, deals, setDeals, leadSource,
+    fups, setFups, notes, saveNote, addNote, setAddNote, noteInp, setNoteInp,
+    LinkPreview, ChatPhoto, Avatar, fmtTime,
+    STAGES, cFup, cNotes, msgInfoOpen, setMsgInfoOpen,
+    pollOpen, setPollOpen, pollQuestion, setPollQuestion,
+    pollOptions, setPollOptions, scheduleOpen, setScheduleOpen,
+    scheduleTime, setScheduleTime, sendScheduled, scheduledMsgs,
+    globalSearchOpen, setGlobalSearchOpen, globalSearch, setGlobalSearch,
+    chats, sending, setForceNormalView, loadingMore, readChats,
+    firstUnreadRef, renderMessageText, chatSearch, endRef, aiInstruction, setAiInstruction,
+    AISuggestPanel, aiText, setAiText, aiSuggestions, setAiSuggestions, aiAnalysis, setAiAnalysis,
+    aiAlt, setAiAlt, setAiLoading, tmplCats, setTmplCat,
+    tmplCat, TEMPLATES, setMsgs, setSelectMode, lightbox, StageBadge, gifOpen, setGifOpen,
+    gifQuery, setGifQuery, searchGifs, gifs, loadingRef, showScrollBtn, aiError
+  };
 
   return (<>
     <style>{STYLES}</style>
@@ -1888,11 +3012,15 @@ export default function CRMChat({token}) {
             </div>
           ))}
         </div>
-        <div style={{padding:"8px 12px",flexShrink:0,position:"relative",background:"#1a0533"}}>
-          <span style={{position:"absolute",left:22,top:"50%",transform:"translateY(-50%)",
-            color:"#6b4d94",fontSize:14,pointerEvents:"none"}}>🔍</span>
-          <input className="sinp" placeholder="Search"
-            value={search} onChange={e=>setSearch(e.target.value)}/>
+        <div style={{padding:"12px 24px",borderBottom:`1px solid ${TG.border}`}}>
+          <input type="text" placeholder="Search" style={{width:"100%",padding:"10px 16px",background:TG.elevated,border:"none",borderRadius:20,color:"#fff",fontSize:14,outline:"none",fontFamily:"inherit"}}
+            value={search} onChange={e=>setSearch(e.target.value)}
+            onPaste={handlePaste} onKeyDown={allowShortcuts} />
+          {search.trim() && (
+            <div style={{fontSize: 11, color: TG.textMuted, marginTop: 8, textAlign: 'center'}}>
+              {isGlobalSearching ? 'Searching all chats...' : null}
+            </div>
+          )}
         </div>
         <div ref={leftColScrollRef} style={{flex:1,overflowY:"auto",minHeight:0}} onScroll={(e) => {
           const { scrollTop, scrollHeight, clientHeight } = e.target
@@ -1911,7 +3039,7 @@ export default function CRMChat({token}) {
                 // TODO: Sync read status to backend if needed
               }}>
                 <div style={{position:"relative",flexShrink:0}}>
-                  <Avatar name={chat.name} chatId={chat.id} username={chat.username} size={52}/>
+                  <Avatar name={chat.name} chatId={chat.id} username={chat.username} accessHash={chat.accessHash} size={52}/>
                 </div>
                 <div style={{flex:1,minWidth:0,display:"flex",flexDirection:"column",justifyContent:"center",gap:4}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
@@ -1921,7 +3049,10 @@ export default function CRMChat({token}) {
                     </div>
                     <div style={{display:"flex",alignItems:"center",gap:4,flexShrink:0,marginLeft:8}}>
                       {chat.isPinned || pinnedChats.has(chat.id) ? (
-                        <span style={{color:TG.textMuted,fontSize:12,opacity:isSel?0.8:0.5}}>📌</span>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{color: TG.textMuted, opacity: isSel ? 0.8 : 0.5}}>
+                          <path d="M12 17v5" />
+                          <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z" />
+                        </svg>
                       ) : null}
                       <span style={{fontSize:12,color:isSel?"rgba(255,255,255,.7)":TG.textMuted,marginLeft:4}}>{fmtTime(chat.date)}</span>
                     </div>
@@ -1942,14 +3073,32 @@ export default function CRMChat({token}) {
               </div>
             )
           })}
-          {!loadChats&&filtered.length===0&&<div style={{padding:32,textAlign:"center",color:TG.textMuted,fontSize:13}}>No chats found</div>}
+          {search.trim() && !hasSearchedGlobal && (
+             <div style={{padding:20,textAlign:"center",color:TG.textMuted,fontSize:13}}>Waiting for global search...</div>
+          )}
+          {!loadChats&&filtered.length===0&&!isGlobalSearching&&hasSearchedGlobal&&(
+            <div style={{padding:32,textAlign:"center",color:TG.textMuted,fontSize:13}}>
+              {search.trim() ? (
+                <>
+                  <div style={{marginBottom: 8}}>No matches for "{search.trim()}"</div>
+                  <button onClick={() => setSearch('')} style={{background: 'none', border: '1px solid #3d1f6a', padding: '6px 12px', borderRadius: 16, color: '#a78bfa', cursor: 'pointer'}}>Clear Search</button>
+                </>
+              ) : folder !== 'all' ? (
+                <>
+                  <div style={{marginBottom: 8}}>No chats in this folder</div>
+                  <button onClick={() => setFolder('all')} style={{background: 'none', border: '1px solid #3d1f6a', padding: '6px 12px', borderRadius: 16, color: '#a78bfa', cursor: 'pointer'}}>View All</button>
+                </>
+              ) : (
+                <>
+                  <div style={{marginBottom: 8}}>No chats found</div>
+                  <button onClick={() => fetchChats()} style={{background: 'none', border: '1px solid #3d1f6a', padding: '6px 12px', borderRadius: 16, color: '#a78bfa', cursor: 'pointer'}}>Retry Loading</button>
+                </>
+              )}
+            </div>
+          )}
           {hasMoreChats && chats.length > 0 && !search && (
             <div style={{padding:12,textAlign:"center",color:TG.textMuted,fontSize:12}}>Loading more chats...</div>
           )}
-        </div>
-        <div style={{padding:"10px 12px",borderTop:`1px solid ${TG.border}`,display:"flex",gap:8}}>
-          <button style={{flex:1,padding:"8px",background:TG.blue,border:"none",borderRadius:8,color:"#fff",fontSize:12,cursor:"pointer",fontWeight:600,fontFamily:"inherit"}}>+ Meeting</button>
-          <button style={{flex:1,padding:"8px",background:TG.elevated,border:"1px solid #3d1f6a",borderRadius:8,color:TG.textSec,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Schedule</button>
         </div>
       </div>
 
@@ -1961,783 +3110,26 @@ export default function CRMChat({token}) {
             <div style={{fontSize:16,fontWeight:500,color:TG.text}}>Select a conversation</div>
             <div style={{fontSize:13}}>Pick a chat from your Telegram on the left</div>
           </div>
-        ): sel && sel.isForum && !selTopic ? (
+        ): sel && sel.isForum && !selTopic && !forceNormalView ? (
           // ── FORUM TOPICS VIEW ──
-          <div style={{display:"flex",flexDirection:"column",height:"100%",background:TG.bg}}>
-            <div style={{height:58,background:TG.panel,borderBottom:"1px solid "+TG.border,display:"flex",alignItems:"center",padding:"0 16px",gap:12,flexShrink:0}}>
-              <Avatar name={sel.name} chatId={sel.id} username={sel.username} size={38}/>
-              <div style={{flex:1}}>
-                <div style={{fontWeight:700,fontSize:15,color:TG.text}}>{sel.name}</div>
-                <div style={{fontSize:12,color:TG.textSec}}>{sel.memberCount} members · {topics[sel.id]?.length || 0} topics</div>
-              </div>
-              <div style={{position:"relative"}}>
-                <span style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:TG.textMuted,fontSize:12}}>🔍</span>
-                <input placeholder="Search topics..." value={topicSearch} onChange={e=>setTopicSearch(e.target.value)}
-                  style={{padding:"6px 12px 6px 30px",borderRadius:16,border:"none",background:TG.elevated,color:TG.text,fontSize:13,outline:"none",width:150}}/>
-              </div>
-            </div>
-            <div style={{flex:1,overflowY:"auto",padding:"8px 0"}} onClick={()=>setTopicCtxMenu(null)}>
-              {loadingTopics&&<div style={{padding:20,textAlign:"center",color:TG.textSec,fontSize:13}}>Loading topics...</div>}
-              {!loadingTopics && topics[sel.id] && topics[sel.id].length === 0 && (
-                <div style={{padding:20,textAlign:"center",color:TG.textSec,fontSize:13}}>No topics found.</div>
-              )}
-              {(Array.isArray(topics[sel.id]) ? topics[sel.id] : []).filter(t=>!topicSearch || t.title?.toLowerCase().includes(topicSearch.toLowerCase())).map(topic=>(
-                <div key={topic.id} onClick={()=>{setSelTopic(topic)}}
-                  onContextMenu={e=>{e.preventDefault();setTopicCtxMenu({x:e.clientX,y:e.clientY,topic})}}
-                  style={{display:"flex",gap:12,padding:"12px 16px",cursor:"pointer",borderBottom:"1px solid "+TG.border,transition:"background .1s",background:topicCtxMenu?.topic?.id===topic.id?TG.elevated:"transparent"}}
-                  onMouseEnter={e=>{if(topicCtxMenu?.topic?.id!==topic.id)e.currentTarget.style.background=TG.elevated}}
-                  onMouseLeave={e=>{if(topicCtxMenu?.topic?.id!==topic.id)e.currentTarget.style.background="transparent"}}>
-                  <div style={{width:46,height:46,borderRadius:"50%",background:TG.elevated,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0}}>
-                    {topic.id===1?"📌":"#"}
-                  </div>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:3}}>
-                      <span style={{fontWeight:600,fontSize:15,color:TG.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:200}}>{topic.title}</span>
-                      <span style={{fontSize:11,color:TG.textMuted,flexShrink:0,marginLeft:8}}>{fmtTime(topic.date)}</span>
-                    </div>
-                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                      <span style={{fontSize:13,color:TG.textSec,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{topic.lastMsg||"No messages"}</span>
-                      {topic.unread>0&&<div style={{background:TG.green,color:"#fff",fontSize:11,fontWeight:700,padding:"1px 6px",borderRadius:10,minWidth:20,textAlign:"center",flexShrink:0,marginLeft:6}}>{topic.unread}</div>}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-            {topicCtxMenu&&(
-              <div style={{position:"fixed",left:topicCtxMenu.x,top:topicCtxMenu.y,background:"#1e0a3c",border:"1px solid #3d1f6a",borderRadius:8,padding:"4px 0",boxShadow:"0 4px 12px rgba(0,0,0,.5)",zIndex:100,minWidth:160}}>
-                <div className="ctx-item" onClick={()=>{setSelTopic(topicCtxMenu.topic);setTopicCtxMenu(null)}}>Open</div>
-                <div className="ctx-item" onClick={()=>{alert("TODO: Mark as read");setTopicCtxMenu(null)}}>Mark as read</div>
-                <div className="ctx-item" onClick={()=>{alert("TODO: Mute topic");setTopicCtxMenu(null)}}>Mute</div>
-                <div className="ctx-item" onClick={()=>{alert("TODO: Pin topic");setTopicCtxMenu(null)}}>Pin to top</div>
-                <div className="ctx-item" onClick={()=>{alert("TODO: Archive topic");setTopicCtxMenu(null)}}>Archive / Hide</div>
-              </div>
-            )}
-          </div>
+          /* TODO(Refactor): Split out into <ForumTopicsView> component */
+          <ForumTopicsView {...chatProps} />
         ):<>
           {/* Chat header */}
-          <div className="chdr">
-            {selTopic&&(
-              <button onClick={()=>setSelTopic(null)} style={{background:"none",border:"none",color:TG.textSec,cursor:"pointer",fontSize:20,padding:"0 4px",flexShrink:0}}>←</button>
-            )}
-            <div 
-              style={{cursor: 'pointer'}}
-              onClick={() => setProfilePreview({ id: sel.id, name: sel.name, username: sel.username, chatId: sel.id, isGroup: sel.isGroup || sel.isChannel })}
-            >
-              <Avatar name={sel.name} chatId={sel.id} username={sel.username} size={38}/>
-            </div>
-            <div style={{flex:1,minWidth:0,display:"flex",flexDirection:"column"}}>
-              <div 
-                style={{fontWeight:700,fontSize:15,color:TG.text,lineHeight:1.2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap", cursor: 'pointer'}}
-                onClick={() => setProfilePreview({ id: sel.id, name: sel.name, username: sel.username, chatId: sel.id, isGroup: sel.isGroup || sel.isChannel })}
-              >
-                {selTopic ? selTopic.title : sel.name}
-              </div>
-              <div style={{fontSize:12,color:TG.textSec,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                {selTopic ? sel.name : 
-                 (sel?.isGroup || sel?.isChannel) ? (
-                   <span style={{cursor:"pointer",color:TG.blueLight,transition:"color .15s"}} 
-                         onMouseEnter={e=>e.currentTarget.style.color="#fff"}
-                         onMouseLeave={e=>e.currentTarget.style.color=TG.blueLight}
-                         onClick={()=>setShowMembers(true)}>
-                     {sel.memberCount ? `${sel.memberCount} members` : "View members"}
-                   </span>
-                 ) :
-                 sel?.isUser ? (
-                   onlineStatus === 'online' ? <span style={{color: TG.blueLight}}>● online</span> :
-                   onlineStatus === 'unknown' ? '○ status unavailable' :
-                   onlineStatus ? '○ ' + onlineStatus :
-                   '○ last seen recently'
-                 ) :
-                 'Group'}
-              </div>
-            </div>
-            <div style={{flexShrink:0}}><StageBadge stage={cStage}/></div>
-            <div style={{display:"flex",gap:6,marginLeft:8,flexShrink:0}}>
-              <button className="hb" title="Call" style={{fontSize:16}}>📞</button>
-              <button className="hb" title="Search in chat" style={{fontSize:16}}>🔍</button>
-              <button onClick={()=>setChatSearchOpen(p=>!p)} title="Search in chat"
-                style={{width:34,height:34,background:chatSearchOpen?TG.blue:TG.elevated,borderRadius:8,border:"none",cursor:"pointer",fontSize:15}}>
-                🔍
-              </button>
-              <button onClick={getSummary} title="AI Summarize" disabled={!msgs.length}
-                style={{width:34,height:34,background:TG.elevated,borderRadius:8,border:"none",cursor:"pointer",fontSize:14,color:TG.textSec}}>
-                📝
-              </button>
-              <button onClick={getExtract} title="Extract Lead Info" disabled={!msgs.length}
-                style={{width:34,height:34,background:TG.elevated,borderRadius:8,border:"none",cursor:"pointer",fontSize:14,color:TG.textSec}}>
-                🎯
-              </button>
-              <button onClick={()=>loadMessages(sel)} title="Refresh messages"
-                style={{width:34,height:34,background:TG.elevated,borderRadius:8,border:"none",cursor:"pointer",fontSize:15}}>
-                🔄
-              </button>
-              <button className={`hb${showProfile?" on":""}`} onClick={()=>setShowProfile(v=>!v)} title="Toggle info" style={{fontSize:16}}>
-                ℹ️
-              </button>
-            </div>
-          </div>
-
+          {/* TODO(Refactor): Split out into <ChatHeader> component */}
+          <ChatHeader {...chatProps} />
           {/* Messages */}
-          <div className="msgs" onScroll={handleScroll}>
-            {hasMore && msgs.length > 0 && !loadMsgs && (
-              <div style={{textAlign:'center', margin:'10px 0'}}>
-                <button onClick={() => loadMessages(sel, selTopic?.id || null, true)} disabled={loadingMore}
-                  style={{padding:'6px 14px', borderRadius:20, background:TG.elevated, border:'none', color:TG.textSec, cursor:'pointer', fontSize:12}}>
-                  {loadingMore ? 'Loading...' : 'Load older messages'}
-                </button>
-              </div>
-            )}
-            {loadMsgs&&<div style={{textAlign:"center",color:TG.textMuted,fontSize:13,marginTop:40}}>Loading messages...</div>}
-            {!loadMsgs&&msgs.length===0&&(
-              <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8,color:TG.textSec,marginTop:60}}>
-                <div style={{fontSize:36}}>👋</div>
-                <div style={{fontSize:14}}>No messages yet</div>
-                <div style={{fontSize:12,color:TG.textMuted}}>Start with a template or AI suggest</div>
-              </div>
-            )}
-            {msgs.map((msg,i)=>{
-              const prev=msgs[i-1]
-              const next=msgs[i+1]
-              const showSep=i===0||(()=>{
-                try{
-                  const a=typeof msg.date==="number"?new Date(msg.date*1000):new Date(msg.date)
-                  const b=typeof prev.date==="number"?new Date(prev.date*1000):new Date(prev.date)
-                  return a.toDateString()!==b.toDateString()
-                }catch{return false}
-              })()
-              let nextShowSep = false;
-              if (next) {
-                try {
-                  const a=typeof next.date==="number"?new Date(next.date*1000):new Date(next.date)
-                  const b=typeof msg.date==="number"?new Date(msg.date*1000):new Date(msg.date)
-                  nextShowSep = a.toDateString()!==b.toDateString()
-                } catch {}
-              }
-              const isSameSenderAsPrev = prev && prev.fromMe === msg.fromMe && prev.senderId === msg.senderId
-              const isSameSenderAsNext = next && next.fromMe === msg.fromMe && next.senderId === msg.senderId
-
-              const isSameGroup = !!(isSameSenderAsPrev && (msg.date - prev.date) < 300 && !showSep)
-              const isLastInGroup = !(isSameSenderAsNext && (next.date - msg.date) < 300 && !nextShowSep)
-              const isFirstInGroup = !isSameGroup
-
-              let groupClass = ''
-              if (isFirstInGroup && isLastInGroup) groupClass = ' single'
-              else if (isFirstInGroup) groupClass = ' top'
-              else if (isLastInGroup) groupClass = ' bottom'
-              else groupClass = ' mid'
-              // Infer first unread: last N msgs where N = chat.unread count
-              const unreadCount = sel?.unread || 0
-              const isFirstUnread = !readChats.has(sel?.id) &&
-                unreadCount > 0 &&
-                i === Math.max(0, msgs.length - unreadCount)
-              return(
-                <div key={i} ref={isFirstUnread?firstUnreadRef:null}>
-                  {isFirstUnread&&(
-                    <div ref={firstUnreadRef} style={{
-                      display:"flex",alignItems:"center",gap:10,
-                      margin:"12px 0 8px",
-                    }}>
-                      <div style={{flex:1,height:1,background:"rgba(124,58,237,.35)"}}/>
-                      <div style={{
-                        display:"flex",alignItems:"center",gap:6,
-                        background:"rgba(124,58,237,.18)",
-                        border:"1px solid rgba(124,58,237,.3)",
-                        borderRadius:20,padding:"3px 12px",
-                        fontSize:11,fontWeight:700,color:"#a78bfa",
-                        whiteSpace:"nowrap",
-                      }}>
-                        <span>●</span>
-                        <span>{sel.unread} new message{sel.unread>1?'s':''}</span>
-                      </div>
-                      <div style={{flex:1,height:1,background:"rgba(124,58,237,.35)"}}/>
-                    </div>
-                  )}
-                  {showSep&&<div className="dsep"><span>{fmtDateSep(msg.date)}</span></div>}
-                  <div id={'msg-'+msg.id} className={`msg-row${msg.fromMe?' out':' in'}${isSameGroup?' grouped':''}`}
-                    style={{cursor:selectMode?"pointer":"default"}}
-                    onClick={selectMode?()=>setSelectedMsgs(prev=>{const s=new Set(prev);s.has(i)?s.delete(i):s.add(i);return s}):undefined}>
-                  {selectMode&&<div style={{width:20,height:20,borderRadius:"50%",border:"2px solid #7c3aed",background:selectedMsgs.has(i)?"#7c3aed":"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,alignSelf:"center",fontSize:12,color:"#fff",cursor:"pointer"}}>
-                    {selectedMsgs.has(i)?"✓":""}
-                  </div>}
-                    {!msg.fromMe && (
-                      isLastInGroup
-                      ? <div className="msg-avatar" style={{cursor:'pointer'}} onClick={() => setProfilePreview({ id: msg.senderId||sel.id, name: msg.senderName||sel.name, chatId: sel.id })}><Avatar name={msg.senderName||sel.name} chatId={msg.senderId||sel.id} username={null} size={32}/></div>
-                      : <div className="msg-avatar-gap"/>
-                    )}
-                    <div className="msg-content" onContextMenu={e=>handleCtx(e,msg,i)}>
-                      {msg.replyTo&&(
-                        <div className="bbl rpl" onClick={()=>{/* scroll to reply */}} style={{background:"rgba(124,58,237,.15)",borderLeft:`3px solid ${TG.blue}`,padding:"4px 8px",borderRadius:"0 6px 6px 0",marginBottom:4,fontSize:11,color:TG.textSec,maxWidth:"100%",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",cursor:"pointer"}}>
-                          ↩ {msg.replyTo.fromMe?"You":sel.name}: {msg.replyTo.text}
-                        </div>
-                      )}
-                      <div className={`bbl msg-bubble ${msg.fromMe?"out":"in"}${msg.deleted?" del":""}${groupClass}`}>
-                        {!msg.fromMe && !sel?.isUser && msg.senderName && !isSameGroup && (
-                          <div style={{fontSize:11,fontWeight:700,color:"#7c8ae8",marginBottom:3,whiteSpace:"nowrap",cursor:'pointer'}} onClick={() => setProfilePreview({ id: msg.senderId||sel.id, name: msg.senderName||sel.name, chatId: sel.id })}>{msg.senderName}</div>
-                        )}
-                        {msg.isPhoto && <ChatPhoto msg={msg} chatId={sel.id} authToken={token} onImageClick={(src)=>setLightbox(src)}/>}
-                        {msg.isVideo && (
-                          <video controls style={{maxWidth:'100%',maxHeight:200,borderRadius:8,display:'block'}}>
-                            <source src={`/api/chat/media/${sel.id}/${msg.id}?t=${token}`}/>
-                          </video>
-                        )}
-                        {msg.isAudio && (
-                          <audio controls style={{width:'100%',marginBottom:4}}>
-                            <source src={`/api/chat/media/${sel.id}/${msg.id}?t=${token}`}/>
-                          </audio>
-                        )}
-                        {msg.isDoc && <div style={{padding:'4px 0',color:TG.textSec,fontSize:13}}>📎 Document</div>}
-                        {/* Render poll messages nicely */}
-                        {msg.text?.startsWith('📊 ') && (
-                          <div style={{minWidth:200}}>
-                            <div style={{fontWeight:600,marginBottom:8,fontSize:14}}>{msg.text.split('\n')[0]}</div>
-                            {msg.text.split('\n').slice(1).filter(l=>l.trim()).map((opt,i)=>(
-                              <div key={i} style={{background:"rgba(124,58,237,.15)",borderRadius:8,
-                                padding:"7px 12px",marginBottom:4,fontSize:13,cursor:"pointer",
-                                border:"1px solid rgba(124,58,237,.2)"}}
-                                onMouseEnter={e=>e.currentTarget.style.background="rgba(124,58,237,.25)"}
-                                onMouseLeave={e=>e.currentTarget.style.background="rgba(124,58,237,.15)"}>
-                                {opt}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                        {(()=>{
-                          const displayText = editedMsgs[msg.id] || msg.text || ''
-                          return renderMessageText(displayText, chatSearch)
-                        })()}
-                        {/* Link preview */}
-                        {msg.text && (msg.text.includes('http://') || msg.text.includes('https://')) && (
-                          <LinkPreview url={(msg.text.match(/https?:\/\/\S+/)||[''])[0]}/>
-                        )}
-                        {reactions[msg.id]&&Object.keys(reactions[msg.id]).length>0&&(
-                          <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:3}}>
-                            {Object.entries(reactions[msg.id]).filter(([,n])=>n>0).map(([e,n])=>(
-                              <span key={e}
-                                style={{
-                                  background: myReactions[msg.id]===e
-                                    ? "rgba(124,58,237,.45)"
-                                    : "rgba(124,58,237,.15)",
-                                  border: myReactions[msg.id]===e
-                                    ? "1px solid rgba(124,58,237,.7)"
-                                    : "1px solid rgba(124,58,237,.25)",
-                                  borderRadius:99,padding:"2px 7px",fontSize:12,
-                                  cursor:"pointer",userSelect:"none",
-                                  display:"flex",alignItems:"center",gap:3
-                                }}>
-                                {e}{n>1&&<span style={{fontSize:11,opacity:.8}}>{n}</span>}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                        <div className="bfoot">
-                          {(msg.edited||editedMsgs[msg.id])&&(
-                            <span style={{fontSize:10,fontStyle:'italic',color:msg.fromMe?'rgba(255,255,255,.5)':'#6b4d94'}}>edited</span>
-                          )}
-                          <span className={`bt${msg.fromMe?"":" in"}`}>{fmtMsgTime(msg.date)}</span>
-                          {msg.fromMe&&<span style={{fontSize:10,color:msg.pending?"rgba(255,255,255,.3)":"rgba(255,255,255,.6)"}}>{msg.pending?"⏳":"✓✓"}</span>}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
-            <div ref={endRef}/>
-          </div>
-
-          {/* AI Suggest panel */}
-          <AISuggestPanel
-            text={aiText} analysis={aiAnalysis} alternative={aiAlt} loading={aiLoading}
-            onUse={()=>{setInput(aiText);setAiText("");setAiAnalysis("");setAiAlt("")}}
-            onUseAlt={()=>{setInput(aiAlt);setAiText("");setAiAnalysis("");setAiAlt("")}}
-            onRegenerate={()=>getAI(false)}
-            onClose={()=>{setAiText("");setAiAnalysis("");setAiAlt("");setAiLoading(false)}}
-          />
-
-          {/* Reply bar */}
-          {replyTo&&(
-            <div className="rpl-bar" style={{margin:"0 16px 6px",flexShrink:0}}>
-              <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                ↩ Replying to: {replyTo.text}
-              </span>
-              <button onClick={()=>setReplyTo(null)} style={{background:"none",border:"none",color:TG.textMuted,cursor:"pointer",fontSize:15,flexShrink:0}}>✕</button>
-            </div>
-          )}
-
-          {/* Template picker */}
-          {showTmpl&&(
-            <div className="tp">
-              <div className="tpcat">
-                {tmplCats.map(cat=>(
-                  <button key={cat} className="tc" onClick={()=>setTmplCat(cat)}
-                    style={{background:tmplCat===cat?TG.blue:TG.elevated,color:tmplCat===cat?"#fff":TG.textSec}}>
-                    {cat==="all"?"All":cat}
-                  </button>
-                ))}
-                <button className="tc" onClick={()=>setShowTmpl(false)} style={{background:"none",color:TG.textMuted,marginLeft:"auto"}}>✕</button>
-              </div>
-              <div className="tlist">
-                {TEMPLATES.filter(t=>tmplCat==="all"||t.cat===tmplCat).map(t=>(
-                  <div key={t.id} className="ti" onClick={()=>{setInput(t.text);setShowTmpl(false)}}>
-                    <div style={{fontSize:13,fontWeight:600,color:TG.text,marginBottom:2}}>{t.label}</div>
-                    <div style={{fontSize:12,color:TG.textSec,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.text}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Select mode action bar */}
-          {selectMode&&(
-            <div style={{padding:"10px 16px",background:"#1a0533",borderTop:"1px solid #0d0618",display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
-              <span style={{fontSize:13,color:"#c4a8e8",flex:1}}>{selectedMsgs.size} selected</span>
-              <button onClick={()=>{
-                const toDelete = [...selectedMsgs].map(i=>msgs[i]).filter(m=>m&&m.fromMe&&m.id>0)
-                setMsgs(p=>p.map((m,i)=>selectedMsgs.has(i)?{...m,deleted:true,text:"This message was deleted"}:m))
-                toDelete.forEach(m=>fetch("/api/chat/delete",{method:"POST",headers:{"Content-Type":"application/json","x-auth-token":token},body:JSON.stringify({chatId:sel.id,messageId:m.id})}))
-                setSelectMode(false);setSelectedMsgs(new Set())
-              }} style={{padding:"7px 14px",background:"rgba(229,57,53,.15)",color:"#e53935",border:"1px solid rgba(229,57,53,.3)",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600}}>
-                🗑 Delete
-              </button>
-              <button onClick={()=>{setSelectMode(false);setSelectedMsgs(new Set())}}
-                style={{padding:"7px 14px",background:"#2d1155",color:"#9b7ec8",border:"1px solid #3d1f6a",borderRadius:8,cursor:"pointer",fontSize:13}}>
-                Cancel
-              </button>
-            </div>
-          )}
-          {/* GIF Picker */}
-          {gifOpen&&(
-            <div style={{height:220,background:TG.panel,borderTop:"1px solid "+TG.border,flexShrink:0,display:"flex",flexDirection:"column"}}>
-              <div style={{padding:"6px 10px",borderBottom:"1px solid "+TG.border}}>
-                <input value={gifQuery}
-                  onChange={e=>{setGifQuery(e.target.value);searchGifs(e.target.value)}}
-                  placeholder="Search GIFs..."
-                  style={{width:"100%",background:TG.elevated,border:"none",borderRadius:16,padding:"6px 12px",color:TG.text,fontSize:13,outline:"none",boxSizing:"border-box"}}
-                  autoFocus/>
-              </div>
-              <div style={{flex:1,overflowX:"auto",display:"flex",gap:6,padding:"8px 10px",alignItems:"center"}}>
-                {gifs.length===0&&<div style={{color:TG.textMuted,fontSize:13,padding:"0 10px"}}>Search for GIFs above</div>}
-                {gifs.map(g=>{
-                  const url = g.media_formats?.gif?.url || g.media_formats?.tinygif?.url
-                  if(!url) return null
-                  return (
-                    <img key={g.id} src={url} alt={g.title}
-                      style={{height:120,borderRadius:8,cursor:"pointer",flexShrink:0}}
-                      onClick={async()=>{
-                        setGifOpen(false)
-                        // Send GIF as a message with the URL
-                        await fetch("/api/chat/send",{method:"POST",
-                          headers:{"Content-Type":"application/json","x-auth-token":token},
-                          body:JSON.stringify({chatId:sel.id,text:url})
-                        })
-                        setTimeout(()=>{loadingRef.current=false;loadMessages(sel)},500)
-                      }}/>
-                  )
-                })}
-              </div>
-            </div>
-          )}
-          {/* Scroll to bottom button */}
-          {firstUnreadRef.current&&showScrollBtn&&(
-            <button onClick={()=>firstUnreadRef.current?.scrollIntoView({behavior:"smooth",block:"center"})}
-              style={{position:"absolute",bottom:130,right:20,padding:"4px 12px",borderRadius:20,
-                background:"rgba(124,58,237,.9)",border:"none",cursor:"pointer",
-                fontSize:12,color:"#fff",fontWeight:600,zIndex:10,boxShadow:"0 2px 8px rgba(0,0,0,.4)"}}>
-              ↑ Unread
-            </button>
-          )}
-          {showScrollBtn&&(
-            <button onClick={()=>endRef.current?.scrollIntoView({behavior:"smooth"})}
-              style={{position:"absolute",bottom:90,right:20,width:38,height:38,borderRadius:"50%",
-                background:TG.elevated,border:"1px solid #3d1f6a",cursor:"pointer",
-                fontSize:18,display:"flex",alignItems:"center",justifyContent:"center",
-                boxShadow:"0 2px 8px rgba(0,0,0,.4)",zIndex:10}}>
-              ↓
-            </button>
-          )}
-          {/* Voice recording indicator */}
-          {recording&&(
-            <div style={{padding:"8px 16px",background:"rgba(229,57,53,.1)",borderTop:"1px solid rgba(229,57,53,.2)",
-              display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
-              <div style={{width:8,height:8,borderRadius:"50%",background:"#e53935",animation:"pulse 1s infinite"}}/>
-              <span style={{fontSize:13,color:"#e53935",fontWeight:600}}>Recording... {recordSecs}s</span>
-              <span style={{fontSize:12,color:TG.textSec,flex:1}}>Release 🎤 to send, or swipe away to cancel</span>
-              <button onClick={()=>{mediaRecRef.current?.stop();clearInterval(recordTimerRef.current);setRecording(false);setRecordSecs(0)}}
-                style={{background:"none",border:"none",color:TG.textSec,cursor:"pointer",fontSize:13}}>Cancel</button>
-            </div>
-          )}
+          {/* TODO(Refactor): Split out into <MessageList> and <MessageBubble> components */}
+          <MessageList {...chatProps} />
           {/* Input area */}
-          <div className="ia">
-            {/* Editing bar */}
-            {editingMsg&&(
-              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,padding:'8px 16px',
-                background:'rgba(124,58,237,.15)',height:52,flexShrink:0}}>
-                <div style={{display:'flex',alignItems:'center',gap:12,flex:1,minWidth:0}}>
-                  <span style={{fontSize:20,color:'#7c3aed'}}>✏️</span>
-                  <div style={{flex:1,minWidth:0,display:'flex',flexDirection:'column',justifyContent:'center'}}>
-                    <div style={{fontSize:13,fontWeight:700,color:'#a78bfa',marginBottom:2}}>Edit message</div>
-                    <div style={{fontSize:13,color:'#9b7ec8',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
-                      {editingMsg.text}
-                    </div>
-                  </div>
-                </div>
-                <button onClick={()=>{setEditingMsg(null);setInput('')}}
-                  style={{background:'none',border:'none',color:'#a78bfa',cursor:'pointer',
-                    fontSize:20,lineHeight:1,padding:4,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}>
-                  ✕
-                </button>
-              </div>
-            )}
-            {/* Emoji popover — only show when open */}
-            {emojiOpen&&(
-              <div style={{display:"flex",gap:4,padding:"4px 2px",overflowX:"auto",flexShrink:0,
-                borderBottom:"1px solid #2d1155",marginBottom:2}}>
-                {["👍","❤️","😂","🔥","💪","✅","🙏","😎","🤔","👀","💯","🎯","🔑","💎","🚀","⭐"].map(e=>(
-                  <button key={e} style={{background:"none",border:"none",cursor:"pointer",fontSize:19,
-                    padding:"2px 4px",borderRadius:6,flexShrink:0,lineHeight:1}}
-                    onClick={()=>{setInput(p=>p+e)}}>
-                    {e}
-                  </button>
-                ))}
-                <button onClick={()=>setEmojiOpen(false)}
-                  style={{marginLeft:"auto",background:"none",border:"none",color:"#6b7280",cursor:"pointer",fontSize:14,flexShrink:0}}>
-                  ✕
-                </button>
-              </div>
-            )}
-            {/* Input row */}
-            <div className="ir">
-              <button className="ib" onClick={()=>setEmojiOpen(p=>!p)} title="Emoji"
-                style={{background:emojiOpen?"#2d1155":"transparent",fontSize:17}}>😊</button>
-              <button className="ib g" title="Attach file"
-                onClick={()=>document.getElementById('fileInput').click()} style={{fontSize:17}}>📎</button>
-              <textarea className="message-input" placeholder="Type a message..."
-                ref={inputRef} value={input} rows={1}
-                onChange={e=>{
-                  setInput(e.target.value)
-                }}
-                onKeyDown={e=>{
-                  if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send()}
-                }}
-                style={{height:"auto"}}/>
-              <button className={`ib g${showTmpl?" on":""}`} onClick={()=>setShowTmpl(v=>!v)} title="Templates" style={{fontSize:17}}>
-                📋
-              </button>
-              <button className="ib g" onClick={getAI} disabled={aiLoading} title="AI Suggest"
-                style={{background:aiLoading?"rgba(124,58,237,.25)":TG.elevated,fontSize:17}}>
-                {aiLoading?"⏳":"✨"}
-              </button>
-              <button className="ib s" onClick={send} disabled={!input.trim()||sending}
-                style={{opacity:input.trim()&&!sending?1:.4,fontSize:17,background:editingMsg?'#4caf50':'',color:editingMsg?'#fff':''}} title={editingMsg?"Save Edit":"Send"}>
-                {editingMsg?"✓":"➤"}
-              </button>
-            </div>
-          </div>
+          {/* TODO(Refactor): Split out into <Composer> component */}
+          <Composer {...chatProps} />
         </>}
       </div>
 
       {/* RIGHT COL */}
-      {showProfile&&(
-        <div className="rc">
-          {!sel?(
-            <div style={{padding:32,textAlign:"center",color:TG.textMuted,fontSize:13,marginTop:60}}>Select a chat</div>
-          ):(
-            <>
-              <div style={{padding:"22px 16px 16px",textAlign:"center",borderBottom:`1px solid ${TG.border}`}}>
-                <Avatar name={sel.name} chatId={sel.id} username={sel.username} size={70}/>
-                <div style={{fontWeight:700,fontSize:18,color:TG.text,marginTop:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sel.name}</div>
-                <div style={{fontSize:12,color:TG.textSec,marginTop:3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                  {sel.isGroup || sel.isChannel ? `Telegram · ${sel.memberCount ? sel.memberCount + ' members' : 'Group'}` :
-                   sel.isUser ? `Telegram · Contact · ${onlineStatus === 'online' ? 'Online' : onlineStatus === 'unknown' ? 'Status unavailable' : onlineStatus || 'Last seen recently'}` : 'Telegram'}
-                </div>
-                <div style={{marginTop:10,flexShrink:0}}><StageBadge stage={cStage}/></div>
-                <div style={{display:"flex",justifyContent:"center",gap:8,marginTop:12}}>
-                  {[["📱","Open in TG",null],["📧","Email",null],["🌐","Website",null],["📋","Copy ID",()=>navigator.clipboard?.writeText(sel.id)]].map(([icon,ttl,action])=>(
-                    <button key={ttl} title={ttl} onClick={action||undefined} style={{width:34,height:34,borderRadius:"50%",background:TG.elevated,border:"none",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:16}}>
-                      {icon}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="rs">
-                <div className="rl">Deal</div>
-                <select className="ri" value={cStage} onChange={e=>setStages(p=>({...p,[sel.id]:e.target.value}))}>
-                  {Object.keys(STAGES).map(s=><option key={s} value={s}>{s}</option>)}
-                </select>
-                <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:TG.textSec,marginBottom:4}}>
-                  <span>Win probability</span>
-                  <span style={{color:TG.blue,fontWeight:700}}>{cProb}%</span>
-                </div>
-                <input type="range" min={0} max={100} step={5} value={cProb}
-                  onChange={e=>setProbs(p=>({...p,[sel.id]:+e.target.value}))}
-                  style={{width:"100%",accentColor:TG.blue,marginBottom:6}}/>
-                <div style={{height:4,background:TG.elevated,borderRadius:99,overflow:"hidden",marginBottom:10}}>
-                  <div style={{height:"100%",width:cProb+"%",background:TG.blue,borderRadius:99,transition:"width .3s"}}/>
-                </div>
-                <div className="rr">
-                  <span style={{fontSize:15}}>💵</span>
-                  <input type="number" value={cDeal} onChange={e=>setDeals(p=>({...p,[sel.id]:+e.target.value||0}))}
-                    placeholder="Deal value USD" style={{background:"transparent",border:"none",color:TG.text,fontSize:13,outline:"none",width:"100%",fontFamily:"inherit"}}/>
-                </div>
-                <div className="rr">
-                  <span style={{fontSize:15}}>📅</span>
-                  <input type="date" value={cFup} onChange={e=>setFups(p=>({...p,[sel.id]:e.target.value}))}
-                    style={{background:"transparent",border:"none",color:TG.text,fontSize:13,outline:"none",fontFamily:"inherit"}}/>
-                </div>
-              </div>
-
-              <div className="rs">
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-                  <div className="rl" style={{marginBottom:0}}>Notes</div>
-                  <button onClick={()=>setAddNote(v=>!v)} style={{fontSize:11,padding:"3px 9px",background:TG.blue,border:"none",borderRadius:6,color:"#fff",cursor:"pointer",fontWeight:600,fontFamily:"inherit"}}>+ Add</button>
-                </div>
-                {addNote&&(
-                  <div style={{marginBottom:10}}>
-                    <textarea value={noteInp} onChange={e=>setNoteInp(e.target.value)} placeholder="Write a note..." rows={3}
-                      style={{width:"100%",background:TG.elevated,border:"1px solid #3d1f6a",borderRadius:8,padding:"8px 10px",color:TG.text,fontSize:13,outline:"none",fontFamily:"inherit",resize:"none",marginBottom:6,boxSizing:"border-box"}}/>
-                    <div style={{display:"flex",gap:6}}>
-                      <button onClick={saveNote} style={{flex:1,padding:"7px",background:TG.blue,color:"#fff",border:"none",borderRadius:7,cursor:"pointer",fontWeight:600,fontSize:13,fontFamily:"inherit"}}>Save</button>
-                      <button onClick={()=>setAddNote(false)} style={{padding:"7px 12px",background:TG.elevated,color:TG.textSec,border:"1px solid #3d1f6a",borderRadius:7,cursor:"pointer",fontSize:13,fontFamily:"inherit"}}>Cancel</button>
-                    </div>
-                  </div>
-                )}
-                {cNotes.length===0&&!addNote&&<div style={{fontSize:12,color:TG.textMuted,fontStyle:"italic"}}>No notes yet</div>}
-                {cNotes.map(n=>(
-                  <div key={n.id} style={{padding:"9px 10px",background:TG.bg,borderRadius:8,border:`1px solid ${TG.elevated}`,marginBottom:6}}>
-                    <div style={{fontSize:13,color:TG.text,lineHeight:1.5}}>{n.content}</div>
-                    <div style={{fontSize:10,color:TG.textMuted,marginTop:4}}>{n.date}</div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="rs" style={{border:"none"}}>
-                <div className="rl">Quick Actions</div>
-                <button className="qb d" onClick={()=>setStages(p=>({...p,[sel.id]:"Negotiating"}))}>🔥 Mark as Negotiating</button>
-                <button className="qb d" onClick={()=>setFups(p=>({...p,[sel.id]:new Date(Date.now()+172800000).toISOString().split("T")[0]}))}>📅 Follow-up in 2 days</button>
-                <button className="qb w" onClick={()=>{setStages(p=>({...p,[sel.id]:"Closed Won"}));setProbs(p=>({...p,[sel.id]:100}))}}>✅ Closed Won</button>
-                <button className="qb l" onClick={()=>{setStages(p=>({...p,[sel.id]:"Closed Lost"}));setProbs(p=>({...p,[sel.id]:0}))}}>✕ Mark as Lost</button>
-              </div>
-            </>
-          )}
-        </div>
-      )}
-
-      {/* Context menu */}
-
-
-
-
-
-      {/* Message Info Modal */}
-      {msgInfoOpen&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center"}}
-          onClick={()=>setMsgInfoOpen(null)}>
-          <div style={{background:TG.panel,borderRadius:16,padding:24,width:320}} onClick={e=>e.stopPropagation()}>
-            <div style={{fontWeight:700,fontSize:16,marginBottom:16,color:TG.text}}>ℹ️ Message Info</div>
-            <div style={{background:TG.elevated,borderRadius:10,padding:"10px 12px",marginBottom:16,fontSize:13,color:TG.text,lineHeight:1.5}}>
-              {msgInfoOpen.text}
-            </div>
-            <div style={{display:"flex",flexDirection:"column",gap:10}}>
-              <div style={{display:"flex",justifyContent:"space-between",fontSize:13}}>
-                <span style={{color:TG.textSec}}>Sent</span>
-                <span style={{color:TG.text}}>{new Date((msgInfoOpen.date||0)*1000).toLocaleString()}</span>
-              </div>
-              <div style={{display:"flex",justifyContent:"space-between",fontSize:13}}>
-                <span style={{color:TG.textSec}}>Status</span>
-                <span style={{color:TG.green}}>✓✓ Delivered</span>
-              </div>
-              <div style={{display:"flex",justifyContent:"space-between",fontSize:13}}>
-                <span style={{color:TG.textSec}}>Message ID</span>
-                <span style={{color:TG.textMuted,fontFamily:"monospace"}}>{msgInfoOpen.id}</span>
-              </div>
-            </div>
-            <button onClick={()=>setMsgInfoOpen(null)}
-              style={{width:"100%",marginTop:16,padding:"9px",background:TG.elevated,
-                color:TG.textSec,border:"none",borderRadius:8,cursor:"pointer",fontSize:13}}>
-              Close
-            </button>
-          </div>
-        </div>
-      )}
-      {/* Poll Modal */}
-      {pollOpen&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center"}}
-          onClick={()=>setPollOpen(false)}>
-          <div style={{background:TG.panel,borderRadius:16,padding:24,width:360}} onClick={e=>e.stopPropagation()}>
-            <div style={{fontWeight:700,fontSize:16,marginBottom:16,color:TG.text}}>📊 Create Poll</div>
-            <input value={pollQuestion} onChange={e=>setPollQuestion(e.target.value)}
-              placeholder="Ask a question..."
-              style={{width:"100%",background:TG.elevated,border:"1px solid #3d1f6a",borderRadius:8,
-                padding:"9px 12px",color:TG.text,fontSize:14,marginBottom:12,boxSizing:"border-box"}}/>
-            <div style={{marginBottom:8,fontSize:12,color:TG.textSec}}>Options:</div>
-            {pollOptions.map((opt,i)=>(
-              <div key={i} style={{display:"flex",gap:6,marginBottom:8}}>
-                <input value={opt} onChange={e=>{const o=[...pollOptions];o[i]=e.target.value;setPollOptions(o)}}
-                  placeholder={`Option ${i+1}`}
-                  style={{flex:1,background:TG.elevated,border:"1px solid #3d1f6a",borderRadius:8,
-                    padding:"7px 10px",color:TG.text,fontSize:13}}/>
-                {pollOptions.length>2&&<button onClick={()=>setPollOptions(p=>p.filter((_,j)=>j!==i))}
-                  style={{background:"none",border:"none",color:TG.textMuted,cursor:"pointer",fontSize:16}}>✕</button>}
-              </div>
-            ))}
-            {pollOptions.length<6&&(
-              <button onClick={()=>setPollOptions(p=>[...p,''])}
-                style={{width:"100%",padding:"7px",background:"transparent",border:"1px dashed #3d1f6a",
-                  borderRadius:8,color:TG.textSec,cursor:"pointer",fontSize:13,marginBottom:12}}>
-                + Add option
-              </button>
-            )}
-            <div style={{display:"flex",gap:8,marginTop:4}}>
-              <button onClick={async()=>{
-                if(!pollQuestion.trim()) return alert('Enter a question')
-                const validOpts = pollOptions.filter(o=>o.trim())
-                if(validOpts.length<2) return alert('Need at least 2 options')
-                const pollText = '📊 '+pollQuestion+'\n'+validOpts.map((o,i)=>`${i+1}. ${o}`).join('\n')
-                await fetch("/api/chat/send",{method:"POST",
-                  headers:{"Content-Type":"application/json","x-auth-token":token},
-                  body:JSON.stringify({chatId:sel.id,text:pollText})
-                })
-                setPollOpen(false);setPollQuestion('');setPollOptions(['',''])
-                setTimeout(()=>{loadingRef.current=false;loadMessages(sel)},500)
-              }} style={{flex:1,padding:"9px",background:TG.blue,color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontWeight:600}}>
-                Send Poll
-              </button>
-              <button onClick={()=>setPollOpen(false)}
-                style={{padding:"9px 16px",background:TG.elevated,color:TG.textSec,border:"none",borderRadius:8,cursor:"pointer"}}>
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      {/* Schedule Message Modal */}
-      {scheduleOpen&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center"}}
-          onClick={()=>setScheduleOpen(false)}>
-          <div style={{background:TG.panel,borderRadius:16,padding:24,width:300}} onClick={e=>e.stopPropagation()}>
-            <div style={{fontWeight:700,fontSize:16,marginBottom:16,color:TG.text}}>⏰ Schedule Message</div>
-            <div style={{fontSize:13,color:TG.textSec,marginBottom:8}}>"{input.slice(0,50)}{input.length>50?'...':''}"</div>
-            <input type="datetime-local" value={scheduleTime} onChange={e=>setScheduleTime(e.target.value)}
-              min={new Date().toISOString().slice(0,16)}
-              style={{width:"100%",background:TG.elevated,border:"1px solid #3d1f6a",borderRadius:8,
-                padding:"8px 12px",color:TG.text,fontSize:13,marginBottom:16,boxSizing:"border-box"}}/>
-            <div style={{display:"flex",gap:8}}>
-              <button onClick={sendScheduled} disabled={!scheduleTime}
-                style={{flex:1,padding:"9px",background:TG.blue,color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontWeight:600}}>
-                Schedule
-              </button>
-              <button onClick={()=>setScheduleOpen(false)}
-                style={{padding:"9px 16px",background:TG.elevated,color:TG.textSec,border:"none",borderRadius:8,cursor:"pointer"}}>
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      {/* Scheduled messages indicator */}
-      {scheduledMsgs.filter(m=>m.chatId===sel?.id).length>0&&(
-        <div style={{padding:"6px 16px",background:"rgba(245,158,11,.1)",borderTop:"1px solid rgba(245,158,11,.2)",
-          fontSize:12,color:"#f59e0b",flexShrink:0}}>
-          ⏰ {scheduledMsgs.filter(m=>m.chatId===sel.id).length} message(s) scheduled
-        </div>
-      )}
-
-      {/* Global Search */}
-      {globalSearchOpen&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.7)",zIndex:9998,display:"flex",alignItems:"flex-start",justifyContent:"center",paddingTop:60}}
-          onClick={()=>setGlobalSearchOpen(false)}>
-          <div style={{background:TG.panel,borderRadius:16,width:520,maxHeight:"70vh",display:"flex",flexDirection:"column",overflow:"hidden"}}
-            onClick={e=>e.stopPropagation()}>
-            <div style={{padding:"12px 16px",borderBottom:"1px solid "+TG.border}}>
-              <input value={globalSearch} onChange={e=>setGlobalSearch(e.target.value)}
-                placeholder="Search messages, chats..."
-                style={{width:"100%",background:TG.elevated,border:"none",borderRadius:20,padding:"9px 16px",
-                  color:TG.text,fontSize:14,outline:"none",boxSizing:"border-box"}}
-                autoFocus/>
-            </div>
-            <div style={{overflowY:"auto",flex:1}}>
-              {globalSearch.length>1 && chats.filter(c=>c.name?.toLowerCase().includes(globalSearch.toLowerCase())).map(c=>(
-                <div key={c.id} onClick={()=>{setSel(c);setSelTopic(null);setGlobalSearchOpen(false)}}
-                  style={{display:"flex",gap:12,padding:"10px 16px",cursor:"pointer",alignItems:"center"}}
-                  onMouseEnter={e=>e.currentTarget.style.background=TG.elevated}
-                  onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                  <Avatar name={c.name} chatId={c.id} username={c.username} size={38}/>
-                  <div>
-                    <div style={{fontSize:14,fontWeight:600,color:TG.text}}>{c.name}</div>
-                    <div style={{fontSize:12,color:TG.textSec}}>{c.lastMsg?.slice(0,50)}</div>
-                  </div>
-                </div>
-              ))}
-              {globalSearch.length>1 && chats.filter(c=>c.name?.toLowerCase().includes(globalSearch.toLowerCase())).length===0&&(
-                <div style={{padding:20,textAlign:"center",color:TG.textMuted,fontSize:13}}>No results for "{globalSearch}"</div>
-              )}
-              {globalSearch.length<=1&&(
-                <div style={{padding:20,textAlign:"center",color:TG.textMuted,fontSize:13}}>Type to search chats and messages</div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-      {/* Image Lightbox */}
-      {lightbox&&(
-        <div onClick={()=>setLightbox(null)}
-          style={{position:"fixed",inset:0,background:"rgba(0,0,0,.92)",zIndex:99999,
-            display:"flex",alignItems:"center",justifyContent:"center",cursor:"zoom-out"}}>
-          <img src={lightbox} alt="photo"
-            style={{maxWidth:"95vw",maxHeight:"95vh",objectFit:"contain",borderRadius:8}}
-            onClick={e=>e.stopPropagation()}/>
-          <button onClick={()=>setLightbox(null)}
-            style={{position:"absolute",top:16,right:16,background:"rgba(255,255,255,.15)",
-              border:"none",borderRadius:"50%",width:40,height:40,cursor:"pointer",
-              color:"#fff",fontSize:20,display:"flex",alignItems:"center",justifyContent:"center"}}>
-            ✕
-          </button>
-          <a href={lightbox} download target="_blank"
-            style={{position:"absolute",top:16,right:64,background:"rgba(255,255,255,.15)",
-              borderRadius:"50%",width:40,height:40,display:"flex",alignItems:"center",
-              justifyContent:"center",textDecoration:"none",fontSize:18}}
-            onClick={e=>e.stopPropagation()}>
-            ⬇️
-          </a>
-        </div>
-      )}
-      {/* Forward Message Modal */}
-      {forwardMsg&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.7)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center"}}
-          onClick={()=>setForwardMsg(null)}>
-          <div style={{background:TG.panel,borderRadius:16,padding:20,width:320,maxHeight:"70vh",overflow:"hidden",display:"flex",flexDirection:"column"}}
-            onClick={e=>e.stopPropagation()}>
-            <div style={{fontWeight:700,fontSize:16,marginBottom:12,color:TG.text}}>Forward to...</div>
-            <div style={{fontSize:12,color:TG.textSec,marginBottom:12,padding:"8px 10px",background:TG.elevated,borderRadius:8}}>
-              "{forwardMsg.text?.slice(0,60)}{forwardMsg.text?.length>60?'...':''}"
-            </div>
-            <div style={{overflowY:"auto",flex:1}}>
-              {chats.filter(c=>c.name).slice(0,20).map(c=>(
-                <div key={c.id} onClick={async()=>{
-                  try {
-                    await fetch("/api/chat/send",{method:"POST",
-                      headers:{"Content-Type":"application/json","x-auth-token":token},
-                      body:JSON.stringify({chatId:c.id,text:"↪️ "+forwardMsg.text})
-                    })
-                    alert("Forwarded to "+c.name)
-                  } catch(e){ alert("Failed: "+e.message) }
-                  setForwardMsg(null)
-                }} style={{display:"flex",gap:10,padding:"10px 8px",cursor:"pointer",borderRadius:8,alignItems:"center"}}
-                  onMouseEnter={e=>e.currentTarget.style.background=TG.elevated}
-                  onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                  <Avatar name={c.name} chatId={c.id} username={c.username} size={36}/>
-                  <span style={{fontSize:14,color:TG.text}}>{c.name}</span>
-                </div>
-              ))}
-            </div>
-            <button onClick={()=>setForwardMsg(null)}
-              style={{marginTop:12,padding:"8px",background:TG.elevated,border:"none",borderRadius:8,color:TG.textSec,cursor:"pointer",fontSize:13}}>
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
+      {/* TODO(Refactor): Split out into <CRMRightPanel> component */}
+          <CRMRightPanel {...chatProps} />
 
       {/* User Profile Preview Modal */}
       <UserProfileModal 
@@ -2748,6 +3140,9 @@ export default function CRMChat({token}) {
         setSel={setSel}
         inputRef={inputRef}
         msgs={msgs}
+        messagesLoaded={messagesLoaded}
+        hasMore={hasMore}
+        setLightbox={setLightbox}
         onOpenMedia={(type) => setSharedMediaView(type)}
       />
 
@@ -2773,7 +3168,7 @@ export default function CRMChat({token}) {
           <div style={{background:'#1a0533',borderRadius:16,padding:24,width:340,
             boxShadow:'0 8px 32px rgba(0,0,0,.7)'}} onClick={e=>e.stopPropagation()}>
             <div style={{display:'flex',alignItems:'center',gap:14,marginBottom:16}}>
-              <Avatar name={previewChat.name} chatId={previewChat.id} username={previewChat.username} size={52}/>
+              <Avatar name={previewChat.name} chatId={previewChat.id} username={previewChat.username} accessHash={previewChat.accessHash} size={52}/>
               <div>
                 <div style={{fontWeight:700,fontSize:16,color:'#f0e6ff'}}>{previewChat.name}</div>
                 <div style={{fontSize:12,color:'#6b4d94',marginTop:3}}>
@@ -2812,7 +3207,9 @@ export default function CRMChat({token}) {
           <div style={{background:'#1a0533',borderRadius:16,width:360,maxHeight:'80vh',
             display:'flex',flexDirection:'column',boxShadow:'0 8px 32px rgba(0,0,0,.7)'}} onClick={e=>e.stopPropagation()}>
             <div style={{padding:'16px 20px',borderBottom:'1px solid #2d1155',display:'flex',alignItems:'center',justifyContent:'space-between',flexShrink:0}}>
-              <div style={{fontWeight:700,fontSize:16,color:'#f0e6ff'}}>{sel.memberCount ? `${sel.memberCount} Members` : 'Members'}</div>
+              <div style={{fontWeight:700,fontSize:16,color:'#f0e6ff'}}>
+                {(loadingMembers || membersError) ? 'Members' : (sel.memberCount ? `${sel.memberCount} Members` : 'Members')}
+              </div>
               <button onClick={()=>{setShowMembers(false);setMemberSearch("")}} style={{background:'transparent',border:'none',color:'#9b7ec8',cursor:'pointer',fontSize:18}}>✕</button>
             </div>
             <div style={{padding:'12px 16px',borderBottom:'1px solid #2d1155',flexShrink:0}}>
@@ -2820,27 +3217,78 @@ export default function CRMChat({token}) {
                 style={{width:'100%',padding:'8px 12px',borderRadius:8,background:'#120929',border:'1px solid #2d1155',color:'#f0e6ff',outline:'none',fontSize:13}}/>
             </div>
             <div style={{flex:1,overflowY:'auto',padding:'8px 0'}}>
-              {(sel.members || sel.participants || sel.users || []).length === 0 ? (
-                <div style={{padding:32,textAlign:'center',color:'#9b7ec8',fontSize:13}}>
-                  <div style={{fontSize:32,marginBottom:12}}>👥</div>
-                  Members data not connected yet.
-                  <div style={{fontSize:11,color:'#6b4d94',marginTop:6}}>⚠️ TODO: Connect Telegram getParticipants API</div>
-                </div>
-              ) : (
-                (sel.members || sel.participants || sel.users || [])
-                  .filter(m => !memberSearch || m.name?.toLowerCase().includes(memberSearch.toLowerCase()) || m.username?.toLowerCase().includes(memberSearch.toLowerCase()))
-                  .map(m => (
+              {(() => {
+                const currentMembers = chatMembersCache[sel.id] || []
+                const filteredMembers = currentMembers.filter(m => !memberSearch || m.name?.toLowerCase().includes(memberSearch.toLowerCase()) || m.username?.toLowerCase().includes(memberSearch.toLowerCase()))
+
+                if (membersError) {
+                  return (
+                    <div style={{padding:32,textAlign:'center',color:'#e53935',fontSize:13}}>
+                      <div style={{fontSize:32,marginBottom:12}}>⚠️</div>
+                      
+                      {membersError === 'TOKEN_EXPIRED' ? (
+                        <>
+                          <div style={{marginBottom:16,color:'#f0e6ff'}}>Session expired, please sign in again.</div>
+                          <button onClick={() => window.location.reload()} style={{padding:'8px 16px',background:'#7c3aed',color:'#fff',border:'none',borderRadius:8,cursor:'pointer'}}>Sign In</button>
+                        </>
+                      ) : membersError === 'TG_SESSION_EXPIRED' ? (
+                        <>
+                          <div style={{marginBottom:16,color:'#f0e6ff'}}>Telegram session expired, please reconnect</div>
+                          <div style={{display:'flex',gap:8,justifyContent:'center'}}>
+                            <button onClick={() => onAuthFailed && onAuthFailed()} style={{padding:'8px 16px',background:'#7c3aed',color:'#fff',border:'none',borderRadius:8,cursor:'pointer'}}>Reconnect</button>
+                            <button onClick={() => fetchMembers()} style={{padding:'8px 16px',background:'transparent',color:'#9b7ec8',border:'1px solid #9b7ec8',borderRadius:8,cursor:'pointer'}}>Retry</button>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div style={{marginBottom:16,color:'#f0e6ff'}}>{membersError}</div>
+                          <button onClick={() => fetchMembers()} style={{padding:'8px 16px',background:'#7c3aed',color:'#fff',border:'none',borderRadius:8,cursor:'pointer'}}>Retry</button>
+                        </>
+                      )}
+                    </div>
+                  )
+                }
+
+                if (loadingMembers && currentMembers.length === 0) {
+                  return (
+                    <div style={{padding:32,textAlign:'center',color:'#9b7ec8',fontSize:13}}>
+                      Loading members...
+                    </div>
+                  )
+                }
+
+                if (currentMembers.length === 0) {
+                  return (
+                    <div style={{padding:32,textAlign:'center',color:'#9b7ec8',fontSize:13}}>
+                      No members found.
+                    </div>
+                  )
+                }
+
+                if (filteredMembers.length === 0) {
+                  return (
+                    <div style={{padding:32,textAlign:'center',color:'#9b7ec8',fontSize:13}}>
+                      No members match your search.
+                    </div>
+                  )
+                }
+
+                return filteredMembers.map(m => (
                   <div key={m.id} style={{display:'flex',alignItems:'center',gap:12,padding:'10px 20px',cursor:'pointer'}}
+                    onClick={() => setProfilePreview({ id: m.id, name: m.name, username: m.username, chatId: sel.id, accessHash: m.accessHash })}
                     onMouseEnter={e=>e.currentTarget.style.background='#2d1155'}
                     onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-                    <Avatar name={m.name} chatId={m.id} username={m.username} size={42}/>
+                    <Avatar name={m.name} chatId={m.id} username={m.username} accessHash={m.accessHash} size={42}/>
                     <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontWeight:600,fontSize:14,color:'#f0e6ff',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{m.name}</div>
+                      <div style={{fontWeight:600,fontSize:14,color:'#f0e6ff',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
+                        {m.name} {m.isBot && <span style={{fontSize:10,background:'#7c3aed',color:'#fff',padding:'2px 6px',borderRadius:4,marginLeft:6,verticalAlign:'middle'}}>BOT</span>}
+                        {m.isPremium && <span style={{fontSize:12,marginLeft:4,verticalAlign:'middle'}} title="Premium">⭐</span>}
+                      </div>
                       <div style={{fontSize:12,color:'#9b7ec8',marginTop:2}}>{m.status || m.role || (m.username ? '@'+m.username : 'Member')}</div>
                     </div>
                   </div>
                 ))
-              )}
+              })()}
             </div>
           </div>
         </div>
@@ -2930,46 +3378,7 @@ export default function CRMChat({token}) {
               setInput(editText)
             }
           }}
-          onReact={async emoji=>{
-            if(!ctxMenu.msg||!sel) return
-            const msgId = ctxMenu.msg.id
-            const prevReactions = reactions[msgId] || {}
-            const myPrev = myReactions[msgId] || null
-
-            // Optimistic update
-            setReactions(prev=>{
-              const r = {...(prev[msgId]||{})}
-              // Remove old reaction
-              if(myPrev && r[myPrev] > 0) r[myPrev] = r[myPrev] - 1
-              // Add new (if not toggling off)
-              if(myPrev !== emoji) r[emoji] = (r[emoji]||0) + 1
-              return {...prev, [msgId]: r}
-            })
-            setMyReactions(p=>({...p, [msgId]: myPrev===emoji ? null : emoji}))
-
-            try {
-              const res = await fetch('/api/chat/react', {
-                method: 'POST',
-                headers: {'Content-Type':'application/json','x-auth-token':token},
-                body: JSON.stringify({
-                  chatId: sel.id,
-                  messageId: msgId,
-                  emoji,
-                  topicId: selTopic?.id || null
-                })
-              })
-              const d = await res.json()
-              if(!d.ok && !d.unchanged) {
-                // Rollback on real error
-                setReactions(p=>({...p, [msgId]: prevReactions}))
-                setMyReactions(p=>({...p, [msgId]: myPrev}))
-              }
-            } catch(e) {
-              // Rollback
-              setReactions(p=>({...p, [msgId]: prevReactions}))
-              setMyReactions(p=>({...p, [msgId]: myPrev}))
-            }
-          }}
+          onReact={(emoji) => toggleReaction(ctxMenu.msg.id, emoji)}
           onClose={()=>setCtxMenu(null)}
         />
       )}
