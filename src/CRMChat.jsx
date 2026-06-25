@@ -2308,17 +2308,19 @@ export default function CRMChat({ token, onAuthFailed }) {
     console.log(`[Reaction Click] msgId=${msgId}, clickedEmoji=${emoji}`);
     
     const allowed = allowedReactionsCache[targetChatId];
-    console.log('chatId', targetChatId);
-    console.log('selectedEmoji', emoji);
-    console.log('allowedReactions', allowed);
-    
+    const currentMsgs = msgsRef.current || [];
     const isCustom = emoji && emoji.type === 'custom';
-    const compareEmoji = (e1, e2) => {
-      if (typeof e1 === 'object' && e1.type === 'custom' && typeof e2 === 'object' && e2.type === 'custom') {
-        return e1.customEmojiId === e2.customEmojiId;
-      }
-      return e1 === e2;
+    
+    const getReactionKey = (r) => {
+      if (!r) return '';
+      if (typeof r === 'string') return r;
+      if (r.type === 'custom') return `custom_${r.customEmojiId}`;
+      if (r.type === 'emoji') return r.emoticon;
+      if (r.emoticon) return r.emoticon;
+      return '';
     };
+    
+    const emojiKey = getReactionKey(emoji);
 
     let validationResult = 'allowed';
     if (allowed) {
@@ -2328,24 +2330,21 @@ export default function CRMChat({ token, onAuthFailed }) {
         } else if (!allowed.allowAll) {
           if (!allowed.reactions || allowed.reactions.length === 0) {
             validationResult = 'not_allowed';
-          } else if (!allowed.reactions.some(r => compareEmoji(r, emoji))) {
+          } else if (!allowed.reactions.some(r => getReactionKey(r) === emojiKey)) {
             validationResult = 'not_allowed';
           }
         }
       }
     }
-    console.log('frontendValidationResult', validationResult);
-    console.log('skippedApiCall', validationResult === 'not_allowed');
 
     if (validationResult === 'not_allowed') {
-       alert('This reaction is not allowed in this chat.');
-       return;
+      toast.error('This reaction is not allowed in this chat.');
+      return;
     }
+
+    if (!pendingReactionsRef.current) pendingReactionsRef.current = {};
     
-    // Calculate new state synchronously using msgsRef to avoid React 18 batching issues
-    const currentMsgs = msgsRef.current || [];
     const msgIndex = currentMsgs.findIndex(m => m.id === msgId);
-    
     if (msgIndex === -1) {
       console.log('Reaction failed: Message not found in local msgs state', msgId);
       return;
@@ -2354,9 +2353,8 @@ export default function CRMChat({ token, onAuthFailed }) {
     const originalMsg = currentMsgs[msgIndex];
     const originalReactions = originalMsg.reactions || [];
     
-    const existing = originalReactions.find(r => r.emoticon === emoji);
+    const existing = originalReactions.find(r => getReactionKey(r) === emojiKey);
     const myCurrentReactions = originalReactions.filter(r => r.chosen);
-    console.log('currentMyReactions', myCurrentReactions.map(r => r.emoticon));
     
     let newReactions = [...originalReactions];
     
@@ -2364,34 +2362,40 @@ export default function CRMChat({ token, onAuthFailed }) {
     if (existing && existing.chosen) {
       action = 'remove';
       if (existing.count <= 1) {
-        newReactions = newReactions.filter(r => r.emoticon !== emoji);
+        newReactions = newReactions.filter(r => getReactionKey(r) !== emojiKey);
       } else {
-        newReactions = newReactions.map(r => r.emoticon === emoji ? { ...r, count: r.count - 1, chosen: false } : r);
+        newReactions = newReactions.map(r => getReactionKey(r) === emojiKey ? { ...r, count: r.count - 1, chosen: false } : r);
       }
     } else {
       if (myCurrentReactions.length >= 3) {
         action = 'replace';
-        const removedEmoji = myCurrentReactions[0].emoticon;
+        const removedKey = getReactionKey(myCurrentReactions[0]);
         newReactions = newReactions.map(r => {
-          if (r.emoticon === removedEmoji) return { ...r, count: r.count - 1, chosen: false };
+          if (getReactionKey(r) === removedKey) return { ...r, count: r.count - 1, chosen: false };
           return r;
         }).filter(r => r.count > 0);
       } else {
         action = 'add';
       }
       
-      const newExisting = newReactions.find(r => r.emoticon === emoji);
+      const newExisting = newReactions.find(r => getReactionKey(r) === emojiKey);
       if (newExisting) {
-        newReactions = newReactions.map(r => r.emoticon === emoji ? { ...r, count: r.count + 1, chosen: true } : r);
+        newReactions = newReactions.map(r => getReactionKey(r) === emojiKey ? { ...r, count: r.count + 1, chosen: true } : r);
       } else {
-        newReactions.push({ emoticon: emoji, count: 1, chosen: true });
+        const newReactionObj = isCustom 
+          ? { type: 'custom', customEmojiId: emoji.customEmojiId, thumbnailUrl: emoji.thumbnailUrl, count: 1, chosen: true }
+          : { type: 'emoji', emoticon: emoji, count: 1, chosen: true };
+        newReactions.push(newReactionObj);
       }
     }
     
     console.log('action', action);
     
     const chosenEmojiObjs = newReactions.filter(r => r.chosen);
-    const payloadEmoji = chosenEmojiObjs.map(r => r.emoticon);
+    const payloadEmoji = chosenEmojiObjs.map(r => {
+      if (r.type === 'custom') return { type: 'custom', customEmojiId: r.customEmojiId };
+      return r.emoticon || r;
+    });
     
     console.log('nextReactionList', payloadEmoji);
     
