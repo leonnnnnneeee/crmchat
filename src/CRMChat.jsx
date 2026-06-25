@@ -272,28 +272,51 @@ function ContextMenu({x,y,msg,allowedReactions,readOutboxMaxId,onDelete,onCopy,o
 
   useEffect(() => {
     if (ref.current) {
-      const rect = ref.current.getBoundingClientRect();
-      const chatContainer = document.querySelector('.chat-messages-container') || document.body;
-      const bounds = chatContainer.getBoundingClientRect();
+      requestAnimationFrame(() => {
+        const rect = ref.current.getBoundingClientRect();
+        const chatContainer = document.querySelector('.chat-messages-container') || document.body;
+        const bounds = chatContainer.getBoundingClientRect();
 
-      let ax = x;
-      let ay = y;
+        let ax = x;
+        let ay = y;
 
-      if (ax + rect.width > bounds.right - 12) {
-        ax = bounds.right - rect.width - 12;
-      }
-      if (ax < bounds.left + 12) {
-        ax = bounds.left + 12;
-      }
-      
-      if (ay + rect.height > bounds.bottom - 12) {
-        ay = y - rect.height;
-      }
-      if (ay < bounds.top + 12) {
-        ay = bounds.top + 12;
-      }
+        // Determine if menu initially overlaps right panel / bounds
+        const overlapsRightPanel = ax + rect.width > bounds.right;
+        let openedDirectionX = 'right';
+        let openedDirectionY = 'down';
 
-      setPos({ left: ax, top: ay, opacity: 1 });
+        if (ax + rect.width > bounds.right - 12) {
+          ax = Math.max(bounds.left + 12, x - rect.width); // open left of cursor if possible
+          openedDirectionX = 'left';
+        }
+        if (ax < bounds.left + 12) {
+          ax = bounds.left + 12;
+        }
+        
+        if (ay + rect.height > bounds.bottom - 12) {
+          ay = Math.max(bounds.top + 12, y - rect.height); // open upward if possible
+          openedDirectionY = 'up';
+        }
+        if (ay < bounds.top + 12) {
+          ay = bounds.top + 12;
+        }
+
+        let maxHeight = bounds.height - 24;
+        if (ay + rect.height > bounds.bottom - 12) {
+          // If clamping pushes it out of bounds bottom, shrink it
+          maxHeight = Math.min(maxHeight, bounds.bottom - ay - 12);
+        }
+
+        console.log(`[Context Menu Layout Debug]
+- chatContainerRect: ${bounds.width}x${bounds.height} at (${bounds.left}, ${bounds.top})
+- rawMenuPosition: (${x}, ${y})
+- measuredMenuWidthHeight: ${rect.width}x${rect.height}
+- finalClampedPosition: (${ax}, ${ay})
+- openedDirection: ${openedDirectionX}/${openedDirectionY}
+- overlapsRightPanel: ${overlapsRightPanel}`);
+
+        setPos({ left: ax, top: ay, opacity: 1, maxHeight });
+      });
     }
   }, [x, y]);
 
@@ -423,6 +446,8 @@ function ContextMenu({x,y,msg,allowedReactions,readOutboxMaxId,onDelete,onCopy,o
       display:'flex',flexDirection:'column',padding:expandedPickerOpen ? 0 : '8px 0',
       minWidth: expandedPickerOpen ? 300 : 200,
       height: expandedPickerOpen ? 350 : 'auto',
+      maxHeight: pos.maxHeight ? pos.maxHeight : 'none',
+      overflowY: 'auto',
       opacity: pos.opacity,
       transition: 'opacity 0.15s ease-out',
       backdropFilter: 'blur(10px)'
