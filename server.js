@@ -1424,6 +1424,73 @@ app.post('/api/chat/edit', requireAuth, async (req,res) => {
   }
 })
 
+// ── GET MESSAGES AROUND TARGET ──
+app.get('/api/telegram/messages/around', requireAuth, async (req, res) => {
+  if (!_session) return res.status(401).json({ error: 'Not connected' })
+  const { chatId, messageId, username, topicId } = req.query
+  if (!chatId || !messageId) return res.status(400).json({ error: 'Missing params' })
+  
+  try {
+    const client = await withTimeout(getClient(), 10000, 'getClient')
+    const entity = await withTimeout(resolveEntity(client, chatId, username), 8000, 'resolveEntity')
+    
+    // limitBefore = 30, limitAfter = 30 -> total 60
+    const limit = 60;
+    const addOffset = -30; // Negative offset to get messages after the messageId
+    
+    const opts = {
+      offsetId: parseInt(messageId),
+      addOffset: addOffset,
+      limit: limit
+    };
+    
+    // If it's a topic message and entity is a Forum
+    if (topicId) {
+      opts.replyToMsgId = parseInt(topicId);
+    }
+    
+    const msgs = await withTimeout(client.getMessages(entity, opts), 12000, 'getMessagesAround');
+    
+    if (!msgs || msgs.length === 0) {
+      return res.status(404).json({ ok: false, code: "PINNED_MESSAGE_UNAVAILABLE", error: "Pinned message is unavailable or deleted" });
+    }
+    
+    const results = msgs.reverse()
+      .map(m => {
+        const isPhoto = m.media?.className === 'MessageMediaPhoto'
+        const isDoc   = m.media?.className === 'MessageMediaDocument'
+        const isVideo = isDoc && m.media?.document?.mimeType?.startsWith('video/')
+        const isAudio = isDoc && (m.media?.document?.mimeType?.startsWith('audio/') || m.media?.document?.attributes?.some?.(a=>a.className==='DocumentAttributeAudio'))
+        return {
+          id: m.id,
+          text: m.message || (isPhoto ? '' : isAudio ? '🎤 Voice' : isVideo ? '🎥 Video' : isDoc ? '📎 Document' : ''),
+          fromMe: m.out,
+          date: m.date,
+          hasMedia: !!m.media,
+          isPhoto,
+          isVideo,
+          isAudio,
+          isDoc: isDoc && !isVideo && !isAudio,
+          senderId: m.senderId?.toString() || null,
+          senderName: m.sender?.firstName
+            ? (m.sender.firstName + (m.sender.lastName ? ' ' + m.sender.lastName : ''))
+            : (m.sender?.username || null),
+          senderUsername: m.sender?.username || null,
+          senderAccessHash: m.sender?.accessHash ? m.sender.accessHash.toString() : null,
+          reactions: parseReactions(m.reactions?.results) || [],
+          recentReactions: parseRecentReactions(m.reactions?.recentReactions) || [],
+          topicId: m.replyTo?.replyToMsgId || null,
+          isPinned: !!m.pinned
+        }
+      })
+      
+    res.json({ ok: true, messages: results, targetMessageId: messageId, source: "telegram_history" });
+  } catch (e) {
+    log('messages around error: ' + e.message)
+    res.status(500).json({ error: e.message })
+  }
+})
+
 app.get('/api/health', (req,res) => res.json({ ok: true, tgConnected: _session.length > 10 }))
 app.get('/api/logs', requireAuth, (req,res) => res.json(logs))
 

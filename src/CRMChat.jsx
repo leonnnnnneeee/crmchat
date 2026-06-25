@@ -1582,6 +1582,8 @@ export default function CRMChat({ token, onAuthFailed }) {
   const [tags,setTags]=useState({})
   const [activeTab,setActiveTab]=useState('messages')
   const [pinnedMsgs,setPinnedMsgs]=useState({})
+  const [highlightedMsgId, setHighlightedMsgId] = useState(null)
+  const [loadingPinnedMsg, setLoadingPinnedMsg] = useState(false)
   
   const [allowedReactionsCache, setAllowedReactionsCache] = useState({})
   
@@ -2983,6 +2985,12 @@ export default function CRMChat({ token, onAuthFailed }) {
     .tmpl-panel { position: absolute; bottom: 100%; right: 0; background: #1a103c; border: 1px solid #3d1f6a; border-radius: 12px; padding: 8px 0; min-width: 300px; max-height: 300px; overflow-y: auto; box-shadow: 0 8px 24px rgba(0,0,0,.5); z-index: 100; }
     .mi  { padding: 8px 12px; cursor: pointer; display: flex; align-items: center; gap: 10px; font-size: 13px; transition: background .1s; }
     .mi:hover { background: #2d1155; }
+    
+    .highlighted-msg .bbl {
+      box-shadow: 0 0 15px rgba(124, 58, 237, 0.8) !important;
+      border: 1px solid #a78bfa !important;
+      transition: all 0.3s ease-in-out;
+    }
 
     .sinp {
       width: 100%;
@@ -3084,8 +3092,74 @@ export default function CRMChat({ token, onAuthFailed }) {
     AISuggestPanel, aiText, setAiText, aiSuggestions, setAiSuggestions, aiAnalysis, setAiAnalysis,
     aiAlt, setAiAlt, setAiLoading, tmplCats, setTmplCat,
     tmplCat, TEMPLATES: [], setMsgs, setSelectMode, lightbox, StageBadge, gifOpen, setGifOpen,
-    gifQuery, setGifQuery, searchGifs, gifs, loadingRef, showScrollBtn, aiError
+    gifQuery, setGifQuery, searchGifs, gifs, loadingRef, showScrollBtn, aiError, highlightedMsgId
   };
+
+  const handlePinnedMessageClick = async (pinnedMessageId) => {
+    console.log('pinnedMessageId', pinnedMessageId);
+    console.log('chatId', sel?.id);
+    console.log('topicId', selTopic?.id);
+    
+    // Check if message exists in current DOM
+    const el = document.getElementById('msg-' + pinnedMessageId);
+    if (el) {
+      console.log('existsInCurrentMessages', true);
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setHighlightedMsgId(pinnedMessageId);
+      setTimeout(() => setHighlightedMsgId(null), 2000);
+      return;
+    }
+    
+    const existsInCache = msgs.some(m => m.id === pinnedMessageId);
+    console.log('existsInCache', existsInCache);
+    
+    try {
+      setLoadingPinnedMsg(true);
+      const url = `/api/telegram/messages/around?chatId=${sel.id}&messageId=${pinnedMessageId}${selTopic?.id ? `&topicId=${selTopic.id}` : ''}`;
+      const res = await fetch(url, { headers: { 'x-auth-token': token } });
+      const d = await res.json();
+      console.log('aroundFetchStatus', d.ok);
+      if (!d.ok) {
+        console.log('errorCode', d.code);
+        alert(d.error || 'Failed to load pinned message context.');
+        setLoadingPinnedMsg(false);
+        return;
+      }
+      
+      console.log('fetchedMessagesCount', d.messages?.length);
+      console.log('targetFound', d.messages?.some(m => m.id === pinnedMessageId));
+      
+      if (d.messages && d.messages.length > 0) {
+        // Merge into current messages
+        setMsgs(prev => {
+          const map = new Map();
+          [...d.messages, ...prev].forEach(m => map.set(m.id, m));
+          const merged = Array.from(map.values()).sort((a,b) => a.date - b.date);
+          
+          msgsCacheRef.current[sel.id + (selTopic?.id ? '_' + selTopic.id : '')] = merged;
+          return merged;
+        });
+        
+        // Wait for render, then scroll
+        requestAnimationFrame(() => {
+          setTimeout(() => {
+            const newEl = document.getElementById('msg-' + pinnedMessageId);
+            console.log('scrollSuccess', !!newEl);
+            if (newEl) {
+              newEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              setHighlightedMsgId(pinnedMessageId);
+              setTimeout(() => setHighlightedMsgId(null), 2000);
+            }
+          }, 100);
+        });
+      }
+    } catch (e) {
+      console.log('Fetch around error', e);
+      alert('Error fetching pinned message context.');
+    } finally {
+      setLoadingPinnedMsg(false);
+    }
+  }
 
   return (<>
     <style>{STYLES}</style>
@@ -3253,18 +3327,25 @@ export default function CRMChat({ token, onAuthFailed }) {
         ):<>
           <ChatHeader {...chatProps} />
           {pinnedMessage && !dismissedPin && (
-            <PinnedMessageBar 
-              pinnedMessage={pinnedMessage} 
-              onClick={(id) => {
-                const el = document.getElementById('msg-'+id)
-                if (el) el.scrollIntoView({behavior: 'smooth', block: 'center'})
-                else alert('Message is not loaded in view yet.')
-              }} 
-              onDismiss={() => {
-                setDismissedPin(true)
-                localStorage.setItem(`dismissed_pin_${sel.id}_${selTopic?.id||'main'}`, 'true')
-              }} 
-            />
+            <div style={{ position: 'relative' }}>
+              <PinnedMessageBar 
+                pinnedMessage={pinnedMessage} 
+                onClick={handlePinnedMessageClick} 
+                onDismiss={() => {
+                  setDismissedPin(true)
+                  localStorage.setItem(`dismissed_pin_${sel.id}_${selTopic?.id||'main'}`, 'true')
+                }} 
+              />
+              {loadingPinnedMsg && (
+                <div style={{
+                  position: 'absolute', top: '100%', left: 0, right: 0,
+                  background: 'rgba(124,58,237,0.9)', color: '#fff',
+                  fontSize: 12, padding: '4px 0', textAlign: 'center', zIndex: 10
+                }}>
+                  Loading pinned message...
+                </div>
+              )}
+            </div>
           )}
 
           {!dismissedTranslate && (

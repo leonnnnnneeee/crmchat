@@ -138,7 +138,7 @@ export default function MessageList(props) {
                     </div>
                   )}
                   {showSep&&<div className="dsep"><span>{fmtDateSep(msgTime)}</span></div>}
-                  <div id={'msg-'+msg.id} className={`msg-row${msg.fromMe?' out':' in'}${!isLastInGroup?' grouped':''}`}
+                  <div id={'msg-'+msg.id} className={`msg-row${msg.fromMe?' out':' in'}${!isLastInGroup?' grouped':''}${props.highlightedMsgId === msg.id ? ' highlighted-msg' : ''}`}
                     style={{cursor:selectMode?"pointer":"default"}}
                     onClick={selectMode?()=>setSelectedMsgs(prev=>{const s=new Set(prev);s.has(i)?s.delete(i):s.add(i);return s}):undefined}>
                   {selectMode&&<div style={{width:20,height:20,borderRadius:"50%",border:"2px solid #7c3aed",background:selectedMsgs.has(i)?"#7c3aed":"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,alignSelf:"center",fontSize:12,color:"#fff",cursor:"pointer"}}>
