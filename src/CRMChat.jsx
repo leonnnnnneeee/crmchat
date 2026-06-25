@@ -2097,8 +2097,8 @@ export default function CRMChat({ token, onAuthFailed }) {
     });
     
     let newReactionsToLog = [];
-    
     let payloadEmoji = null;
+    let originalMsg = null;
     let originalReactions = [];
     
     console.log(`[Reaction Click] msgId=${msgId}, clickedEmoji=${emoji}`);
@@ -2110,6 +2110,7 @@ export default function CRMChat({ token, onAuthFailed }) {
         return prevMsgs;
       }
       const msg = prevMsgs[msgIndex]
+      originalMsg = msg;
       originalReactions = msg.reactions || []
       
       const existing = originalReactions.find(r => r.emoticon === emoji)
