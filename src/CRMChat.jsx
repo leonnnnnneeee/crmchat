@@ -274,7 +274,7 @@ function ContextMenu({x,y,msg,allowedReactions,readOutboxMaxId,onDelete,onCopy,o
     if (ref.current) {
       requestAnimationFrame(() => {
         const rect = ref.current.getBoundingClientRect();
-        const chatContainer = document.querySelector('.chat-messages-container') || document.body;
+        const chatContainer = document.querySelector('.mc') || document.body;
         const bounds = chatContainer.getBoundingClientRect();
 
         let ax = x;
@@ -318,10 +318,10 @@ function ContextMenu({x,y,msg,allowedReactions,readOutboxMaxId,onDelete,onCopy,o
         setPos({ left: ax, top: ay, opacity: 1, maxHeight });
       });
     }
-  }, [x, y]);
+  }, [x, y, expandedPickerOpen]);
 
   const Item=({icon,label,action,danger,sep})=>sep
-    ? <div style={{height:1,background:'rgba(255,255,255,0.08)',margin:'4px 8px'}}/>
+    ? <div style={{height:1,background:'rgba(255,255,255,0.15)',margin:'4px 8px'}}/>
     : <div onClick={()=>{action?.();onClose()}}
         style={{padding:'8px 14px',cursor:'pointer',display:'flex',alignItems:'center',
           gap:12,fontSize:14,color:danger?'#ef4444':'#e2e8f0',borderRadius:8,margin:'2px 6px',
@@ -563,9 +563,9 @@ function ContextMenu({x,y,msg,allowedReactions,readOutboxMaxId,onDelete,onCopy,o
                         <line x1="12" y1="16" x2="12.01" y2="16"></line>
                       </svg>
                     ) : isRead ? (
-                      <svg width="18" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="18 6 7 17 2 12"></polyline>
-                        <path d="M22 10l-9.5 9.5-1.5-1.5"></path>
+                      <svg width="20" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M18 6L7 17L2 12"></path>
+                        <path d="M22 10L13 19L11 17"></path>
                       </svg>
                     ) : (
                       <svg width="16" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
