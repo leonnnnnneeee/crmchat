@@ -253,7 +253,7 @@ function ChatContextMenu({x,y,chat,onClose,
 
 
 // ── Message Context Menu ──
-function ContextMenu({x,y,msg,allowedReactions,onDelete,onCopy,onReply,onClose,onDeleteAll,onSelect,onForward,onReact,onPin,onInfo,onEdit}) {
+function ContextMenu({x,y,msg,allowedReactions,readOutboxMaxId,onDelete,onCopy,onReply,onClose,onDeleteAll,onSelect,onForward,onReact,onPin,onInfo,onEdit}) {
   const ref = useRef(null)
   useEffect(()=>{
     const h = e => { 
@@ -444,6 +444,71 @@ function ContextMenu({x,y,msg,allowedReactions,onDelete,onCopy,onReply,onClose,o
           ) : (
             reactionsNotAllowed && <div style={{padding:'8px 12px', fontSize:12, color:'#a78bfa', textAlign:'center', borderBottom:'1px solid rgba(124,58,237,.2)'}}>Reactions not allowed</div>
           )}
+          
+          {msg?.fromMe && (() => {
+            const isRead = msg.id <= readOutboxMaxId;
+            const status = msg.pending ? 'sending' : msg.failed ? 'failed' : isRead ? 'read' : 'sent';
+            
+            let timeText = 'Unknown time';
+            // TODO: implement real seenAt if Telegram supports per-message read receipts
+            const seenAt = null; 
+            
+            const timestampToUse = isRead ? seenAt : msg.date;
+            
+            if (timestampToUse) {
+              const d = new Date(timestampToUse * 1000);
+              const now = new Date();
+              const isToday = d.getDate() === now.getDate() && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+              const yesterday = new Date(now);
+              yesterday.setDate(now.getDate() - 1);
+              const isYesterday = d.getDate() === yesterday.getDate() && d.getMonth() === yesterday.getMonth() && d.getFullYear() === yesterday.getFullYear();
+              
+              const timeStr = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+              if (isToday) timeText = `Today at ${timeStr}`;
+              else if (isYesterday) timeText = `Yesterday at ${timeStr}`;
+              else timeText = `${d.toLocaleString('en-US', { month: 'short', day: 'numeric' })} at ${timeStr}`;
+            } else {
+              timeText = isRead ? 'Seen' : 'Sent';
+            }
+            
+            console.log(`[Context Menu Debug] selectedMessageId=${msg.id} isOutgoing=${msg.fromMe} rawStatus=${msg.pending ? 'pending' : msg.failed ? 'failed' : 'sent'} normalizedStatus=${status} seenAt=${seenAt || 'unavailable'} formattedSeenTime="${timeText}" contextMenuSeenRowRendered=true`);
+            
+            return (
+              <>
+                <div style={{
+                  display:'flex', alignItems:'center', gap:10, padding:'8px 12px',
+                  color:'#fff', fontSize:14, cursor:'default', userSelect:'none'
+                }}>
+                  <span style={{color: msg.failed ? '#ef4444' : (isRead ? '#4ade80' : 'rgba(255,255,255,.6)'), display:'flex', alignItems:'center'}}>
+                    {msg.pending ? (
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <polyline points="12 6 12 12 16 14"></polyline>
+                      </svg>
+                    ) : msg.failed ? (
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <line x1="12" y1="8" x2="12" y2="12"></line>
+                        <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                      </svg>
+                    ) : isRead ? (
+                      <svg width="18" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="18 6 7 17 2 12"></polyline>
+                        <path d="M22 10l-9.5 9.5-1.5-1.5"></path>
+                      </svg>
+                    ) : (
+                      <svg width="16" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="20 6 9 17 4 12"></polyline>
+                      </svg>
+                    )}
+                  </span>
+                  <span style={{color:'rgba(255,255,255,0.9)'}}>{timeText}</span>
+                </div>
+                <div style={{height:1, background:'rgba(255,255,255,0.05)', margin:'4px 0'}} />
+              </>
+            );
+          })()}
+
           <Item icon='↩️' label='Reply'          action={onReply}/>
           <Item icon='📋' label='Copy text'      action={onCopy}/>
           <Item icon='↪️' label='Forward'        action={onForward}/>
@@ -3783,6 +3848,7 @@ export default function CRMChat({ token, onAuthFailed }) {
         <ContextMenu 
           x={ctxMenu.x} y={ctxMenu.y} msg={ctxMenu.msg}
           allowedReactions={allowedReactionsCache[sel.id]}
+          readOutboxMaxId={sel?.readOutboxMaxId || 0}
           onDelete={()=>deleteMsg(ctxMenu.idx)}
           onCopy={()=>copyMsg(ctxMenu.msg.text)}
           onReply={()=>setReplyTo(ctxMenu.msg)}
