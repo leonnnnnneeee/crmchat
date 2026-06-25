@@ -1516,6 +1516,30 @@ export default function CRMChat({ token, onAuthFailed }) {
   const [aiInstruction,setAiInstruction]=useState("")
   const msgsRef = useRef([])
   useEffect(()=>{ msgsRef.current = msgs },[msgs])
+
+  const pendingReactionsRef = useRef({})
+  const mergeReactions = (msgId, backendReactions) => {
+    const pending = pendingReactionsRef.current[msgId]
+    if (pending && Date.now() - pending.timestamp < 10000) {
+      const optimisticChosen = pending.reactions.find(r => r.chosen)
+      if (optimisticChosen) {
+        const backendHasIt = backendReactions.find(r => r.chosen && r.emoticon === optimisticChosen.emoticon)
+        if (backendHasIt) {
+          delete pendingReactionsRef.current[msgId]
+          return backendReactions
+        }
+        return pending.reactions
+      } else {
+        const backendHasChosen = backendReactions.find(r => r.chosen)
+        if (!backendHasChosen) {
+          delete pendingReactionsRef.current[msgId]
+          return backendReactions
+        }
+        return pending.reactions
+      }
+    }
+    return backendReactions
+  }
   const [showProfile,setShowProfile]=useState(()=>{
     try{
       const s=localStorage.getItem('tg_show_crm')
@@ -1953,6 +1977,7 @@ export default function CRMChat({ token, onAuthFailed }) {
             if (isSameChat && isSameTopic) {
               setMsgs(prev => {
                 if (prev.some(m => m.id === msg.id)) return prev
+                msg.reactions = mergeReactions(msg.id, msg.reactions || [])
                 const updated = [...prev, msg]
                 const nextState = updated.sort((a,b) => a.date - b.date)
                 msgsCacheRef.current[selRef.current.id + (selTopicRef.current ? '_' + selTopicRef.current.id : '')] = nextState
@@ -1993,7 +2018,7 @@ export default function CRMChat({ token, onAuthFailed }) {
                 const updatedMsgs = [...prev];
                 updatedMsgs[idx] = { 
                   ...updatedMsgs[idx], 
-                  reactions: reactions || [],
+                  reactions: mergeReactions(msgId, reactions || []),
                   recentReactions: recentReactions || []
                 };
                 msgsCacheRef.current[selRef.current.id + (selTopicRef.current ? '_' + selTopicRef.current.id : '')] = updatedMsgs;
@@ -2067,8 +2092,12 @@ export default function CRMChat({ token, onAuthFailed }) {
             const stillPending = prev.filter(m => m.pending && m.id < 0 && !d.some(s=>s.text===m.text&&s.fromMe))
             nextState = [...d, ...stillPending]
           }
-          msgsCacheRef.current[chat.id + (topicId ? '_' + topicId : '')] = nextState;
-          return nextState;
+          let finalState = nextState.map(m => ({
+            ...m,
+            reactions: mergeReactions(m.id, m.reactions || [])
+          }))
+          msgsCacheRef.current[chat.id + (topicId ? '_' + topicId : '')] = finalState;
+          return finalState;
         })
       } else if (d && d.error === 'AUTH_FAILED') {
         if (typeof onAuthFailed === 'function') onAuthFailed()
@@ -2114,6 +2143,9 @@ export default function CRMChat({ token, onAuthFailed }) {
       originalReactions = msg.reactions || []
       
       const existing = originalReactions.find(r => r.emoticon === emoji)
+      const currentMyReaction = originalReactions.find(r => r.chosen);
+      console.log('currentMyReaction', currentMyReaction?.emoticon || null);
+      
       let newReactions = [...originalReactions]
       
       if (existing && existing.chosen) {
@@ -2148,9 +2180,21 @@ export default function CRMChat({ token, onAuthFailed }) {
       const updatedMsgs = [...prevMsgs]
       updatedMsgs[msgIndex] = { ...msg, reactions: newReactions }
       msgsCacheRef.current[selRef.current?.id + (selTopicRef.current ? '_' + selTopicRef.current.id : '')] = updatedMsgs;
+      
+      // Cache optimistic reaction for merging
+      pendingReactionsRef.current[msgId] = { timestamp: Date.now(), reactions: newReactions };
+      
+      console.log('optimisticReactions', newReactions);
       return updatedMsgs;
     })
     
+    console.log('refetch reaction payload', {
+      chatId: sel.id,
+      messageId: msgId,
+      emoji: payloadEmoji,
+      topicId: selTopic?.id || null
+    });
+
     try {
       const res = await fetch('/api/telegram/messages/react', {
         method: 'POST',
@@ -2158,18 +2202,21 @@ export default function CRMChat({ token, onAuthFailed }) {
         body: JSON.stringify({
           chatId: sel.id,
           messageId: msgId,
-          emoji,
+          emoji: payloadEmoji,
           topicId: selTopic?.id || null
         })
       });
       const d = await res.json();
+      console.log('API response/error', d);
       if (!d.ok && !d.unchanged) {
+        delete pendingReactionsRef.current[msgId];
         setMsgs(prev => prev.map(m => m.id === msgId ? originalMsg : m));
       }
     } catch (e) {
       console.log(`[Reaction Sync] Telegram API error:`, e.message);
-      console.error(e)
+      console.error('API response/error', e);
       alert('Lỗi thả emoji: ' + e.message);
+      delete pendingReactionsRef.current[msgId];
       setMsgs(prev => prev.map(m => m.id === msgId ? originalMsg : m));
     }
   }
