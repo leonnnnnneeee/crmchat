@@ -264,7 +264,7 @@ function ContextMenu({x,y,msg,chatId,token,allowedReactions,readOutboxMaxId,onDe
     if (msg?.fromMe && msg.id <= readOutboxMaxId && chatId) {
       setReadInfo({ loading: true, data: null, error: null });
       fetch(`/api/chat/messages/${chatId}/${msg.id}/read-receipts`, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { 'x-auth-token': token }
       })
       .then(r => r.json())
       .then(res => {
