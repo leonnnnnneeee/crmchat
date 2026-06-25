@@ -282,21 +282,26 @@ function ContextMenu({x,y,msg,allowedReactions,onDelete,onCopy,onReply,onClose,o
         <span style={{fontSize:15,width:20,textAlign:'center'}}>{icon}</span>{label}
       </div>
 
-  const defaultEmojis = ['👍', '❤️', '😂', '🔥', '🙏', '😎', '👎', '🥰'];
-  let emojisToRender = defaultEmojis;
+  const defaultEmojis = ['👍', '👎', '❤️', '🔥', '🥰', '👏', '😁', '🤔', '🤯', '😱', '🤬', '😢', '🎉', '🤩', '🤮', '💩', '🙏', '👌', '🕊', '🤡', '🥱', '🥴', '😍', '🐳', '❤️‍🔥', '🌚', '🌭', '💯', '🤣', '⚡️', '🍌', '🏆', '💔', '🤨', '😐', '🍓', '🍾', '💋', '🖕', '😈', '😴', '😭', '🤓', '👻', '👨‍💻', '👀', '🎃', '🙈', '😇', '🤝', '✍️', '🤗', '🫡', '🎅', '🎄', '☃️', '💅', '🤪', '🗿', '🆒', '💘', '🙉', '🦄', '😘', '💊', '🙊', '😎', '👾', '🤷‍♂️', '🤷', '🤷‍♀️', '😡'];
+  const quickEmojis = ['👍', '❤️', '😂', '🔥', '🙏', '😎', '👎', '🥰'];
+  let emojisToRender = quickEmojis;
   let reactionsNotAllowed = false;
   let isFallback = false;
+  let fallbackReason = '';
 
   if (allowedReactions) {
-    if (allowedReactions.allowed === 'none') {
+    if (allowedReactions.allowAll) {
+      emojisToRender = quickEmojis; // Just show a nice subset if all are allowed
+    } else if (allowedReactions.reactions && allowedReactions.reactions.length > 0) {
+      emojisToRender = allowedReactions.reactions.slice(0, 16); // limit to a reasonable number
+    } else {
       reactionsNotAllowed = true;
       emojisToRender = [];
-    } else if (allowedReactions.allowed === 'some' && allowedReactions.emoticons) {
-      emojisToRender = allowedReactions.emoticons.filter(e => defaultEmojis.includes(e));
-      if (emojisToRender.length === 0) emojisToRender = allowedReactions.emoticons.slice(0, 8);
-    } else if (allowedReactions.allowed === 'fallback') {
+    }
+    
+    if (allowedReactions.source === 'fallback') {
       isFallback = true;
-      emojisToRender = ['👍', '❤️']; // Safe fallback
+      fallbackReason = allowedReactions.fallbackReason || 'unknown';
     }
   }
 
@@ -309,7 +314,7 @@ function ContextMenu({x,y,msg,allowedReactions,onDelete,onCopy,onReply,onClose,o
     }}>
       {!reactionsNotAllowed && emojisToRender.length > 0 ? (
         <div onClick={(e) => { e.stopPropagation(); e.preventDefault(); }} style={{display:'flex', gap:4, padding:'8px 12px', borderBottom:'1px solid rgba(124,58,237,.2)', flexWrap:'wrap', justifyContent:'center', marginBottom:4}}>
-          {isFallback && <div style={{width:'100%', fontSize:10, color:'#6b4d94', textAlign:'center', marginBottom:4}}>Using fallback reactions</div>}
+          {isFallback && <div style={{width:'100%', fontSize:10, color:'#6b4d94', textAlign:'center', marginBottom:4}}>Using fallback reactions ({fallbackReason})</div>}
           {emojisToRender.map(emoji => (
             <button type="button" key={emoji} onClick={(e) => { 
               console.log('emojiClickStarted', { selectedMessageId: msg?.id, selectedEmoji: emoji });
@@ -1594,17 +1599,22 @@ export default function CRMChat({ token, onAuthFailed }) {
   
   const fetchAllowedReactions = useCallback(async (chatId) => {
     try {
-      const res = await fetch(`/api/chat/${chatId}/allowed_reactions`, {
-        headers: { 'x-auth-token': token }
-      });
+      const url = `/api/telegram/available-reactions?chatId=${chatId}`;
+      console.log('endpoint URL', url);
+      const res = await fetch(url, { headers: { 'x-auth-token': token } });
+      console.log('response status', res.status);
       const d = await res.json();
       console.log('allowedReactionsFetchStatus', d);
-      console.log('allowedReactionsSource', d.source || 'cache');
-      if (!d.error) {
+      console.log('source', d.source || 'cache');
+      console.log('allowAll', d.allowAll);
+      console.log('reactions returned', d.reactions);
+      if (d.source === 'fallback') console.log('fallback reason', d.fallbackReason);
+      
+      if (d.ok) {
         setAllowedReactionsCache(p => ({ ...p, [chatId]: d }));
       }
     } catch(e) {
-      console.log('fetch allowed_reactions error:', e);
+      console.log('fetch available-reactions error:', e);
     }
   }, [token]);
 
@@ -2189,8 +2199,13 @@ export default function CRMChat({ token, onAuthFailed }) {
     
     let validationResult = 'allowed';
     if (allowed) {
-      if (allowed.allowed === 'none') validationResult = 'not_allowed';
-      if (allowed.allowed === 'some' && allowed.emoticons && !allowed.emoticons.includes(emoji)) validationResult = 'not_allowed';
+      if (!allowed.allowAll) {
+        if (!allowed.reactions || allowed.reactions.length === 0) {
+          validationResult = 'not_allowed';
+        } else if (!allowed.reactions.includes(emoji)) {
+          validationResult = 'not_allowed';
+        }
+      }
     }
     console.log('frontendValidationResult', validationResult);
     console.log('skippedApiCall', validationResult === 'not_allowed');
@@ -2293,12 +2308,12 @@ export default function CRMChat({ token, onAuthFailed }) {
           // Update cache to remove this emoji if it was mistakenly cached as allowed
           setAllowedReactionsCache(prev => {
             const current = prev[targetChatId];
-            if (current && current.allowed === 'some' && current.emoticons) {
+            if (current && !current.allowAll && current.reactions) {
               return {
                 ...prev,
                 [targetChatId]: {
                   ...current,
-                  emoticons: current.emoticons.filter(e => e !== emoji)
+                  reactions: current.reactions.filter(e => e !== emoji)
                 }
               };
             }

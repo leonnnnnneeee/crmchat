@@ -519,49 +519,60 @@ app.get('/api/chat/profile/:id', requireAuth, async (req, res) => {
 })
 
 // ── ALLOWED REACTIONS ──
-app.get('/api/chat/:id/allowed_reactions', requireAuth, async (req, res) => {
-  if (!_session) return res.status(401).json({error: 'Not connected'})
+app.get('/api/telegram/available-reactions', requireAuth, async (req, res) => {
+  if (!_session) return res.status(401).json({ ok: false, error: 'Not connected' });
+  const { chatId } = req.query;
+  if (!chatId) return res.status(400).json({ ok: false, error: 'Missing chatId' });
+  
   try {
-    const client = await getClient()
-    const { Api } = require('telegram/tl')
-    const entity = await resolveEntity(client, req.params.id)
+    const client = await getClient();
+    const { Api } = require('telegram/tl');
+    const entity = await resolveEntity(client, chatId);
     
-    let full = null
+    // If it's a user, all normal reactions are allowed
+    if (entity.className === 'User') {
+      return res.json({ ok: true, source: 'telegram', allowAll: true, reactions: [] });
+    }
+    
+    let full = null;
     try {
       if (entity.className === 'Chat' || entity.className === 'Channel') {
-        full = await client.invoke(new Api.messages.GetFullChat({ chatId: entity.id }))
+        full = await client.invoke(new Api.messages.GetFullChat({ chatId: entity.id }));
       }
     } catch(err) {
       if (entity.className === 'Channel') {
         try {
-          full = await client.invoke(new Api.channels.GetFullChannel({ channel: entity }))
-        } catch(e) {}
+          full = await client.invoke(new Api.channels.GetFullChannel({ channel: entity }));
+        } catch(e) {
+          console.log(`[Reactions] GetFullChannel failed for ${chatId}:`, e.message);
+        }
       }
     }
 
     if (!full || !full.fullChat) {
-      console.log(`[Reactions] fullChat missing for ${req.params.id}. Returning fallback.`);
-      return res.json({ allowed: 'fallback', source: 'fallback' })
+      console.log(`[Reactions] fullChat missing for ${chatId}. Returning fallback.`);
+      return res.json({ ok: true, source: 'fallback', allowAll: false, reactions: ['👍', '❤️'], fallbackReason: 'fullChat missing' });
     }
 
     const availableReactions = full.fullChat.availableReactions;
+    // If the field is absent, all reactions are allowed.
     if (!availableReactions) {
-      console.log(`[Reactions] availableReactions missing for ${req.params.id}. Returning fallback.`);
-      return res.json({ allowed: 'fallback', source: 'fallback' });
+      return res.json({ ok: true, source: 'telegram', allowAll: true, reactions: [] });
     }
 
     if (availableReactions.className === 'ChatReactionsAll') {
-      return res.json({ allowed: 'all', source: 'telegram' });
+      return res.json({ ok: true, source: 'telegram', allowAll: true, reactions: [] });
     } else if (availableReactions.className === 'ChatReactionsNone') {
-      return res.json({ allowed: 'none', source: 'telegram' });
+      return res.json({ ok: true, source: 'telegram', allowAll: false, reactions: [] });
     } else if (availableReactions.className === 'ChatReactionsSome') {
       const emoticons = availableReactions.reactions.map(r => r.emoticon).filter(Boolean);
-      return res.json({ allowed: 'some', emoticons, source: 'telegram' });
+      return res.json({ ok: true, source: 'telegram', allowAll: false, reactions: emoticons });
     }
     
-    return res.json({ allowed: 'fallback', source: 'fallback' });
+    return res.json({ ok: true, source: 'fallback', allowAll: false, reactions: ['👍', '❤️'], fallbackReason: 'unknown availableReactions format' });
   } catch(e) {
-    res.status(500).json({ error: e.message })
+    console.log(`[Reactions] Error fetching for ${chatId}:`, e.message);
+    res.status(500).json({ ok: false, error: e.message });
   }
 })
 
