@@ -514,11 +514,12 @@ function LinkPreview({url}) {
 // ── ChatPhoto — lazy load with fetch & blob ──
 const blobCache = new Map()
 
-function ChatPhoto({msg, chatId, authToken, onImageClick}) {
+function ChatPhoto({msg, chatId, authToken, onImageClick, thumb}) {
   const msgId = msg.id
   const [retryCnt, setRetryCnt] = useState(0)
-  const [status, setStatus] = useState(blobCache.has(msgId) ? 'loaded' : 'pending')
-  const [imgSrc, setImgSrc] = useState(msg.photoUrl || msg.mediaUrl || blobCache.get(msgId) || '')
+  const thumbKey = thumb !== undefined ? `_thumb_${thumb}` : ''
+  const [status, setStatus] = useState(blobCache.has(msgId + thumbKey) ? 'loaded' : 'pending')
+  const [imgSrc, setImgSrc] = useState(msg.photoUrl || msg.mediaUrl || blobCache.get(msgId + thumbKey) || '')
   const [isVisible, setIsVisible] = useState(false)
   const ref = useRef(null)
 
@@ -542,7 +543,7 @@ function ChatPhoto({msg, chatId, authToken, onImageClick}) {
     const fetchMedia = async () => {
       setStatus('loading')
       try {
-        const url = `/api/chat/media/${chatId}/${msgId}?token=${authToken}&r=${retryCnt}`
+        const url = `/api/chat/media/${chatId}/${msgId}?token=${authToken}&r=${retryCnt}${thumb !== undefined ? '&thumb=' + thumb : ''}`
         console.log(`[ChatPhoto] Fetching media for msgId=${msgId}, url=${url}`)
         const res = await fetch(url)
         
@@ -562,7 +563,7 @@ function ChatPhoto({msg, chatId, authToken, onImageClick}) {
         }
         
         objectUrl = URL.createObjectURL(blob)
-        blobCache.set(msgId, objectUrl)
+        blobCache.set(msgId + thumbKey, objectUrl)
         
         if (isMounted) {
           setImgSrc(objectUrl)
@@ -1135,7 +1136,7 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
                 <div style={{display:'grid',gridTemplateColumns:'repeat(3, 1fr)',gap:4}}>
                   {(isFallback ? fallbackData.media : tabData.media).map(m => (
                     <div key={m.id} style={{aspectRatio:'1/1',background:'rgba(124,58,237,.1)',cursor:'pointer',position:'relative'}} onClick={()=>handleMediaClick(m)}>
-                      <ChatPhoto msg={m} chatId={data.chatId} authToken={token} onImageClick={()=>{}}/>
+                      <ChatPhoto msg={m} chatId={data.chatId} authToken={token} onImageClick={()=>{}} thumb={1} />
                       {m.isVideo && <div style={{position:'absolute',top:'50%',left:'50%',transform:'translate(-50%,-50%)',color:'#fff',fontSize:24,textShadow:'0 2px 8px rgba(0,0,0,0.5)'}}>▶</div>}
                     </div>
                   ))}

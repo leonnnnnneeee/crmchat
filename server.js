@@ -735,11 +735,14 @@ app.get(['/api/chat/media/:chatId/:msgId', '/api/telegram/media/audio'], require
     const msgId = parseInt(req.query.messageId || req.params.msgId)
     const chatId = req.query.chatId || req.params.chatId
     const fileId = req.query.fileId || ''
+    const thumbStr = req.query.thumb
+    const isThumb = thumbStr !== undefined
+    const thumbParam = isThumb ? parseInt(thumbStr) : undefined
     
     // Check cache first
-    const cachePath = path.join(MEDIA_CACHE_DIR, `${chatId}_${msgId}_${fileId}`)
+    const cachePath = path.join(MEDIA_CACHE_DIR, `${chatId}_${msgId}_${fileId}${isThumb ? '_thumb_' + thumbStr : ''}`)
     if (fs.existsSync(cachePath)) {
-      log(`[Media Cache Hit] chatId=${chatId} msgId=${msgId}`)
+      log(`[Media Cache Hit] chatId=${chatId} msgId=${msgId} thumb=${thumbStr}`)
       if (req.path.includes('/audio')) {
         res.set('Content-Type', 'audio/ogg')
       } else {
@@ -762,8 +765,8 @@ app.get(['/api/chat/media/:chatId/:msgId', '/api/telegram/media/audio'], require
       return res.status(404).json({error: 'No media found in message'})
     }
 
-    log(`[Media Cache Miss] Downloading chatId=${chatId} msgId=${msgId}`)
-    const buffer = await client.downloadMedia(message, { workers: 1 })
+    log(`[Media Cache Miss] Downloading chatId=${chatId} msgId=${msgId} thumb=${thumbStr}`)
+    const buffer = await client.downloadMedia(message, { workers: 1, thumb: thumbParam })
     if (!buffer) {
       return res.status(500).json({error: 'Failed to download media buffer'})
     }
