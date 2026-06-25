@@ -2155,13 +2155,16 @@ export default function CRMChat({ token, onAuthFailed }) {
     
     let newReactions = [...originalReactions];
     
+    let action = 'skip';
     if (existing && existing.chosen) {
+      action = 'remove';
       if (existing.count <= 1) {
         newReactions = newReactions.filter(r => r.emoticon !== emoji);
       } else {
         newReactions = newReactions.map(r => r.emoticon === emoji ? { ...r, count: r.count - 1, chosen: false } : r);
       }
     } else {
+      action = currentMyReaction ? 'replace' : 'add';
       newReactions = newReactions.map(r => {
         if (r.chosen) return { ...r, count: r.count - 1, chosen: false };
         return r;
@@ -2174,6 +2177,8 @@ export default function CRMChat({ token, onAuthFailed }) {
         newReactions.push({ emoticon: emoji, count: 1, chosen: true });
       }
     }
+    
+    console.log('action', action);
     
     const chosenEmojiObj = newReactions.find(r => r.chosen);
     const payloadEmoji = chosenEmojiObj ? chosenEmojiObj.emoticon : null;
@@ -2210,6 +2215,7 @@ export default function CRMChat({ token, onAuthFailed }) {
       });
       const d = await res.json();
       console.log('apiStatus', d);
+      console.log('finalReactionsFromTelegram', d.tgRes || 'unchanged');
       if (!d.ok && !d.unchanged) {
         alert('Lỗi thả emoji từ Telegram: ' + (d.error || 'Unknown error'));
         delete pendingReactionsRef.current[msgId];
