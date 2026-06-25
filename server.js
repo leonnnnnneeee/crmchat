@@ -518,6 +518,51 @@ app.get('/api/chat/profile/:id', requireAuth, async (req, res) => {
   }
 })
 
+// ── ALLOWED REACTIONS ──
+app.get('/api/chat/:id/allowed_reactions', requireAuth, async (req, res) => {
+  if (!_session) return res.status(401).json({error: 'Not connected'})
+  try {
+    const client = await getClient()
+    const { Api } = require('telegram/tl')
+    const entity = await resolveEntity(client, req.params.id)
+    
+    let full = null
+    try {
+      if (entity.className === 'Chat' || entity.className === 'Channel') {
+        full = await client.invoke(new Api.messages.GetFullChat({ chatId: entity.id }))
+      }
+    } catch(err) {
+      if (entity.className === 'Channel') {
+        try {
+          full = await client.invoke(new Api.channels.GetFullChannel({ channel: entity }))
+        } catch(e) {}
+      }
+    }
+
+    if (!full || !full.fullChat) {
+      return res.json({ allowed: 'all' })
+    }
+
+    const availableReactions = full.fullChat.availableReactions;
+    if (!availableReactions) {
+      return res.json({ allowed: 'all' });
+    }
+
+    if (availableReactions.className === 'ChatReactionsAll') {
+      return res.json({ allowed: 'all' });
+    } else if (availableReactions.className === 'ChatReactionsNone') {
+      return res.json({ allowed: 'none' });
+    } else if (availableReactions.className === 'ChatReactionsSome') {
+      const emoticons = availableReactions.reactions.map(r => r.emoticon).filter(Boolean);
+      return res.json({ allowed: 'some', emoticons });
+    }
+    
+    res.json({ allowed: 'all' });
+  } catch(e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
 // ── SHARED MEDIA ──
 const formatMediaResult = (m) => {
   const isPhoto = m.media?.className === 'MessageMediaPhoto'
@@ -1426,6 +1471,10 @@ app.post(['/api/chat/react', '/api/telegram/messages/react'], requireAuth, async
     if (e.message.includes('MESSAGE_NOT_MODIFIED')) {
       log(`Reaction not modified: ${messageId} ${JSON.stringify(emoji)}`);
       return res.json({ok: true, unchanged: true});
+    }
+    if (e.message.includes('REACTION_INVALID')) {
+      log(`Reaction invalid: ${messageId} ${JSON.stringify(emoji)}`);
+      return res.status(400).json({ok: false, code: 'REACTION_INVALID', error: e.message});
     }
     log('react error: ' + e.message)
     res.status(500).json({error: e.message})

@@ -253,7 +253,7 @@ function ChatContextMenu({x,y,chat,onClose,
 
 
 // ── Message Context Menu ──
-function ContextMenu({x,y,msg,onDelete,onCopy,onReply,onClose,onDeleteAll,onSelect,onForward,onReact,onPin,onInfo,onEdit}) {
+function ContextMenu({x,y,msg,allowedReactions,onDelete,onCopy,onReply,onClose,onDeleteAll,onSelect,onForward,onReact,onPin,onInfo,onEdit}) {
   const ref = useRef(null)
   useEffect(()=>{
     const h = e => { 
@@ -282,6 +282,20 @@ function ContextMenu({x,y,msg,onDelete,onCopy,onReply,onClose,onDeleteAll,onSele
         <span style={{fontSize:15,width:20,textAlign:'center'}}>{icon}</span>{label}
       </div>
 
+  const defaultEmojis = ['👍', '❤️', '😂', '🔥', '🙏', '😎', '👎', '🥰'];
+  let emojisToRender = defaultEmojis;
+  let reactionsNotAllowed = false;
+
+  if (allowedReactions) {
+    if (allowedReactions.allowed === 'none') {
+      reactionsNotAllowed = true;
+      emojisToRender = [];
+    } else if (allowedReactions.allowed === 'some' && allowedReactions.emoticons) {
+      emojisToRender = allowedReactions.emoticons.filter(e => defaultEmojis.includes(e));
+      if (emojisToRender.length === 0) emojisToRender = allowedReactions.emoticons.slice(0, 8);
+    }
+  }
+
   return (
     <div ref={ref} onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()} style={{
       position:'fixed',left:ax,top:ay,zIndex:9999,
@@ -289,23 +303,31 @@ function ContextMenu({x,y,msg,onDelete,onCopy,onReply,onClose,onDeleteAll,onSele
       borderRadius:12,boxShadow:'0 8px 32px rgba(0,0,0,0.6)',
       display:'flex',flexDirection:'column',padding:'6px 0',minWidth:180
     }}>
-      <div onClick={(e) => { e.stopPropagation(); e.preventDefault(); }} style={{display:'flex', gap:4, padding:'8px 12px', borderBottom:'1px solid rgba(124,58,237,.2)', flexWrap:'wrap', justifyContent:'center', marginBottom:4}}>
-        {['👍', '❤️', '😂', '🔥', '🙏', '😎', '👎', '🥰'].map(emoji => (
-          <button type="button" key={emoji} onClick={(e) => { 
-            console.log('emojiClickStarted', { selectedMessageId: msg?.id, selectedEmoji: emoji });
-            e.stopPropagation(); 
-            e.preventDefault(); 
-            onReact?.(emoji); 
-            // Give React time to apply optimistic state before unmounting
-            setTimeout(() => onClose(), 50); 
-          }} 
-               style={{cursor:'pointer', fontSize:22, padding:6, borderRadius:8, transition:'0.2s', background:'transparent', border:'none', outline:'none', zIndex: 10000, pointerEvents:'auto'}} 
-               onMouseEnter={e=>e.currentTarget.style.background='rgba(124,58,237,.2)'} 
-               onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-            {emoji}
-          </button>
-        ))}
-      </div>
+      {!reactionsNotAllowed && emojisToRender.length > 0 ? (
+        <div onClick={(e) => { e.stopPropagation(); e.preventDefault(); }} style={{display:'flex', gap:4, padding:'8px 12px', borderBottom:'1px solid rgba(124,58,237,.2)', flexWrap:'wrap', justifyContent:'center', marginBottom:4}}>
+          {emojisToRender.map(emoji => (
+            <button type="button" key={emoji} onClick={(e) => { 
+              console.log('emojiClickStarted', { selectedMessageId: msg?.id, selectedEmoji: emoji });
+              e.stopPropagation(); 
+              e.preventDefault(); 
+              onReact?.(emoji); 
+              // Give React time to apply optimistic state before unmounting
+              setTimeout(() => onClose(), 50); 
+            }}
+            style={{
+              background:'transparent', border:'none',
+              fontSize:22,cursor:'pointer',padding:4,borderRadius:8,
+              transition:'transform 0.1s', display:'inline-block'
+            }}
+            onMouseEnter={e=>e.currentTarget.style.transform='scale(1.2)'}
+            onMouseLeave={e=>e.currentTarget.style.transform='scale(1)'}>
+              {emoji}
+            </button>
+          ))}
+        </div>
+      ) : (
+        reactionsNotAllowed && <div style={{padding:'8px 12px', fontSize:12, color:'#a78bfa', textAlign:'center', borderBottom:'1px solid rgba(124,58,237,.2)'}}>Reactions not allowed</div>
+      )}
       <Item icon='↩️' label='Reply'          action={onReply}/>
       <Item icon='📋' label='Copy text'      action={onCopy}/>
       <Item icon='↪️' label='Forward'        action={onForward}/>
@@ -1558,6 +1580,23 @@ export default function CRMChat({ token, onAuthFailed }) {
   },[showProfile])
   const [stages,setStages]=useState({})
   const [tags,setTags]=useState({})
+  const [activeTab,setActiveTab]=useState('messages')
+  const [pinnedMsgs,setPinnedMsgs]=useState({})
+  
+  const [allowedReactionsCache, setAllowedReactionsCache] = useState({})
+  
+  useEffect(() => {
+    if (sel && !allowedReactionsCache[sel.id]) {
+      fetch(`/api/chat/${sel.id}/allowed_reactions`, {
+        headers: { 'x-auth-token': token }
+      }).then(r => r.json()).then(d => {
+        if (!d.error) {
+          setAllowedReactionsCache(p => ({ ...p, [sel.id]: d }));
+        }
+      }).catch(e => console.log('fetch allowed_reactions error:', e));
+    }
+  }, [sel, token])
+  
   const [leadSource,setLeadSource]=useState({})
   const [probs,setProbs]=useState({})
   const [deals,setDeals]=useState({})
@@ -1586,7 +1625,6 @@ export default function CRMChat({ token, onAuthFailed }) {
   const [emojiOpen,setEmojiOpen]=useState(false)
   const [gifs,setGifs]=useState([])
   const [gifQuery,setGifQuery]=useState('')
-  const [pinnedMsgs,setPinnedMsgs]=useState({})
   const [scheduleOpen,setScheduleOpen]=useState(false)
   const [scheduleTime,setScheduleTime]=useState('')
   const [scheduledMsgs,setScheduledMsgs]=useState([])
@@ -2125,16 +2163,23 @@ export default function CRMChat({ token, onAuthFailed }) {
   const sendingRef = useRef(false)
 
   const toggleReaction = async (targetChatId, targetTopicId, msgId, emoji) => {
-    console.log('reactionHandlerCalled', {
-      chatId: targetChatId,
-      topicId: targetTopicId,
-      selectedMessageId: msgId,
-      selectedEmoji: emoji,
-    });
-    if (!msgId) {
-      console.error('Error: Message ID is missing');
-      alert('Error: Cannot react because message ID is missing.');
-      return;
+    console.log(`[Reaction Click] msgId=${msgId}, clickedEmoji=${emoji}`);
+    
+    const allowed = allowedReactionsCache[targetChatId];
+    console.log('chatId', targetChatId);
+    console.log('selectedEmoji', emoji);
+    console.log('allowedReactions', allowed);
+    
+    let validationResult = 'allowed';
+    if (allowed) {
+      if (allowed.allowed === 'none') validationResult = 'not_allowed';
+      if (allowed.allowed === 'some' && allowed.emoticons && !allowed.emoticons.includes(emoji)) validationResult = 'not_allowed';
+    }
+    console.log('validationResult', validationResult);
+
+    if (validationResult === 'not_allowed') {
+       alert('This reaction is not allowed in this chat.');
+       return;
     }
     
     // Calculate new state synchronously using msgsRef to avoid React 18 batching issues
@@ -2935,7 +2980,7 @@ export default function CRMChat({ token, onAuthFailed }) {
     .qb:hover { background: #3d1f6a; }
     .ti  { padding: 8px 12px; cursor: pointer; border-radius: 8px; font-size: 13px; transition: background .1s; color: #f0e6ff; border-bottom: 1px solid #2d1155; }
     .ti:hover { background: #2d1155; }
-    .tmpl-panel { position: absolute; bottom: 100%; right: 0; background: #1a0533; border: 1px solid #3d1f6a; border-radius: 12px; padding: 8px 0; min-width: 300px; max-height: 300px; overflow-y: auto; box-shadow: 0 8px 24px rgba(0,0,0,.5); z-index: 100; }
+    .tmpl-panel { position: absolute; bottom: 100%; right: 0; background: #1a103c; border: 1px solid #3d1f6a; border-radius: 12px; padding: 8px 0; min-width: 300px; max-height: 300px; overflow-y: auto; box-shadow: 0 8px 24px rgba(0,0,0,.5); z-index: 100; }
     .mi  { padding: 8px 12px; cursor: pointer; display: flex; align-items: center; gap: 10px; font-size: 13px; transition: background .1s; }
     .mi:hover { background: #2d1155; }
 
@@ -3019,7 +3064,7 @@ export default function CRMChat({ token, onAuthFailed }) {
   }, [])
 
   const chatProps = {
-    sel, selTopic, setSelTopic, TG, setProfilePreview, setShowMembers, onlineStatus, setChatSearchOpen, showProfile, setShowProfile,
+    sel, selTopic, setSelTopic, TG: {}, setProfilePreview, setShowMembers, onlineStatus, setChatSearchOpen, showProfile, setShowProfile,
     topics, loadingTopics, topicSearch, setTopicSearch, topicError, setTopicCtxMenu, topicCtxMenu, setSel,
     loadMsgs, messagesLoaded, msgs, hasMore, loadMessages, handleScroll, handleCtx, selectMode, setSelectedMsgs, selectedMsgs,
     fmtDateSep, isPhotoMsg, isVideoMsg, isDocMsg, setLightbox, token, reactions, setReactions, toggleReaction, editedMsgs, fmtMsgTime,
@@ -3029,7 +3074,7 @@ export default function CRMChat({ token, onAuthFailed }) {
     cStage, stages, setStages, tags, cProb, probs, setProbs, cDeal, deals, setDeals, leadSource,
     fups, setFups, notes, saveNote, addNote, setAddNote, noteInp, setNoteInp,
     LinkPreview, ChatPhoto, Avatar, fmtTime,
-    STAGES, cFup, cNotes, msgInfoOpen, setMsgInfoOpen,
+    STAGES: {}, cFup, cNotes, msgInfoOpen, setMsgInfoOpen,
     pollOpen, setPollOpen, pollQuestion, setPollQuestion,
     pollOptions, setPollOptions, scheduleOpen, setScheduleOpen,
     scheduleTime, setScheduleTime, sendScheduled, scheduledMsgs,
@@ -3038,7 +3083,7 @@ export default function CRMChat({ token, onAuthFailed }) {
     firstUnreadRef, renderMessageText, chatSearch, endRef, aiInstruction, setAiInstruction,
     AISuggestPanel, aiText, setAiText, aiSuggestions, setAiSuggestions, aiAnalysis, setAiAnalysis,
     aiAlt, setAiAlt, setAiLoading, tmplCats, setTmplCat,
-    tmplCat, TEMPLATES, setMsgs, setSelectMode, lightbox, StageBadge, gifOpen, setGifOpen,
+    tmplCat, TEMPLATES: [], setMsgs, setSelectMode, lightbox, StageBadge, gifOpen, setGifOpen,
     gifQuery, setGifQuery, searchGifs, gifs, loadingRef, showScrollBtn, aiError
   };
 
@@ -3048,7 +3093,7 @@ export default function CRMChat({ token, onAuthFailed }) {
 
       {/* SIDEBAR */}
       <div className="sidebar">
-        <div style={{width:36,height:36,background:TG.blue,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:15,marginBottom:10}}>⚡</div>
+        <div style={{width:36,height:36,background:'#7c3aed',borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:15,marginBottom:10}}>⚡</div>
         {[["🏠","Dashboard"],["👥","Leads"],["💬","Chat"],["📊","Reports"],["📈","Analytics"]].map(([icon,label],i)=>(
           <div key={label} className={`si${i===2?" on":""}`} title={label} style={{fontSize:18}}>
             {icon}
@@ -3064,9 +3109,9 @@ export default function CRMChat({ token, onAuthFailed }) {
         <div style={{height:54,minHeight:54,flexShrink:0,padding:"0 14px",
           display:"flex",alignItems:"center",justifyContent:"space-between",
           borderBottom:"1px solid #0d0618"}}>
-          <span style={{fontSize:15,fontWeight:700,color:TG.text}}>Messages</span>
+          <span style={{fontSize:15,fontWeight:700,color:'#f0e6ff'}}>Messages</span>
           <button onClick={fetchChats} disabled={loadChats}
-            style={{background:"none",border:"none",color:TG.textMuted,
+            style={{background:"none",border:"none",color:'#9b7ec8',
               cursor:"pointer",fontSize:16,width:32,height:32,
               display:"flex",alignItems:"center",justifyContent:"center",
               borderRadius:8,transition:"background .1s"}}
@@ -3111,12 +3156,11 @@ export default function CRMChat({ token, onAuthFailed }) {
             </div>
           ))}
         </div>
-        <div style={{padding:"12px 24px",borderBottom:`1px solid ${TG.border}`}}>
-          <input type="text" placeholder="Search" style={{width:"100%",padding:"10px 16px",background:TG.elevated,border:"none",borderRadius:20,color:"#fff",fontSize:14,outline:"none",fontFamily:"inherit"}}
-            value={search} onChange={e=>setSearch(e.target.value)}
-            onPaste={handlePaste} onKeyDown={allowShortcuts} />
+        <div style={{padding:"12px 24px",borderBottom:`1px solid #0d0618`}}>
+          <input type="text" placeholder="Search" style={{width:"100%",padding:"10px 16px",background:'#120929',border:"none",borderRadius:20,color:"#fff",fontSize:14,outline:"none",fontFamily:"inherit"}}
+            value={search} onChange={e=>setSearch(e.target.value)} />
           {search.trim() && (
-            <div style={{fontSize: 11, color: TG.textMuted, marginTop: 8, textAlign: 'center'}}>
+            <div style={{fontSize: 11, color: '#6b4d94', marginTop: 8, textAlign: 'center'}}>
               {isGlobalSearching ? 'Searching all chats...' : null}
             </div>
           )}
@@ -3128,41 +3172,39 @@ export default function CRMChat({ token, onAuthFailed }) {
             fetchChats(true)
           }
         }}>
-          {loadChats&&<div style={{padding:20,textAlign:"center",color:TG.textMuted,fontSize:13}}>Loading Telegram...</div>}
+          {loadChats&&<div style={{padding:20,textAlign:"center",color:'#6b4d94',fontSize:13}}>Loading Telegram...</div>}
           {filtered.map(chat=>{
             const isSel=sel?.id===chat.id
             return(
               <div key={chat.id} className={`ci${isSel?" sel":""}`} onContextMenu={e=>{e.preventDefault();setChatCtxMenu({x:e.clientX,y:e.clientY,chat})}} onClick={()=>{
                 setSel(chat)
-                // Do not mark as read immediately. Wait until messages become visible in handleScroll.
-                // TODO: Sync read status to backend if needed
               }}>
                 <div style={{position:"relative",flexShrink:0}}>
                   <Avatar name={chat.name} chatId={chat.id} username={chat.username} accessHash={chat.accessHash} size={52}/>
                 </div>
                 <div style={{flex:1,minWidth:0,display:"flex",flexDirection:"column",justifyContent:"center",gap:4}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                    <div style={{fontWeight:600,fontSize:15,color:isSel?"#fff":TG.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,minWidth:0}}>
+                    <div style={{fontWeight:600,fontSize:15,color:isSel?"#fff":'#f0e6ff',overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,minWidth:0}}>
                       {chat.isGroup ? <span style={{fontSize:13,marginRight:4}}>👥</span> : chat.isChannel ? <span style={{fontSize:13,marginRight:4}}>📢</span> : null}
                       {chat.name}
                     </div>
                     <div style={{display:"flex",alignItems:"center",gap:4,flexShrink:0,marginLeft:8}}>
                       {chat.isPinned || pinnedChats.has(chat.id) ? (
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{color: TG.textMuted, opacity: isSel ? 0.8 : 0.5}}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{color: '#6b4d94', opacity: isSel ? 0.8 : 0.5}}>
                           <path d="M12 17v5" />
                           <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z" />
                         </svg>
                       ) : null}
-                      <span style={{fontSize:12,color:isSel?"rgba(255,255,255,.7)":TG.textMuted,marginLeft:4}}>{fmtTime(chat.date)}</span>
+                      <span style={{fontSize:12,color:isSel?"rgba(255,255,255,.7)":'#6b4d94',marginLeft:4}}>{fmtTime(chat.date)}</span>
                     </div>
                   </div>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                    <div style={{fontSize:14,color:isSel?"rgba(255,255,255,.8)":TG.textSec,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,minWidth:0}}>
+                    <div style={{fontSize:14,color:isSel?"rgba(255,255,255,.8)":'#9b7ec8',overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,minWidth:0}}>
                       {chat.lastMsg||"No messages"}
                     </div>
                     <div style={{display:"flex",alignItems:"center",gap:4,flexShrink:0,marginLeft:6}}>
                       {chat.unread>0 && !readChats.has(chat.id) && (
-                        <div style={{background:isSel?"#fff":TG.blue,color:isSel?"#7c3aed":"#fff",fontSize:11,fontWeight:700,padding:"2px 7px",borderRadius:10,minWidth:22,textAlign:"center"}}>
+                        <div style={{background:isSel?"#fff":'#7c3aed',color:isSel?"#7c3aed":"#fff",fontSize:11,fontWeight:700,padding:"2px 7px",borderRadius:10,minWidth:22,textAlign:"center"}}>
                           {chat.unread}
                         </div>
                       )}
@@ -3173,10 +3215,10 @@ export default function CRMChat({ token, onAuthFailed }) {
             )
           })}
           {search.trim() && !hasSearchedGlobal && (
-             <div style={{padding:20,textAlign:"center",color:TG.textMuted,fontSize:13}}>Waiting for global search...</div>
+             <div style={{padding:20,textAlign:"center",color:'#6b4d94',fontSize:13}}>Waiting for global search...</div>
           )}
           {!loadChats&&filtered.length===0&&!isGlobalSearching&&hasSearchedGlobal&&(
-            <div style={{padding:32,textAlign:"center",color:TG.textMuted,fontSize:13}}>
+            <div style={{padding:32,textAlign:"center",color:'#6b4d94',fontSize:13}}>
               {search.trim() ? (
                 <>
                   <div style={{marginBottom: 8}}>No matches for "{search.trim()}"</div>
@@ -3195,25 +3237,20 @@ export default function CRMChat({ token, onAuthFailed }) {
               )}
             </div>
           )}
-          {hasMoreChats && chats.length > 0 && !search && (
-            <div style={{padding:12,textAlign:"center",color:TG.textMuted,fontSize:12}}>Loading more chats...</div>
-          )}
         </div>
       </div>
 
       {/* MID COL */}
       <div className="mc">
         {!sel?(
-          <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:14,color:TG.textSec}}>
-            <div style={{width:80,height:80,background:TG.elevated,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:36}}>💬</div>
-            <div style={{fontSize:16,fontWeight:500,color:TG.text}}>Select a conversation</div>
+          <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:14,color:'#9b7ec8'}}>
+            <div style={{width:80,height:80,background:'#2d1155',borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:36}}>💬</div>
+            <div style={{fontSize:16,fontWeight:500,color:'#f0e6ff'}}>Select a conversation</div>
             <div style={{fontSize:13}}>Pick a chat from your Telegram on the left</div>
           </div>
         ): sel && sel.isForum && !selTopic && !forceNormalView ? (
-          // ── FORUM TOPICS VIEW ──
           <ForumTopicsView {...chatProps} />
         ):<>
-          {/* Chat header */}
           <ChatHeader {...chatProps} />
           {pinnedMessage && !dismissedPin && (
             <PinnedMessageBar 
@@ -3239,18 +3276,13 @@ export default function CRMChat({ token, onAuthFailed }) {
               }}
             />
           )}
-          {/* Messages */}
-          {/* TODO(Refactor): Split out into <MessageList> and <MessageBubble> components */}
           <MessageList {...chatProps} />
-          {/* Input area */}
-          {/* TODO(Refactor): Split out into <Composer> component */}
           <Composer {...chatProps} />
         </>}
       </div>
 
       {/* RIGHT COL */}
-      {/* TODO(Refactor): Split out into <CRMRightPanel> component */}
-          <CRMRightPanel {...chatProps} />
+      <CRMRightPanel {...chatProps} />
 
       {/* User Profile Preview Modal */}
       <UserProfileModal 
@@ -3482,8 +3514,9 @@ export default function CRMChat({ token, onAuthFailed }) {
         />
       )}
       {ctxMenu&&(
-        <ContextMenu
+        <ContextMenu 
           x={ctxMenu.x} y={ctxMenu.y} msg={ctxMenu.msg}
+          allowedReactions={allowedReactionsCache[sel.id]}
           onDelete={()=>deleteMsg(ctxMenu.idx)}
           onCopy={()=>copyMsg(ctxMenu.msg.text)}
           onReply={()=>setReplyTo(ctxMenu.msg)}
