@@ -2362,12 +2362,27 @@ export default function CRMChat({ token, onAuthFailed }) {
     setAiText(""); setAiSuggestions([]); setAiLoading(true); setAiError(null)
 
     const clientMsgs = allMsgs.filter(m => !m.fromMe)
-    const lastClientMsg = clientMsgs.length > 0 ? clientMsgs[clientMsgs.length-1].text : ""
+    const lastClientMsgObj = clientMsgs.length > 0 ? clientMsgs[clientMsgs.length-1] : null;
+    let lastClientMsg = "";
+    if (lastClientMsgObj) {
+      lastClientMsg = lastClientMsgObj.text || "";
+      if (lastClientMsgObj.isAudio || lastClientMsgObj.voice || lastClientMsgObj.audio || lastClientMsgObj.media?.type === 'audio') {
+        const cachedTranscript = localStorage.getItem(`transcript_${lastClientMsgObj.id}`);
+        lastClientMsg = cachedTranscript ? `[Voice Transcript]: ${cachedTranscript}` : `[Voice Message]: (Transcript not available)`;
+      }
+    }
 
     const aiPayload = {
       contactName: sel.name,
       lastMessage: lastClientMsg,
-      messages: allMsgs.slice(-40).map(m => ({text: m.text, fromMe: m.fromMe})),
+      messages: allMsgs.slice(-40).map(m => {
+        let text = m.text || "";
+        if (m.isAudio || m.voice || m.audio || m.media?.type === 'audio') {
+          const cachedTranscript = localStorage.getItem(`transcript_${m.id}`);
+          text = cachedTranscript ? `[Voice Transcript]: ${cachedTranscript}` : `[Voice Message]: (Transcript not available)`;
+        }
+        return { text, fromMe: m.fromMe };
+      }),
       stage: stages[sel.id] || "Contacted",
       notes: (notes[sel.id]||[]).map(n=>n.content).join(" | "),
       instruction: cmd,
