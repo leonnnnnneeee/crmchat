@@ -255,6 +255,8 @@ function ChatContextMenu({x,y,chat,onClose,
 // ── Message Context Menu ──
 function ContextMenu({x,y,msg,allowedReactions,readOutboxMaxId,onDelete,onCopy,onReply,onClose,onDeleteAll,onSelect,onForward,onReact,onPin,onInfo,onEdit}) {
   const ref = useRef(null)
+  const [pos, setPos] = useState({ left: x, top: y, opacity: 0 });
+
   useEffect(()=>{
     const h = e => { 
       // Do not close if clicking inside the context menu (including emojis)
@@ -268,18 +270,42 @@ function ContextMenu({x,y,msg,allowedReactions,readOutboxMaxId,onDelete,onCopy,o
     return()=>{ document.removeEventListener('mousedown',h); document.removeEventListener('keydown',k) }
   },[onClose])
 
-  const W=200, H=380
-  const ax = x+W>window.innerWidth  ? x-W : x
-  const ay = y+H>window.innerHeight ? y-H : y
+  useEffect(() => {
+    if (ref.current) {
+      const rect = ref.current.getBoundingClientRect();
+      const chatContainer = document.querySelector('.chat-messages-container') || document.body;
+      const bounds = chatContainer.getBoundingClientRect();
+
+      let ax = x;
+      let ay = y;
+
+      if (ax + rect.width > bounds.right - 12) {
+        ax = bounds.right - rect.width - 12;
+      }
+      if (ax < bounds.left + 12) {
+        ax = bounds.left + 12;
+      }
+      
+      if (ay + rect.height > bounds.bottom - 12) {
+        ay = y - rect.height;
+      }
+      if (ay < bounds.top + 12) {
+        ay = bounds.top + 12;
+      }
+
+      setPos({ left: ax, top: ay, opacity: 1 });
+    }
+  }, [x, y]);
 
   const Item=({icon,label,action,danger,sep})=>sep
-    ? <div style={{height:1,background:'#2d1155',margin:'3px 8px'}}/>
+    ? <div style={{height:1,background:'rgba(255,255,255,0.08)',margin:'4px 8px'}}/>
     : <div onClick={()=>{action?.();onClose()}}
-        style={{padding:'9px 14px',cursor:'pointer',display:'flex',alignItems:'center',
-          gap:10,fontSize:13,color:danger?'#e53935':'#f0e6ff',borderRadius:6,margin:'1px 4px'}}
-        onMouseEnter={e=>e.currentTarget.style.background='#2d1155'}
+        style={{padding:'8px 14px',cursor:'pointer',display:'flex',alignItems:'center',
+          gap:12,fontSize:14,color:danger?'#ef4444':'#e2e8f0',borderRadius:8,margin:'2px 6px',
+          fontWeight:500, userSelect:'none'}}
+        onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.1)'}
         onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-        <span style={{fontSize:15,width:20,textAlign:'center'}}>{icon}</span>{label}
+        <span style={{fontSize:18,width:24,textAlign:'center',display:'inline-block'}}>{icon}</span>{label}
       </div>
 
   const defaultEmojis = ['👍', '👎', '❤️', '🔥', '🥰', '👏', '😁', '🤔', '🤯', '😱', '🤬', '😢', '🎉', '🤩', '🤮', '💩', '🙏', '👌', '🕊', '🤡', '🥱', '🥴', '😍', '🐳', '❤️‍🔥', '🌚', '🌭', '💯', '🤣', '⚡️', '🍌', '🏆', '💔', '🤨', '😐', '🍓', '🍾', '💋', '🖕', '😈', '😴', '😭', '🤓', '👻', '👨‍💻', '👀', '🎃', '🙈', '😇', '🤝', '✍️', '🤗', '🫡', '🎅', '🎄', '☃️', '💅', '🤪', '🗿', '🆒', '💘', '🙉', '🦄', '😘', '💊', '🙊', '😎', '👾', '🤷‍♂️', '🤷', '🤷‍♀️', '😡'];
@@ -391,16 +417,19 @@ function ContextMenu({x,y,msg,allowedReactions,readOutboxMaxId,onDelete,onCopy,o
 
   return (
     <div ref={ref} onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()} style={{
-      position:'fixed',left:ax,top:ay,zIndex:9999,
-      background:'#1a0b2e',border:'1px solid rgba(124,58,237,.2)',
-      borderRadius:12,boxShadow:'0 8px 32px rgba(0,0,0,0.6)',
-      display:'flex',flexDirection:'column',padding:expandedPickerOpen ? 0 : '6px 0',
-      minWidth: expandedPickerOpen ? 300 : 180,
-      height: expandedPickerOpen ? 350 : 'auto'
+      position:'fixed',left:pos.left,top:pos.top,zIndex:9999,
+      background:'rgba(25, 20, 36, 0.95)', border:'1px solid rgba(255,255,255,0.05)',
+      borderRadius:12,boxShadow:'0 16px 40px rgba(0,0,0,0.5)',
+      display:'flex',flexDirection:'column',padding:expandedPickerOpen ? 0 : '8px 0',
+      minWidth: expandedPickerOpen ? 300 : 200,
+      height: expandedPickerOpen ? 350 : 'auto',
+      opacity: pos.opacity,
+      transition: 'opacity 0.15s ease-out',
+      backdropFilter: 'blur(10px)'
     }}>
       {expandedPickerOpen ? (
         <div style={{display:'flex', flexDirection:'column', height:'100%'}}>
-          <div style={{padding:'8px', borderBottom:'1px solid rgba(124,58,237,.2)', display:'flex', gap:8, alignItems:'center'}}>
+          <div style={{padding:'8px', borderBottom:'1px solid rgba(255,255,255,0.05)', display:'flex', gap:8, alignItems:'center'}}>
             <button onClick={() => setExpandedPickerOpen(false)} style={{background:'transparent', border:'none', color:'#a78bfa', cursor:'pointer', fontSize:16}}>◀</button>
             <input 
               type="text" 
@@ -424,25 +453,25 @@ function ContextMenu({x,y,msg,allowedReactions,readOutboxMaxId,onDelete,onCopy,o
               Loading reactions...
             </div>
           ) : (!reactionsNotAllowed && emojisToRender.length > 0) ? (
-            <div onClick={(e) => { e.stopPropagation(); e.preventDefault(); }} style={{display:'flex', gap:4, padding:'8px 12px', borderBottom:'1px solid rgba(124,58,237,.2)', flexWrap:'wrap', justifyContent:'center', marginBottom:4}}>
-              {isFallback && <div style={{width:'100%', fontSize:10, color:'#6b4d94', textAlign:'center', marginBottom:4}}>Using fallback reactions ({fallbackReason})</div>}
-              {emojisToRender.map(renderEmojiButton)}
+            <div onClick={(e) => { e.stopPropagation(); e.preventDefault(); }} style={{display:'flex', gap:4, padding:'0 12px 8px 12px', borderBottom:'1px solid rgba(255,255,255,0.05)', flexWrap:'nowrap', justifyContent:'space-between', marginBottom:4}}>
+              {isFallback && <div style={{width:'100%', fontSize:10, color:'#6b4d94', textAlign:'center', marginBottom:4}}>Using fallback ({fallbackReason})</div>}
+              {emojisToRender.slice(0, 6).map(renderEmojiButton)}
               
               {/* Expand button */}
               {fullEmojis.length > emojisToRender.length && (
                 <button type="button" onClick={(e) => { e.stopPropagation(); e.preventDefault(); setExpandedPickerOpen(true); }}
                 style={{
-                  background:'rgba(255,255,255,0.1)', border:'none', color:'#fff',
-                  fontSize:14,cursor:'pointer',padding:'4px 8px',borderRadius:8,
+                  background:'rgba(255,255,255,0.05)', border:'none', color:'#fff',
+                  fontSize:16,cursor:'pointer',padding:'4px 6px',borderRadius:16,
                   display:'flex',alignItems:'center',justifyContent:'center',
                   marginLeft: 'auto'
                 }}>
-                  ⌄
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
                 </button>
               )}
             </div>
           ) : (
-            reactionsNotAllowed && <div style={{padding:'8px 12px', fontSize:12, color:'#a78bfa', textAlign:'center', borderBottom:'1px solid rgba(124,58,237,.2)'}}>Reactions not allowed</div>
+            reactionsNotAllowed && <div style={{padding:'8px 12px', fontSize:12, color:'#a78bfa', textAlign:'center', borderBottom:'1px solid rgba(255,255,255,0.05)'}}>Reactions not allowed</div>
           )}
           
           {msg?.fromMe && (() => {
@@ -527,14 +556,15 @@ function ContextMenu({x,y,msg,allowedReactions,readOutboxMaxId,onDelete,onCopy,o
           })()}
 
           <Item icon='↩️' label='Reply'          action={onReply}/>
-          <Item icon='📋' label='Copy text'      action={onCopy}/>
+          {msg?.fromMe && <Item icon='✏️' label='Edit'  action={onEdit}/>}
+          <Item icon='📋' label='Copy'      action={onCopy}/>
+          <Item icon='🌐' label='Translate' action={() => {}}/>
+          <Item icon='📌' label='Pin'    action={onPin}/>
           <Item icon='↪️' label='Forward'        action={onForward}/>
-          {msg?.fromMe && <Item icon='✏️' label='Edit message'  action={onEdit}/>}
-          <Item icon='📌' label='Pin message'    action={onPin}/>
           <Item icon='ℹ️' label='Message info'   action={onInfo}/>
           <Item sep/>
           <Item icon='☑️' label='Select'         action={onSelect}/>
-          {msg?.fromMe && <Item icon='🗑️' label='Delete'   action={onDelete} danger/>}
+          <Item icon='🗑️' label='Delete'   action={onDelete} danger/>
           {msg?.fromMe && <Item icon='🗑️' label='Delete all' action={onDeleteAll} danger/>}
         </>
       )}
