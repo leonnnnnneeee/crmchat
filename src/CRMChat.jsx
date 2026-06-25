@@ -256,6 +256,8 @@ function ChatContextMenu({x,y,chat,onClose,
 function ContextMenu({x,y,msg,allowedReactions,readOutboxMaxId,onDelete,onCopy,onReply,onClose,onDeleteAll,onSelect,onForward,onReact,onPin,onInfo,onEdit}) {
   const ref = useRef(null)
   const [pos, setPos] = useState({ left: x, top: y, opacity: 0 });
+  const [expandedPickerOpen, setExpandedPickerOpen] = useState(false);
+  const [search, setSearch] = useState('');
 
   useEffect(()=>{
     const h = e => { 
@@ -339,9 +341,6 @@ function ContextMenu({x,y,msg,allowedReactions,readOutboxMaxId,onDelete,onCopy,o
   let isFallback = false;
   let fallbackReason = '';
   let isLoading = false;
-  
-  const [expandedPickerOpen, setExpandedPickerOpen] = useState(false);
-  const [search, setSearch] = useState('');
 
   if (allowedReactions) {
     if (allowedReactions.status === 'loading') {
