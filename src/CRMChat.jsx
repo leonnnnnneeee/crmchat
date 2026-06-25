@@ -283,12 +283,51 @@ function ContextMenu({x,y,msg,allowedReactions,onDelete,onCopy,onReply,onClose,o
       </div>
 
   const defaultEmojis = ['👍', '👎', '❤️', '🔥', '🥰', '👏', '😁', '🤔', '🤯', '😱', '🤬', '😢', '🎉', '🤩', '🤮', '💩', '🙏', '👌', '🕊', '🤡', '🥱', '🥴', '😍', '🐳', '❤️‍🔥', '🌚', '🌭', '💯', '🤣', '⚡️', '🍌', '🏆', '💔', '🤨', '😐', '🍓', '🍾', '💋', '🖕', '😈', '😴', '😭', '🤓', '👻', '👨‍💻', '👀', '🎃', '🙈', '😇', '🤝', '✍️', '🤗', '🫡', '🎅', '🎄', '☃️', '💅', '🤪', '🗿', '🆒', '💘', '🙉', '🦄', '😘', '💊', '🙊', '😎', '👾', '🤷‍♂️', '🤷', '🤷‍♀️', '😡'];
-  const quickEmojis = ['👍', '❤️', '😂', '🔥', '🙏', '😎', '👎', '🥰'];
+  const quickEmojis = ['👍', '❤️', '😂', '🔥', '🙏', '😎', '👎'];
   let emojisToRender = quickEmojis;
+  let fullEmojis = defaultEmojis;
   let reactionsNotAllowed = false;
   let isFallback = false;
   let fallbackReason = '';
   let isLoading = false;
+  
+  const [expandedPickerOpen, setExpandedPickerOpen] = useState(false);
+  const [search, setSearch] = useState('');
+
+  if (allowedReactions) {
+    if (allowedReactions.status === 'loading') {
+      isLoading = true;
+      emojisToRender = [];
+    } else if (allowedReactions.ok) {
+      if (allowedReactions.reactionsEnabled === false) {
+        reactionsNotAllowed = true;
+        emojisToRender = [];
+        fullEmojis = [];
+      } else if (allowedReactions.allowAll) {
+        emojisToRender = quickEmojis; 
+        fullEmojis = defaultEmojis;
+      } else if (allowedReactions.reactions && allowedReactions.reactions.length > 0) {
+        emojisToRender = allowedReactions.reactions.slice(0, 6);
+        fullEmojis = allowedReactions.reactions;
+      } else {
+        reactionsNotAllowed = true;
+        emojisToRender = [];
+        fullEmojis = [];
+      }
+    } else {
+      isFallback = true;
+      fallbackReason = allowedReactions.error || 'unknown';
+      emojisToRender = ['👍', '❤️'];
+      fullEmojis = ['👍', '❤️', '😁', '🔥', '👎', '🥰', '👏', '🤔', '🎉', '😎', '🙏'];
+    }
+  } else {
+    isLoading = true;
+    emojisToRender = [];
+  }
+  
+  const filteredEmojis = search 
+    ? fullEmojis.filter(e => e.includes(search) || 'smile like heart fire ok'.includes(search)) // basic fake search
+    : fullEmojis;
 
   if (allowedReactions) {
     if (allowedReactions.status === 'loading') {
@@ -323,48 +362,102 @@ function ContextMenu({x,y,msg,allowedReactions,onDelete,onCopy,onReply,onClose,o
       position:'fixed',left:ax,top:ay,zIndex:9999,
       background:'#1a0b2e',border:'1px solid rgba(124,58,237,.2)',
       borderRadius:12,boxShadow:'0 8px 32px rgba(0,0,0,0.6)',
-      display:'flex',flexDirection:'column',padding:'6px 0',minWidth:180
+      display:'flex',flexDirection:'column',padding:expandedPickerOpen ? 0 : '6px 0',
+      minWidth: expandedPickerOpen ? 300 : 180,
+      height: expandedPickerOpen ? 350 : 'auto'
     }}>
-      {isLoading ? (
-        <div style={{padding:'8px 12px', color:'#a78bfa', fontSize:13, textAlign:'center'}}>
-          Loading reactions...
-        </div>
-      ) : (!reactionsNotAllowed && emojisToRender.length > 0) ? (
-        <div onClick={(e) => { e.stopPropagation(); e.preventDefault(); }} style={{display:'flex', gap:4, padding:'8px 12px', borderBottom:'1px solid rgba(124,58,237,.2)', flexWrap:'wrap', justifyContent:'center', marginBottom:4}}>
-          {isFallback && <div style={{width:'100%', fontSize:10, color:'#6b4d94', textAlign:'center', marginBottom:4}}>Using fallback reactions ({fallbackReason})</div>}
-          {emojisToRender.map(emoji => (
-            <button type="button" key={emoji} onClick={(e) => { 
-              console.log('emojiClickStarted', { selectedMessageId: msg?.id, selectedEmoji: emoji });
-              e.stopPropagation(); 
-              e.preventDefault(); 
-              onReact?.(emoji); 
-              // Give React time to apply optimistic state before unmounting
-              setTimeout(() => onClose(), 50); 
-            }}
-            style={{
-              background:'transparent', border:'none',
-              fontSize:22,cursor:'pointer',padding:4,borderRadius:8,
-              transition:'transform 0.1s', display:'inline-block'
-            }}
-            onMouseEnter={e=>e.currentTarget.style.transform='scale(1.2)'}
-            onMouseLeave={e=>e.currentTarget.style.transform='scale(1)'}>
-              {emoji}
-            </button>
-          ))}
+      {expandedPickerOpen ? (
+        <div style={{display:'flex', flexDirection:'column', height:'100%'}}>
+          <div style={{padding:'8px', borderBottom:'1px solid rgba(124,58,237,.2)', display:'flex', gap:8, alignItems:'center'}}>
+            <button onClick={() => setExpandedPickerOpen(false)} style={{background:'transparent', border:'none', color:'#a78bfa', cursor:'pointer', fontSize:16}}>◀</button>
+            <input 
+              type="text" 
+              placeholder="Search Emojis" 
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              autoFocus
+              style={{flex:1, background:'rgba(255,255,255,0.05)', border:'none', color:'#fff', padding:'6px 12px', borderRadius:16, outline:'none', fontSize:14}}
+            />
+          </div>
+          <div style={{flex:1, overflowY:'auto', padding:'8px'}}>
+            <div style={{display:'grid', gridTemplateColumns:'repeat(7, 1fr)', gap:4}}>
+              {filteredEmojis.map(emoji => (
+                <button type="button" key={emoji} onClick={(e) => { 
+                  console.log('emojiClickStarted', { selectedMessageId: msg?.id, selectedEmoji: emoji });
+                  e.stopPropagation(); 
+                  e.preventDefault(); 
+                  onReact?.(emoji); 
+                  setTimeout(() => onClose(), 50); 
+                }}
+                style={{
+                  background:'transparent', border:'none',
+                  fontSize:24,cursor:'pointer',padding:4,borderRadius:8,
+                  transition:'transform 0.1s', display:'flex', alignItems:'center', justifyContent:'center'
+                }}
+                onMouseEnter={e=>e.currentTarget.style.background='rgba(124,58,237,.2)'}
+                onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+                  {emoji}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       ) : (
-        reactionsNotAllowed && <div style={{padding:'8px 12px', fontSize:12, color:'#a78bfa', textAlign:'center', borderBottom:'1px solid rgba(124,58,237,.2)'}}>Reactions not allowed</div>
+        <>
+          {isLoading ? (
+            <div style={{padding:'8px 12px', color:'#a78bfa', fontSize:13, textAlign:'center'}}>
+              Loading reactions...
+            </div>
+          ) : (!reactionsNotAllowed && emojisToRender.length > 0) ? (
+            <div onClick={(e) => { e.stopPropagation(); e.preventDefault(); }} style={{display:'flex', gap:4, padding:'8px 12px', borderBottom:'1px solid rgba(124,58,237,.2)', flexWrap:'wrap', justifyContent:'center', marginBottom:4}}>
+              {isFallback && <div style={{width:'100%', fontSize:10, color:'#6b4d94', textAlign:'center', marginBottom:4}}>Using fallback reactions ({fallbackReason})</div>}
+              {emojisToRender.map(emoji => (
+                <button type="button" key={emoji} onClick={(e) => { 
+                  console.log('emojiClickStarted', { selectedMessageId: msg?.id, selectedEmoji: emoji });
+                  e.stopPropagation(); 
+                  e.preventDefault(); 
+                  onReact?.(emoji); 
+                  setTimeout(() => onClose(), 50); 
+                }}
+                style={{
+                  background:'transparent', border:'none',
+                  fontSize:22,cursor:'pointer',padding:4,borderRadius:8,
+                  transition:'transform 0.1s', display:'inline-block'
+                }}
+                onMouseEnter={e=>e.currentTarget.style.transform='scale(1.2)'}
+                onMouseLeave={e=>e.currentTarget.style.transform='scale(1)'}>
+                  {emoji}
+                </button>
+              ))}
+              
+              {/* Expand button */}
+              {fullEmojis.length > emojisToRender.length && (
+                <button type="button" onClick={(e) => { e.stopPropagation(); e.preventDefault(); setExpandedPickerOpen(true); }}
+                style={{
+                  background:'rgba(255,255,255,0.1)', border:'none', color:'#fff',
+                  fontSize:14,cursor:'pointer',padding:'4px 8px',borderRadius:8,
+                  display:'flex',alignItems:'center',justifyContent:'center',
+                  marginLeft: 'auto'
+                }}>
+                  ⌄
+                </button>
+              )}
+            </div>
+          ) : (
+            reactionsNotAllowed && <div style={{padding:'8px 12px', fontSize:12, color:'#a78bfa', textAlign:'center', borderBottom:'1px solid rgba(124,58,237,.2)'}}>Reactions not allowed</div>
+          )}
+          <Item icon='↩️' label='Reply'          action={onReply}/>
+          <Item icon='📋' label='Copy text'      action={onCopy}/>
+          <Item icon='↪️' label='Forward'        action={onForward}/>
+          {msg?.fromMe && <Item icon='✏️' label='Edit message'  action={onEdit}/>}
+          <Item icon='📌' label='Pin message'    action={onPin}/>
+          <Item icon='ℹ️' label='Message info'   action={onInfo}/>
+          <Item sep/>
+          <Item icon='☑️' label='Select'         action={onSelect}/>
+          {msg?.fromMe && <Item icon='🗑️' label='Delete'   action={onDelete} danger/>}
+          {msg?.fromMe && <Item icon='🗑️' label='Delete all' action={onDeleteAll} danger/>}
+        </>
       )}
-      <Item icon='↩️' label='Reply'          action={onReply}/>
-      <Item icon='📋' label='Copy text'      action={onCopy}/>
-      <Item icon='↪️' label='Forward'        action={onForward}/>
-      {msg?.fromMe && <Item icon='✏️' label='Edit message'  action={onEdit}/>}
-      <Item icon='📌' label='Pin message'    action={onPin}/>
-      <Item icon='ℹ️' label='Message info'   action={onInfo}/>
-      <Item sep/>
-      <Item icon='☑️' label='Select'         action={onSelect}/>
-      {msg?.fromMe && <Item icon='🗑️' label='Delete'   action={onDelete} danger/>}
-      {msg?.fromMe && <Item icon='🗑️' label='Delete all' action={onDeleteAll} danger/>}
     </div>
   )
 }
