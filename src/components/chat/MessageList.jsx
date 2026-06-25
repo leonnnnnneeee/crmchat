@@ -260,8 +260,8 @@ export default function MessageList(props) {
                                   </svg>
                                 ) : isRead ? (
                                   <svg width="16" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{transform:'translateY(1px)'}}>
-                                    <polyline points="18 6 7 17 2 12"></polyline>
-                                    <path d="M22 10l-9.5 9.5-1.5-1.5"></path>
+                                    <polyline points="18 6 7 17 2 12" />
+                                    <polyline points="22 10 13 19 11 17" />
                                   </svg>
                                 ) : (
                                   <svg width="14" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{transform:'translateY(1px)'}}>
@@ -461,8 +461,8 @@ export default function MessageList(props) {
               whiteSpace: 'nowrap'
             }}>
               <svg width="16" height="12" viewBox="0 0 24 24" fill="none" stroke="#4ade80" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="18 6 7 17 2 12"></polyline>
-                <path d="M22 10l-9.5 9.5-1.5-1.5"></path>
+                <polyline points="18 6 7 17 2 12" />
+                <polyline points="22 10 13 19 11 17" />
               </svg>
               <span>Seen</span>
             </div>

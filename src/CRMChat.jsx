@@ -539,11 +539,14 @@ function ContextMenu({x,y,msg,chatId,token,allowedReactions,readOutboxMaxId,onDe
 
             let timeText = 'Unknown status';
             let renderGroupReadReceipts = null;
+            let errorText = null;
 
             if (status === 'read') {
               timeText = 'Seen';
               if (readInfo.loading) {
                 timeText = 'Fetching read time...';
+              } else if (readInfo.error) {
+                errorText = readInfo.error;
               } else if (readInfo.data) {
                 if (readInfo.data.type === 'private' && readInfo.data.date) {
                   timeText = formatTime(readInfo.data.date);
@@ -592,17 +595,20 @@ function ContextMenu({x,y,msg,chatId,token,allowedReactions,readOutboxMaxId,onDe
                         <line x1="12" y1="16" x2="12.01" y2="16"></line>
                       </svg>
                     ) : isRead ? (
-                      <svg width="20" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M18 6L7 17L2 12"></path>
-                        <path d="M22 10L13 19L11 17"></path>
+                      <svg width="20" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="18 6 7 17 2 12" />
+                        <polyline points="22 10 13 19 11 17" />
                       </svg>
                     ) : (
-                      <svg width="16" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <svg width="16" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <polyline points="20 6 9 17 4 12"></polyline>
                       </svg>
                     )}
                   </span>
-                  <span style={{color:'rgba(255,255,255,0.9)'}}>{timeText}</span>
+                  <span style={{color:'rgba(255,255,255,0.9)'}}>
+                    {timeText}
+                    {errorText && <span style={{fontSize:11, color:'rgba(255,255,255,0.4)', marginLeft: 6}}>({errorText})</span>}
+                  </span>
                 </div>
                 {renderGroupReadReceipts}
                 <div style={{height:1, background:'rgba(255,255,255,0.05)', margin:'4px 0'}} />
@@ -610,17 +616,17 @@ function ContextMenu({x,y,msg,chatId,token,allowedReactions,readOutboxMaxId,onDe
             );
           })()}
 
-          <Item icon='↩️' label='Reply'          action={onReply}/>
-          {msg?.fromMe && <Item icon='✏️' label='Edit'  action={onEdit}/>}
-          <Item icon='📋' label='Copy'      action={onCopy}/>
-          <Item icon='🌐' label='Translate' action={() => {}}/>
-          <Item icon='📌' label='Pin'    action={onPin}/>
-          <Item icon='↪️' label='Forward'        action={onForward}/>
-          <Item icon='ℹ️' label='Message info'   action={onInfo}/>
+          <Item icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 14 4 9 9 4"></polyline><path d="M20 20v-7a4 4 0 0 0-4-4H4"></path></svg>} label='Reply' action={onReply}/>
+          {msg?.fromMe && <Item icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>} label='Edit' action={onEdit}/>}
+          <Item icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>} label='Copy' action={onCopy}/>
+          <Item icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>} label='Translate' action={() => {}}/>
+          <Item icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="17" x2="12" y2="22"></line><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.68V6a3 3 0 0 0-3-3 3 3 0 0 0-3 3v4.68a2 2 0 0 1-1.11 1.87l-1.78.9A2 2 0 0 0 5 15.24Z"></path></svg>} label='Pin' action={onPin}/>
+          <Item icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 14 20 9 15 4"></polyline><path d="M4 20v-7a4 4 0 0 1 4-4h12"></path></svg>} label='Forward' action={onForward}/>
+          <Item icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>} label='Message info' action={onInfo}/>
           <Item sep/>
-          <Item icon='☑️' label='Select'         action={onSelect}/>
-          <Item icon='🗑️' label='Delete'   action={onDelete} danger/>
-          {msg?.fromMe && <Item icon='🗑️' label='Delete all' action={onDeleteAll} danger/>}
+          <Item icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 11 12 14 22 4"></polyline><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>} label='Select' action={onSelect}/>
+          <Item icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>} label='Delete' action={onDelete} danger/>
+          {msg?.fromMe && <Item icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>} label='Delete all' action={onDeleteAll} danger/>}
         </>
       )}
     </div>
