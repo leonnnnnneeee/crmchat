@@ -3481,7 +3481,7 @@ export default function CRMChat({ token, onAuthFailed }) {
               setInput(editText)
             }
           }}
-          onReact={(emoji) => toggleReaction(ctxMenu.msg.id, emoji)}
+          onReact={(emoji) => toggleReaction(sel.id, selTopic?.id || null, ctxMenu.msg.id, emoji)}
           onClose={()=>setCtxMenu(null)}
         />
       )}
