@@ -200,7 +200,45 @@ export default function MessageList(props) {
                             <span style={{fontSize:11,color:'rgba(255,255,255,.5)'}}>edited</span>
                           )}
                           <span style={{fontSize:11,color:'rgba(255,255,255,.5)'}}>{fmtMsgTime(msg.date)}</span>
-                          {msg.fromMe&&<span style={{fontSize:11,color:msg.pending?"rgba(255,255,255,.3)":"rgba(255,255,255,.5)"}}>{msg.pending?"⏳":"✓✓"}</span>}
+                          {msg.fromMe && (() => {
+                            const maxId = sel?.readOutboxMaxId || 0;
+                            const isRead = msg.id <= maxId;
+                            const status = msg.pending ? 'sending' : msg.failed ? 'failed' : isRead ? 'read' : 'sent';
+                            
+                            // Debug logs as requested
+                            console.log(`[Status Debug] msgId=${msg.id} isOutgoing=${msg.fromMe} rawStatus=${msg.pending ? 'pending' : msg.failed ? 'failed' : 'sent'} normalizedStatus=${status} maxReadId=${maxId} renderedIcon=${status}`);
+                            
+                            return (
+                              <span style={{
+                                display: 'inline-flex', 
+                                alignItems: 'center', 
+                                marginLeft: 4, 
+                                color: msg.failed ? '#ef4444' : (isRead ? '#4ade80' : 'rgba(255,255,255,.6)')
+                              }}>
+                                {msg.pending ? (
+                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <circle cx="12" cy="12" r="10"></circle>
+                                    <polyline points="12 6 12 12 16 14"></polyline>
+                                  </svg>
+                                ) : msg.failed ? (
+                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <circle cx="12" cy="12" r="10"></circle>
+                                    <line x1="12" y1="8" x2="12" y2="12"></line>
+                                    <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                                  </svg>
+                                ) : isRead ? (
+                                  <svg width="16" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{transform:'translateY(1px)'}}>
+                                    <polyline points="18 6 7 17 2 12"></polyline>
+                                    <path d="M22 10l-9.5 9.5-1.5-1.5"></path>
+                                  </svg>
+                                ) : (
+                                  <svg width="14" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{transform:'translateY(1px)'}}>
+                                    <polyline points="20 6 9 17 4 12"></polyline>
+                                  </svg>
+                                )}
+                              </span>
+                            );
+                          })()}
                         </div>
                       </div>
                       {msg.reactions && msg.reactions.length > 0 && (

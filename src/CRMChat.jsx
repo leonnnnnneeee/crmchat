@@ -2191,6 +2191,13 @@ export default function CRMChat({ token, onAuthFailed }) {
                 })
              }
           }
+          else if (data.type === 'read_outbox') {
+             const { chatId, maxId } = data;
+             setChats(prev => prev.map(c => c.id === chatId ? { ...c, readOutboxMaxId: Math.max(c.readOutboxMaxId || 0, maxId) } : c));
+             if (selRef.current?.id === chatId) {
+                 setSel(prev => prev ? { ...prev, readOutboxMaxId: Math.max(prev.readOutboxMaxId || 0, maxId) } : prev);
+             }
+          }
           else if (data.type === 'update_reactions') {
             const { chatId, msgId, topicId, reactions, recentReactions } = data;
             const isSameChat = selRef.current?.id === chatId;

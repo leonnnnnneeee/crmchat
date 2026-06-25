@@ -342,6 +342,8 @@ app.get('/api/chat/list', requireAuth, async (req,res) => {
       username: d.entity?.username || null,
       accessHash: d.entity?.accessHash?.toString() || null,
       memberCount: d.entity?.participantsCount || d.entity?.membersCount || null,
+      readOutboxMaxId: d.dialog?.readOutboxMaxId || 0,
+      readInboxMaxId: d.dialog?.readInboxMaxId || 0,
     }))
     res.json(chats)
   } catch(e) { 
@@ -1818,6 +1820,23 @@ async function startTGListener() {
                  topicId: topMsgId || null,
                  reactions: parsedReactions,
                  recentReactions: parsedRecent
+               });
+            }
+          } else if (ev.className === 'UpdateReadHistoryOutbox' || ev.className === 'UpdateReadChannelOutbox') {
+            const peer = ev.peer || ev;
+            let chatId = null;
+            if (ev.className === 'UpdateReadChannelOutbox') {
+               chatId = '-100' + ev.channelId.toString();
+            } else if (peer) {
+               if (peer.className === 'PeerUser') chatId = peer.userId.toString();
+               else if (peer.className === 'PeerChat') chatId = peer.chatId.toString();
+               else if (peer.className === 'PeerChannel') chatId = '-100' + peer.channelId.toString();
+            }
+            if (chatId) {
+               broadcastSSE({
+                 type: 'read_outbox',
+                 chatId,
+                 maxId: ev.maxId
                });
             }
           }
