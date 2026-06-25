@@ -2150,8 +2150,8 @@ export default function CRMChat({ token, onAuthFailed }) {
     const originalReactions = originalMsg.reactions || [];
     
     const existing = originalReactions.find(r => r.emoticon === emoji);
-    const currentMyReaction = originalReactions.find(r => r.chosen);
-    console.log('currentMyReaction', currentMyReaction?.emoticon || null);
+    const myCurrentReactions = originalReactions.filter(r => r.chosen);
+    console.log('currentMyReactions', myCurrentReactions.map(r => r.emoticon));
     
     let newReactions = [...originalReactions];
     
@@ -2164,11 +2164,16 @@ export default function CRMChat({ token, onAuthFailed }) {
         newReactions = newReactions.map(r => r.emoticon === emoji ? { ...r, count: r.count - 1, chosen: false } : r);
       }
     } else {
-      action = currentMyReaction ? 'replace' : 'add';
-      newReactions = newReactions.map(r => {
-        if (r.chosen) return { ...r, count: r.count - 1, chosen: false };
-        return r;
-      }).filter(r => r.count > 0);
+      if (myCurrentReactions.length >= 3) {
+        action = 'replace';
+        const removedEmoji = myCurrentReactions[0].emoticon;
+        newReactions = newReactions.map(r => {
+          if (r.emoticon === removedEmoji) return { ...r, count: r.count - 1, chosen: false };
+          return r;
+        }).filter(r => r.count > 0);
+      } else {
+        action = 'add';
+      }
       
       const newExisting = newReactions.find(r => r.emoticon === emoji);
       if (newExisting) {
@@ -2180,8 +2185,10 @@ export default function CRMChat({ token, onAuthFailed }) {
     
     console.log('action', action);
     
-    const chosenEmojiObj = newReactions.find(r => r.chosen);
-    const payloadEmoji = chosenEmojiObj ? chosenEmojiObj.emoticon : null;
+    const chosenEmojiObjs = newReactions.filter(r => r.chosen);
+    const payloadEmoji = chosenEmojiObjs.map(r => r.emoticon);
+    
+    console.log('nextReactionList', payloadEmoji);
     
     console.log('optimisticReactions', newReactions);
     
@@ -2217,7 +2224,11 @@ export default function CRMChat({ token, onAuthFailed }) {
       console.log('apiStatus', d);
       console.log('finalReactionsFromTelegram', d.tgRes || 'unchanged');
       if (!d.ok && !d.unchanged) {
-        alert('Lỗi thả emoji từ Telegram: ' + (d.error || 'Unknown error'));
+        if (d.error && d.error.includes('REACTION_INVALID')) {
+          alert('Biểu tượng cảm xúc này không được phép trong nhóm/chat này (REACTION_INVALID).');
+        } else {
+          alert('Lỗi thả emoji từ Telegram: ' + (d.error || 'Unknown error'));
+        }
         delete pendingReactionsRef.current[msgId];
         setMsgs(prev => prev.map(m => m.id === msgId ? originalMsg : m));
       }
