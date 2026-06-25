@@ -470,9 +470,8 @@ function ContextMenu({x,y,msg,allowedReactions,readOutboxMaxId,onDelete,onCopy,o
             };
 
             if (status === 'read') {
-              timeText = seenTimeAvailable ? formatTime(seenAt) : 'Seen';
+              timeText = msg.seenTimeAvailable ? formatTime(msg.seenAt) : 'Seen';
             } else if (status === 'sent') {
-              // Wait, if sent, Telegram Web often shows "Sent at <time>" or just the sent time. But the user explicitly said "If sent but not seen: show 'Sent'".
               timeText = 'Sent';
             } else if (status === 'sending') {
               timeText = 'Sending';
@@ -480,7 +479,16 @@ function ContextMenu({x,y,msg,allowedReactions,readOutboxMaxId,onDelete,onCopy,o
               timeText = 'Failed';
             }
             
-            console.log(`[Context Menu Debug] selectedMessageId=${msg.id} isOutgoing=${msg.fromMe} rawStatus=${msg.pending ? 'pending' : msg.failed ? 'failed' : 'sent'} normalizedStatus=${status} rawReadData=${rawReadData} seenAt=${seenAt} readAt=${seenAt} seenTimeAvailable=${seenTimeAvailable} formattedSeenTime="${timeText}" contextMenuSeenRowRendered=true`);
+            console.log(`[Context Menu Debug END-TO-END]
+- selectedMessageId: ${msg.messageId || msg.id}
+- isOutgoing: ${msg.fromMe || msg.isOutgoing}
+- backend readAt/seenAt: ${msg.readAt} / ${msg.seenAt}
+- frontend readAt/seenAt: ${msg.readAt} / ${msg.seenAt}
+- seenTimeAvailable: ${msg.seenTimeAvailable}
+- normalizedStatus: ${status}
+- formattedSeenTime: "${timeText}"
+- reason UI shows Seen instead of time: ${msg.seenTimeUnavailableReason || "API didn't provide time"}
+- raw message object preview:`, msg);
             
             return (
               <>
@@ -2339,6 +2347,9 @@ export default function CRMChat({ token, onAuthFailed }) {
         if(validMsgs.length > 0) maxId = validMsgs[0].id
         if(maxId > 0) qs += (qs ? '&' : '?') + 'maxId=' + maxId
       }
+      
+      const outboxMaxId = chat.readOutboxMaxId || 0;
+      qs += (qs ? '&' : '?') + 'readOutboxMaxId=' + outboxMaxId;
 
       if(topicId) {
         url = '/api/chat/topics/'+chat.id+'/'+topicId+'/messages'+qs
