@@ -967,9 +967,14 @@ app.get('/api/chat/messages/:id', requireAuth, async (req,res) => {
           reactions: parseReactions(m.reactions?.results) || [],
           recentReactions: parseRecentReactions(m.reactions?.recentReactions) || [],
           // Telegram API does not provide exact per-message read timestamps for basic messages
+          messageId: m.id,
+          isOutgoing: m.out,
+          sentAt: m.date,
           readAt: null,
           seenAt: null,
           seenTimeAvailable: false,
+          seenTimeUnavailableReason: 'Telegram API did not provide exact read timestamp',
+          normalizedStatus: m.out ? (m.id <= (parseInt(req.query.readOutboxMaxId) || 0) ? 'seen' : 'sent') : null,
         }
       })
       .filter(m => m.text || m.isPhoto || m.isVideo || m.isDoc)
@@ -997,6 +1002,62 @@ app.post('/api/chat/send', requireAuth, async (req,res) => {
     res.json({ ok: true })
   } catch(e) { log('send: '+e.message); res.status(500).json({ error: e.message }) }
 })
+
+// ── GET READ RECEIPTS ──
+app.get('/api/chat/messages/:chatId/:msgId/read-receipts', requireAuth, async (req, res) => {
+  const { chatId, msgId } = req.params;
+  if (!_session) return res.status(401).json({ error: 'Not connected' });
+  
+  try {
+    const client = await getClient();
+    const entity = await withTimeout(resolveEntity(client, chatId), 8000, 'resolveEntity');
+    
+    if (entity.className === 'InputPeerUser') {
+      try {
+        const result = await client.invoke(new Api.messages.GetOutboxReadDate({
+          peer: entity,
+          msgId: parseInt(msgId)
+        }));
+        return res.json({ ok: true, type: 'private', date: result.date });
+      } catch (e) {
+        return res.json({ ok: false, error: e.message });
+      }
+    } else {
+      try {
+        const result = await client.invoke(new Api.messages.GetMessageReadParticipants({
+          peer: entity,
+          msgId: parseInt(msgId)
+        }));
+        
+        if (result && result.length > 0) {
+          const userIds = result.map(p => p.userId);
+          const users = await client.invoke(new Api.users.GetUsers({
+            id: userIds
+          }));
+          
+          const participants = result.map(p => {
+            const user = users.find(u => String(u.id) === String(p.userId));
+            return {
+              userId: String(p.userId),
+              date: p.date,
+              firstName: user?.firstName || '',
+              lastName: user?.lastName || '',
+              username: user?.username || ''
+            };
+          });
+          
+          return res.json({ ok: true, type: 'group', participants });
+        } else {
+          return res.json({ ok: true, type: 'group', participants: [] });
+        }
+      } catch (e) {
+        return res.json({ ok: false, error: e.message });
+      }
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // ── SEND TOPIC MESSAGE ──
 app.post('/api/chat/topics/:chatId/:topicId/send', requireAuth, async (req,res) => {
@@ -1772,9 +1833,14 @@ async function startTGListener() {
             // Try to resolve sender info if possible
             senderId: m.senderId ? m.senderId.toString() : null,
             topicId: (m.replyTo?.forumTopic ? m.replyTo.replyToMsgId : m.replyTo?.replyToTopId) || null,
+            messageId: m.id,
+            isOutgoing: m.out,
+            sentAt: m.date,
             readAt: null,
             seenAt: null,
-            seenTimeAvailable: false
+            seenTimeAvailable: false,
+            seenTimeUnavailableReason: 'Telegram API did not provide exact read timestamp',
+            normalizedStatus: m.out ? 'sent' : null
           }
           
           if (m.media) {

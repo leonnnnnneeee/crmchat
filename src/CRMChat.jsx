@@ -253,11 +253,32 @@ function ChatContextMenu({x,y,chat,onClose,
 
 
 // ── Message Context Menu ──
-function ContextMenu({x,y,msg,allowedReactions,readOutboxMaxId,onDelete,onCopy,onReply,onClose,onDeleteAll,onSelect,onForward,onReact,onPin,onInfo,onEdit}) {
+function ContextMenu({x,y,msg,chatId,token,allowedReactions,readOutboxMaxId,onDelete,onCopy,onReply,onClose,onDeleteAll,onSelect,onForward,onReact,onPin,onInfo,onEdit}) {
   const ref = useRef(null)
   const [pos, setPos] = useState({ left: x, top: y, opacity: 0 });
   const [expandedPickerOpen, setExpandedPickerOpen] = useState(false);
   const [search, setSearch] = useState('');
+  const [readInfo, setReadInfo] = useState({ loading: false, data: null, error: null });
+
+  useEffect(() => {
+    if (msg?.fromMe && msg.id <= readOutboxMaxId && chatId) {
+      setReadInfo({ loading: true, data: null, error: null });
+      fetch(`/api/chat/messages/${chatId}/${msg.id}/read-receipts`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      .then(r => r.json())
+      .then(res => {
+        if (res.ok) {
+          setReadInfo({ loading: false, data: res, error: null });
+        } else {
+          setReadInfo({ loading: false, data: null, error: res.error });
+        }
+      })
+      .catch(err => {
+        setReadInfo({ loading: false, data: null, error: err.message });
+      });
+    }
+  }, [msg?.id, msg?.fromMe, readOutboxMaxId, chatId, token]);
 
   useEffect(()=>{
     const h = e => { 
@@ -320,7 +341,7 @@ function ContextMenu({x,y,msg,allowedReactions,readOutboxMaxId,onDelete,onCopy,o
         setPos({ left: ax, top: ay, opacity: 1, maxHeight });
       });
     }
-  }, [x, y, expandedPickerOpen]);
+  }, [x, y, expandedPickerOpen, readInfo]);
 
   const Item=({icon,label,action,danger,sep})=>sep
     ? <div style={{height:1,background:'rgba(255,255,255,0.15)',margin:'4px 8px'}}/>
@@ -502,12 +523,6 @@ function ContextMenu({x,y,msg,allowedReactions,readOutboxMaxId,onDelete,onCopy,o
             const isRead = msg.id <= readOutboxMaxId;
             const status = msg.pending ? 'sending' : msg.failed ? 'failed' : isRead ? 'read' : 'sent';
             
-            let timeText = 'Unknown status';
-            // TODO: implement real seenAt if Telegram supports per-message read receipts
-            const seenAt = null; 
-            const rawReadData = null; // Telegram API does not provide per-message read receipts in basic messages
-            const seenTimeAvailable = !!seenAt;
-            
             const formatTime = (ts) => {
               const d = new Date(ts * 1000);
               const now = new Date();
@@ -522,8 +537,34 @@ function ContextMenu({x,y,msg,allowedReactions,readOutboxMaxId,onDelete,onCopy,o
               return `${d.toLocaleString('en-US', { month: 'short', day: 'numeric' })} at ${timeStr}`;
             };
 
+            let timeText = 'Unknown status';
+            let renderGroupReadReceipts = null;
+
             if (status === 'read') {
-              timeText = msg.seenTimeAvailable ? formatTime(msg.seenAt) : 'Seen';
+              timeText = 'Seen';
+              if (readInfo.loading) {
+                timeText = 'Fetching read time...';
+              } else if (readInfo.data) {
+                if (readInfo.data.type === 'private' && readInfo.data.date) {
+                  timeText = formatTime(readInfo.data.date);
+                } else if (readInfo.data.type === 'group' && readInfo.data.participants && readInfo.data.participants.length > 0) {
+                  timeText = `Seen by ${readInfo.data.participants.length}`;
+                  renderGroupReadReceipts = (
+                    <div style={{maxHeight: 120, overflowY: 'auto', borderTop: '1px solid rgba(255,255,255,0.05)', padding: '4px 0'}}>
+                      {readInfo.data.participants.map(p => (
+                        <div key={p.userId} style={{padding: '6px 12px', fontSize: 13, color: '#e2e8f0', display: 'flex', justifyContent: 'space-between'}}>
+                          <span style={{overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 120}}>
+                            {p.firstName || p.lastName ? `${p.firstName} ${p.lastName}` : (p.username ? `@${p.username}` : `User ${p.userId}`)}
+                          </span>
+                          <span style={{color: 'rgba(255,255,255,0.5)', fontSize: 12}}>
+                            {p.date ? formatTime(p.date) : ''}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                }
+              }
             } else if (status === 'sent') {
               timeText = 'Sent';
             } else if (status === 'sending') {
@@ -531,17 +572,6 @@ function ContextMenu({x,y,msg,allowedReactions,readOutboxMaxId,onDelete,onCopy,o
             } else if (status === 'failed') {
               timeText = 'Failed';
             }
-            
-            console.log(`[Context Menu Debug END-TO-END]
-- selectedMessageId: ${msg.messageId || msg.id}
-- isOutgoing: ${msg.fromMe || msg.isOutgoing}
-- backend readAt/seenAt: ${msg.readAt} / ${msg.seenAt}
-- frontend readAt/seenAt: ${msg.readAt} / ${msg.seenAt}
-- seenTimeAvailable: ${msg.seenTimeAvailable}
-- normalizedStatus: ${status}
-- formattedSeenTime: "${timeText}"
-- reason UI shows Seen instead of time: ${msg.seenTimeUnavailableReason || "API didn't provide time"}
-- raw message object preview:`, msg);
             
             return (
               <>
@@ -574,6 +604,7 @@ function ContextMenu({x,y,msg,allowedReactions,readOutboxMaxId,onDelete,onCopy,o
                   </span>
                   <span style={{color:'rgba(255,255,255,0.9)'}}>{timeText}</span>
                 </div>
+                {renderGroupReadReceipts}
                 <div style={{height:1, background:'rgba(255,255,255,0.05)', margin:'4px 0'}} />
               </>
             );
@@ -3921,6 +3952,7 @@ export default function CRMChat({ token, onAuthFailed }) {
       {ctxMenu&&(
         <ContextMenu 
           x={ctxMenu.x} y={ctxMenu.y} msg={ctxMenu.msg}
+          chatId={sel.id} token={token}
           allowedReactions={allowedReactionsCache[sel.id]}
           readOutboxMaxId={sel?.readOutboxMaxId || 0}
           onDelete={()=>deleteMsg(ctxMenu.idx)}
