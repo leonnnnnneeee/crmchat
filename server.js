@@ -933,6 +933,46 @@ app.post('/api/chat/send-media', requireAuth, upload.single('file'), async (req,
   }
 })
 
+// ── AI VOICE TRANSCRIPTION (Groq Whisper) ──
+app.post('/api/ai/transcribe-voice', requireAuth, async (req,res) => {
+  const { chatId, messageId, fileId } = req.body
+  if (!chatId || !messageId) return res.status(400).json({ error: 'Missing chatId or messageId' })
+
+  try {
+    const cachePath = path.join(MEDIA_CACHE_DIR, `${chatId}_${messageId}_${fileId || ''}`)
+    let buffer;
+    if (fs.existsSync(cachePath)) {
+      buffer = fs.readFileSync(cachePath)
+    } else {
+      const client = await getClient()
+      const entity = await resolveEntity(client, chatId)
+      const messages = await client.getMessages(entity, { ids: [parseInt(messageId)] })
+      if (!messages || messages.length === 0 || !messages[0]) {
+        return res.status(404).json({error: 'Message not found'})
+      }
+      const message = messages[0]
+      if (!message.media) return res.status(404).json({error: 'No media found'})
+      buffer = await client.downloadMedia(message, { workers: 1 })
+      if (!buffer) return res.status(500).json({error: 'Failed to download media'})
+      fs.writeFileSync(cachePath, buffer)
+    }
+
+    const FormData = require('form-data');
+    const form = new FormData();
+    form.append('file', buffer, { filename: 'audio.ogg', contentType: 'audio/ogg' });
+    form.append('model', 'whisper-large-v3');
+
+    const response = await axios.post('https://api.groq.com/openai/v1/audio/transcriptions', form, {
+      headers: { ...form.getHeaders(), Authorization: 'Bearer ' + GROQ_KEY }
+    })
+    
+    res.json({ ok: true, text: response.data.text })
+  } catch(e) {
+    log('transcribe error: ' + (e.response?.data?.error?.message || e.message))
+    res.status(500).json({ error: e.response?.data?.error?.message || e.message })
+  }
+})
+
 // ── AI SUGGEST (Groq) ──
 app.post('/api/ai/suggest', requireAuth, async (req,res) => {
   const { contactName, lastMessage, messages, stage, notes, instruction, chatId, topicId } = req.body

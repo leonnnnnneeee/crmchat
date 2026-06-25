@@ -1,9 +1,11 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 
 const TG = {
   blueLight: "#5288c1",
   text: "#f0e6ff",
-  textMuted: "#6b4d94"
+  textMuted: "rgba(255,255,255,0.6)",
+  activeWave: "#fff",
+  inactiveWave: "rgba(255,255,255,0.3)"
 };
 
 export default function VoiceMessage({ msg, chatId, token }) {
@@ -14,10 +16,24 @@ export default function VoiceMessage({ msg, chatId, token }) {
   const [currentTime, setCurrentTime] = useState(0);
   const [error, setError] = useState(false);
 
+  // Transcription state
+  const cacheKey = `transcript_${msg.id}`;
+  const [transcript, setTranscript] = useState(localStorage.getItem(cacheKey) || null);
+  const [transcribing, setTranscribing] = useState(false);
+
   const fileId = msg.media?.document?.id || '';
   const audioUrl = `/api/telegram/media/audio?chatId=${chatId}&messageId=${msg.id}&fileId=${fileId}&token=${token}`;
 
-  // Ensure only one audio plays at a time
+  // Deterministic fake waveform based on msg.id (30 bars)
+  const waveform = useMemo(() => {
+    return Array.from({ length: 30 }, (_, i) => {
+      // Create a pseudo-random height between 20% and 100%
+      const seed = (msg.id + i) * 1.37;
+      const height = Math.abs(Math.sin(seed)) * 0.8 + 0.2;
+      return height;
+    });
+  }, [msg.id]);
+
   useEffect(() => {
     const handlePlay = (e) => {
       if (audioRef.current && e.target !== audioRef.current) {
@@ -70,70 +86,142 @@ export default function VoiceMessage({ msg, chatId, token }) {
     return `${m}:${s.toString().padStart(2, '0')}`;
   };
 
+  const transcribeVoice = async (e) => {
+    e.stopPropagation();
+    if (transcribing || transcript) return;
+    setTranscribing(true);
+    try {
+      const res = await fetch('/api/ai/transcribe-voice', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
+        body: JSON.stringify({ chatId, messageId: msg.id, fileId })
+      });
+      const data = await res.json();
+      if (data.ok && data.text) {
+        setTranscript(data.text);
+        localStorage.setItem(cacheKey, data.text);
+      } else {
+        alert('Transcription failed: ' + (data.error || 'Unknown error'));
+      }
+    } catch (e) {
+      console.error(e);
+      alert('Transcription request failed: ' + e.message);
+    } finally {
+      setTranscribing(false);
+    }
+  };
+
   const displayTime = isPlaying || currentTime > 0 ? currentTime : duration;
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 200 }}>
-      {/* Hidden Audio Element */}
-      <audio 
-        ref={audioRef}
-        src={audioUrl}
-        onPlay={() => setIsPlaying(true)}
-        onPause={() => setIsPlaying(false)}
-        onEnded={() => { setIsPlaying(false); setProgress(0); setCurrentTime(0); }}
-        onTimeUpdate={handleTimeUpdate}
-        onLoadedMetadata={handleLoadedMetadata}
-        onError={() => setError(true)}
-        preload="metadata"
-      />
+    <div style={{ display: 'flex', flexDirection: 'column', minWidth: 240 }}>
+      {/* Main Audio Row */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        
+        {/* Hidden Audio Element */}
+        <audio 
+          ref={audioRef}
+          src={audioUrl}
+          onPlay={() => setIsPlaying(true)}
+          onPause={() => setIsPlaying(false)}
+          onEnded={() => { setIsPlaying(false); setProgress(0); setCurrentTime(0); }}
+          onTimeUpdate={handleTimeUpdate}
+          onLoadedMetadata={handleLoadedMetadata}
+          onError={() => setError(true)}
+          preload="metadata"
+        />
 
-      {/* Play/Pause Button */}
-      <div 
-        onClick={togglePlay}
-        style={{
-          width: 44, height: 44, borderRadius: '50%', background: msg.fromMe ? 'rgba(255,255,255,0.2)' : TG.blueLight,
-          display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0
-        }}
-      >
-        {error ? (
-          <span style={{ fontSize: 20 }}>⚠️</span>
-        ) : isPlaying ? (
-          <div style={{ display: 'flex', gap: 3 }}>
-            <div style={{ width: 4, height: 16, background: '#fff', borderRadius: 2 }} />
-            <div style={{ width: 4, height: 16, background: '#fff', borderRadius: 2 }} />
-          </div>
-        ) : (
-          <div style={{
-            width: 0, height: 0, 
-            borderTop: '8px solid transparent', 
-            borderBottom: '8px solid transparent', 
-            borderLeft: '14px solid #fff',
-            marginLeft: 4
-          }} />
-        )}
-      </div>
-
-      {/* Waveform / Progress Bar */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {/* Circular Play/Pause Button */}
         <div 
-          onClick={handleSeek}
-          style={{ 
-            height: 14, background: 'rgba(255,255,255,0.2)', borderRadius: 7, 
-            position: 'relative', cursor: 'pointer', overflow: 'hidden' 
+          onClick={togglePlay}
+          style={{
+            width: 44, height: 44, borderRadius: '50%', 
+            background: msg.fromMe ? '#fff' : TG.blueLight,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', 
+            cursor: 'pointer', flexShrink: 0
           }}
         >
-          <div style={{ 
-            position: 'absolute', top: 0, left: 0, bottom: 0, 
-            width: `${progress}%`, background: '#fff', borderRadius: 7,
-            transition: 'width 0.1s linear'
-          }} />
+          {error ? (
+            <span style={{ fontSize: 20 }}>⚠️</span>
+          ) : isPlaying ? (
+            <div style={{ display: 'flex', gap: 4 }}>
+              <div style={{ width: 4, height: 16, background: msg.fromMe ? '#7c3aed' : '#fff', borderRadius: 2 }} />
+              <div style={{ width: 4, height: 16, background: msg.fromMe ? '#7c3aed' : '#fff', borderRadius: 2 }} />
+            </div>
+          ) : (
+            <div style={{
+              width: 0, height: 0, 
+              borderTop: '8px solid transparent', 
+              borderBottom: '8px solid transparent', 
+              borderLeft: `14px solid ${msg.fromMe ? '#7c3aed' : '#fff'}`,
+              marginLeft: 4
+            }} />
+          )}
         </div>
-        
-        {/* Time and Status */}
-        <div style={{ fontSize: 11, color: msg.fromMe ? 'rgba(255,255,255,0.8)' : TG.textMuted }}>
-          {formatTime(displayTime)}
+
+        {/* Waveform and Info Column */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 4 }}>
+          
+          {/* Waveform Bars */}
+          <div 
+            onClick={handleSeek}
+            style={{ 
+              display: 'flex', alignItems: 'flex-end', gap: 2, height: 24, 
+              cursor: 'pointer', width: '100%' 
+            }}
+          >
+            {waveform.map((h, i) => {
+              const barPercent = (i / waveform.length) * 100;
+              const isActive = barPercent <= progress;
+              return (
+                <div 
+                  key={i} 
+                  style={{
+                    flex: 1,
+                    height: `${h * 100}%`,
+                    background: isActive ? TG.activeWave : TG.inactiveWave,
+                    borderRadius: 2,
+                    transition: 'background 0.1s'
+                  }} 
+                />
+              )
+            })}
+          </div>
+          
+          {/* Bottom Row: Duration & Transcribe Button */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ fontSize: 11, color: msg.fromMe ? 'rgba(255,255,255,0.8)' : TG.textMuted }}>
+              {formatTime(displayTime)}
+            </div>
+            
+            {/* Transcribe Button */}
+            {!transcript && (
+              <div 
+                onClick={transcribeVoice}
+                style={{
+                  fontSize: 14, fontWeight: 'bold', color: msg.fromMe ? '#fff' : TG.blueLight,
+                  cursor: transcribing ? 'default' : 'pointer',
+                  opacity: transcribing ? 0.5 : 1,
+                  padding: '0 4px'
+                }}
+                title="Transcribe Voice Message"
+              >
+                {transcribing ? '...' : 'A'}
+              </div>
+            )}
+          </div>
         </div>
       </div>
+
+      {/* Transcript Text */}
+      {transcript && (
+        <div style={{ 
+          marginTop: 8, padding: '8px 12px', background: 'rgba(0,0,0,0.15)', 
+          borderRadius: 8, fontSize: 13, color: '#fff', borderLeft: `2px solid ${msg.fromMe ? '#fff' : TG.blueLight}`
+        }}>
+          {transcript}
+        </div>
+      )}
     </div>
   );
 }
