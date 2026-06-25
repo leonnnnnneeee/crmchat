@@ -729,17 +729,22 @@ app.get('/api/chat/photo/:id', requireAuth, async (req, res) => {
 })
 
 // ── MEDIA DOWNLOAD ──
-app.get('/api/chat/media/:chatId/:msgId', requireAuth, async (req, res) => {
+app.get(['/api/chat/media/:chatId/:msgId', '/api/telegram/media/audio'], requireAuth, async (req, res) => {
   if (!_session) return res.status(500).json({error: 'Media backend not connected'})
   try {
-    const msgId = parseInt(req.params.msgId)
-    const chatId = req.params.chatId
+    const msgId = parseInt(req.query.messageId || req.params.msgId)
+    const chatId = req.query.chatId || req.params.chatId
+    const fileId = req.query.fileId || ''
     
     // Check cache first
-    const cachePath = path.join(MEDIA_CACHE_DIR, `${chatId}_${msgId}`)
+    const cachePath = path.join(MEDIA_CACHE_DIR, `${chatId}_${msgId}_${fileId}`)
     if (fs.existsSync(cachePath)) {
       log(`[Media Cache Hit] chatId=${chatId} msgId=${msgId}`)
-      res.set('Content-Type', 'image/jpeg') // Assume JPEG, could be sniffed
+      if (req.path.includes('/audio')) {
+        res.set('Content-Type', 'audio/ogg')
+      } else {
+        res.set('Content-Type', 'image/jpeg') 
+      }
       res.set('Cache-Control', 'public, max-age=31536000')
       return res.sendFile(cachePath)
     }
@@ -766,8 +771,13 @@ app.get('/api/chat/media/:chatId/:msgId', requireAuth, async (req, res) => {
     // Write to cache
     fs.writeFileSync(cachePath, buffer)
 
-    res.set('Content-Type', 'image/jpeg') // Or application/octet-stream if unknown
+    if (req.path.includes('/audio')) {
+      res.set('Content-Type', 'audio/ogg')
+    } else {
+      res.set('Content-Type', 'image/jpeg')
+    }
     res.set('Cache-Control', 'public, max-age=31536000')
+
     res.send(buffer)
   } catch(e) {
     log('media download error: ' + e.message)
@@ -1321,7 +1331,7 @@ app.get('/api/health', (req,res) => res.json({ ok: true, tgConnected: _session.l
 app.get('/api/logs', requireAuth, (req,res) => res.json(logs))
 
 // ── SEND REACTION ──
-app.post('/api/chat/react', requireAuth, async (req,res) => {
+app.post(['/api/chat/react', '/api/telegram/messages/react'], requireAuth, async (req,res) => {
   if(!_session) return res.status(401).json({error:'Not connected'})
   const {chatId, msgId, emoji, username} = req.body
   if(!chatId||!msgId) return res.status(400).json({error:'Missing fields'})
@@ -1352,10 +1362,70 @@ app.post('/api/chat/react', requireAuth, async (req,res) => {
     log(`Reaction sent: ${msgId} ${JSON.stringify(emoji)}. Response: ${JSON.stringify(tgRes, null, 2)}`)
     res.json({ok:true, tgRes})
   } catch(e) {
+    if (e.message.includes('MESSAGE_NOT_MODIFIED')) {
+      log(`Reaction not modified: ${msgId} ${JSON.stringify(emoji)}`);
+      return res.json({ok: true, unchanged: true});
+    }
     log('react error: ' + e.message)
     res.status(500).json({error: e.message})
   }
 })
+
+// ── GET PINNED MESSAGE ──
+app.get('/api/telegram/messages/pinned', requireAuth, async (req,res) => {
+  if(!_session) return res.status(401).json({error:'Not connected'})
+  const {chatId, username, topicId} = req.query
+  if(!chatId) return res.status(400).json({error:'Missing chatId'})
+  try {
+    const client = await withTimeout(getClient(), 10000, 'getClient')
+    const entity = await withTimeout(resolveEntity(client, chatId, username), 8000, 'resolve')
+    const {Api} = require('telegram/tl')
+    
+    // Telegram search with pinned filter
+    const result = await client.invoke(new Api.messages.Search({
+      peer: entity,
+      q: '',
+      filter: new Api.InputMessagesFilterPinned(),
+      minDate: 0,
+      maxDate: 0,
+      offsetId: 0,
+      addOffset: 0,
+      limit: 1,
+      maxId: 0,
+      minId: 0,
+      hash: 0n,
+      topMsgId: topicId ? parseInt(topicId) : undefined
+    }))
+    
+    if (result.messages && result.messages.length > 0) {
+      const m = result.messages[0]
+      const isPhoto = m.media?.className === 'MessageMediaPhoto'
+      const isDoc = m.media?.className === 'MessageMediaDocument'
+      const isVideo = isDoc && m.media.document?.attributes?.some?.(a=>a.className==='DocumentAttributeVideo')
+      const isAudio = isDoc && (m.media.document?.mimeType?.startsWith('audio/') || m.media.document?.attributes?.some?.(a=>a.className==='DocumentAttributeAudio'))
+      
+      let text = m.message || ''
+      if (!text) {
+        if (isPhoto) text = '📷 Photo'
+        else if (isVideo) text = '🎥 Video'
+        else if (isAudio) text = '🎤 Voice Message'
+        else if (isDoc) text = '📎 Document'
+      }
+      
+      res.json({ok: true, pinnedMessage: {
+        id: m.id,
+        text,
+        date: m.date
+      }})
+    } else {
+      res.json({ok: true, pinnedMessage: null})
+    }
+  } catch(e) {
+    log('pinned error: ' + e.message)
+    res.status(500).json({error: e.message})
+  }
+})
+
 
 // ── MARK CHAT AS READ ──
 app.post('/api/chat/read', requireAuth, async (req,res) => {

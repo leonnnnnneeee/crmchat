@@ -6,6 +6,8 @@ import ChatHeader from './components/chat/ChatHeader';
 import MessageList from './components/chat/MessageList';
 import Composer from './components/chat/Composer';
 import CRMRightPanel from './components/chat/CRMRightPanel';
+import PinnedMessageBar from './components/chat/PinnedMessageBar';
+import TranslateBar from './components/chat/TranslateBar';
 
 const TG = {
   bg:"#120929", panel:"#1a0533", surface:"#1e0a3c", elevated:"#2d1155",
@@ -1557,6 +1559,11 @@ export default function CRMChat({ token, onAuthFailed }) {
   const [scheduleTime,setScheduleTime]=useState('')
   const [scheduledMsgs,setScheduledMsgs]=useState([])
 
+  // Telegram UI States
+  const [pinnedMessage, setPinnedMessage] = useState(null)
+  const [dismissedPin, setDismissedPin] = useState(false)
+  const [dismissedTranslate, setDismissedTranslate] = useState(false)
+
   const searchGifs = async (query) => {
     // Dummy function since searchGifs was missing
     if (!query) return setGifs([])
@@ -1733,9 +1740,14 @@ export default function CRMChat({ token, onAuthFailed }) {
        prevSelTopicId.current = null
        setForceNormalView(false)
        setTopicError(false)
+       setPinnedMessage(null) // reset pin on chat change
+       setDismissedTranslate(localStorage.getItem(`dismissed_translate_${sel.id}`) === 'true')
+       setDismissedPin(localStorage.getItem(`dismissed_pin_${sel.id}_main`) === 'true')
     } else if (prevSelTopicId.current !== selTopic?.id) {
        prevSelTopicId.current = selTopic?.id
        chatOrTopicChanged = true
+       setPinnedMessage(null) // reset pin on topic change
+       setDismissedPin(localStorage.getItem(`dismissed_pin_${sel.id}_${selTopic?.id}`) === 'true')
     }
     
     if (chatOrTopicChanged) {
@@ -1778,6 +1790,17 @@ export default function CRMChat({ token, onAuthFailed }) {
     }
 
     loadMessages(sel, currentTopic?.id || null)
+
+    // Fetch Pinned Message
+    fetch(`/api/telegram/messages/pinned?chatId=${sel.id}${currentTopic ? '&topicId='+currentTopic.id : ''}`, {
+      headers:{'x-auth-token':token}
+    })
+    .then(r=>r.json())
+    .then(d=>{
+      if(d.ok && d.pinnedMessage) setPinnedMessage(d.pinnedMessage)
+      else setPinnedMessage(null)
+    }).catch(console.error)
+
   },[sel, selTopic, token, forceNormalView])
 
   const activeAiRequest = useRef(null);
@@ -2126,34 +2149,26 @@ export default function CRMChat({ token, onAuthFailed }) {
       return updatedMsgs;
     })
     
-    console.log('updated reactions', newReactionsToLog);
-    
     try {
-      const payload = { chatId: sel?.chatId || sel?.id, topicId: selTopic?.id, msgId, emoji: payloadEmoji, username: sel?.username };
-      console.log('API request payload', payload);
-      
-      const res = await fetch('/api/chat/react', {
+      const res = await fetch('/api/telegram/messages/react', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
-        body: JSON.stringify(payload)
-      })
-      console.log('API status/error', res.status, res.statusText);
-      const resData = await res.json().catch(() => null);
-      
-      if (!res.ok) throw new Error(`API failed: ${res.status} ${resData?.error || ''}`)
-      console.log(`[Reaction Sync] success: msgId=${msgId}, emoji=${JSON.stringify(payloadEmoji)}, tgRes=`, resData?.tgRes)
+        body: JSON.stringify({
+          chatId: sel.id,
+          messageId: msgId,
+          emoji,
+          topicId: selTopic?.id || null
+        })
+      });
+      const d = await res.json();
+      if (!d.ok && !d.unchanged) {
+        setMsgs(prev => prev.map(m => m.id === msgId ? originalMsg : m));
+      }
     } catch (e) {
       console.log(`[Reaction Sync] Telegram API error:`, e.message);
       console.error(e)
       alert('Lỗi thả emoji: ' + e.message);
-      setMsgs(prevMsgs => {
-        const idx = prevMsgs.findIndex(m => m.id === msgId)
-        if (idx === -1) return prevMsgs;
-        const revertMsgs = [...prevMsgs]
-        revertMsgs[idx] = { ...prevMsgs[idx], reactions: originalReactions }
-        msgsCacheRef.current[selRef.current?.id + (selTopicRef.current ? '_' + selTopicRef.current.id : '')] = revertMsgs;
-        return revertMsgs;
-      })
+      setMsgs(prev => prev.map(m => m.id === msgId ? originalMsg : m));
     }
   }
 
@@ -3112,12 +3127,34 @@ export default function CRMChat({ token, onAuthFailed }) {
           </div>
         ): sel && sel.isForum && !selTopic && !forceNormalView ? (
           // ── FORUM TOPICS VIEW ──
-          /* TODO(Refactor): Split out into <ForumTopicsView> component */
           <ForumTopicsView {...chatProps} />
         ):<>
           {/* Chat header */}
-          {/* TODO(Refactor): Split out into <ChatHeader> component */}
           <ChatHeader {...chatProps} />
+          {pinnedMessage && !dismissedPin && (
+            <PinnedMessageBar 
+              pinnedMessage={pinnedMessage} 
+              onClick={(id) => {
+                const el = document.getElementById('msg-'+id)
+                if (el) el.scrollIntoView({behavior: 'smooth', block: 'center'})
+                else alert('Message is not loaded in view yet.')
+              }} 
+              onDismiss={() => {
+                setDismissedPin(true)
+                localStorage.setItem(`dismissed_pin_${sel.id}_${selTopic?.id||'main'}`, 'true')
+              }} 
+            />
+          )}
+
+          {!dismissedTranslate && (
+            <TranslateBar 
+              onTranslate={() => alert('TODO: Translate API integration (Feature Placeholder)')}
+              onDismiss={() => {
+                setDismissedTranslate(true)
+                localStorage.setItem(`dismissed_translate_${sel.id}`, 'true')
+              }}
+            />
+          )}
           {/* Messages */}
           {/* TODO(Refactor): Split out into <MessageList> and <MessageBubble> components */}
           <MessageList {...chatProps} />

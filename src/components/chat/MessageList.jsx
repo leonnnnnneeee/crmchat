@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import VoiceMessage from './VoiceMessage';
 
 const getSenderId = (m) => m.senderId || m.fromId || m.userId || m.peerId || m.author?.id || m.sender?.id || m.from?.id;
 
@@ -166,9 +167,9 @@ export default function MessageList(props) {
                           </video>
                         )}
                         {(msg.isAudio || msg.audio || msg.voice || msg.media?.type === 'audio') && (
-                          <audio controls style={{width:'100%',marginBottom:4}}>
-                            <source src={`/api/chat/media/${sel.id}/${msg.id}?t=${token}`}/>
-                          </audio>
+                          <div style={{marginBottom:4}}>
+                            <VoiceMessage msg={msg} chatId={sel?.id} token={token} />
+                          </div>
                         )}
                         {isDocMsg(msg) && <div style={{padding:'4px 0',color:TG.textSec,fontSize:13}}>📎 Document</div>}
                         {/* Render poll messages nicely */}
