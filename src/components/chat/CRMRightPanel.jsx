@@ -44,7 +44,9 @@ export default function CRMRightPanel(props) {
                 </div>
                 <div style={{marginTop:10,flexShrink:0}}><StageBadge stage={cStage}/></div>
                 <div style={{display:"flex",justifyContent:"center",gap:8,marginTop:12}}>
-                  {[["📱","Open in TG",null],["📧","Email",null],["🌐","Website",null],["📋","Copy ID",()=>navigator.clipboard?.writeText(sel.id)]].map(([icon,ttl,action])=>(
+                  {[
+                    ["📋","Copy ID",()=>navigator.clipboard?.writeText(sel.id)]
+                  ].map(([icon,ttl,action])=>(
                     <button key={ttl} title={ttl} onClick={action||undefined} style={{width:34,height:34,borderRadius:"50%",background:TG.elevated,border:"none",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:16}}>
                       {icon}
                     </button>
@@ -53,30 +55,45 @@ export default function CRMRightPanel(props) {
               </div>
 
               <div className="rs">
-                <div className="rl">Deal</div>
-                <select className="ri" value={cStage} onChange={e=>setStages(p=>({...p,[sel.id]:e.target.value}))}>
-                  {Object.keys(STAGES).map(s=><option key={s} value={s}>{s}</option>)}
-                </select>
-                <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:TG.textSec,marginBottom:4}}>
-                  <span>Win probability</span>
-                  <span style={{color:TG.blue,fontWeight:700}}>{cProb}%</span>
-                </div>
-                <input type="range" min={0} max={100} step={5} value={cProb}
-                  onChange={e=>setProbs(p=>({...p,[sel.id]:+e.target.value}))}
-                  style={{width:"100%",accentColor:TG.blue,marginBottom:6}}/>
-                <div style={{height:4,background:TG.elevated,borderRadius:99,overflow:"hidden",marginBottom:10}}>
-                  <div style={{height:"100%",width:cProb+"%",background:TG.blue,borderRadius:99,transition:"width .3s"}}/>
-                </div>
-                <div className="rr">
-                  <span style={{fontSize:15}}>💵</span>
-                  <input type="number" value={cDeal} onChange={e=>setDeals(p=>({...p,[sel.id]:+e.target.value||0}))}
-                    placeholder="Deal value USD" style={{background:"transparent",border:"none",color:TG.text,fontSize:13,outline:"none",width:"100%",fontFamily:"inherit"}}/>
-                </div>
-                <div className="rr">
-                  <span style={{fontSize:15}}>📅</span>
-                  <input type="date" value={cFup} onChange={e=>setFups(p=>({...p,[sel.id]:e.target.value}))}
-                    style={{background:"transparent",border:"none",color:TG.text,fontSize:13,outline:"none",fontFamily:"inherit"}}/>
-                </div>
+                {['Closed Won', 'Closed Lost'].includes(cStage) ? (
+                  <div style={{fontSize:13,color:TG.textSec,fontStyle:'italic',marginBottom:10}}>Deal closed ({cStage})</div>
+                ) : (
+                  <>
+                    <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:TG.textSec,marginBottom:4}}>
+                      <span>Win probability</span>
+                      <span style={{color:TG.blue,fontWeight:700}}>{cProb}%</span>
+                    </div>
+                    <input type="range" min={0} max={100} step={5} value={cProb}
+                      onChange={e=>setProbs(p=>({...p,[sel.id]:+e.target.value}))}
+                      style={{width:"100%",accentColor:TG.blue,marginBottom:6}}/>
+                    <div style={{height:4,background:TG.elevated,borderRadius:99,overflow:"hidden",marginBottom:10}}>
+                      <div style={{height:"100%",width:cProb+"%",background:TG.blue,borderRadius:99,transition:"width .3s"}}/>
+                    </div>
+                  </>
+                )}
+                
+                {cDeal > 0 ? (
+                  <div className="rr" style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom: 8}}>
+                    <span style={{fontSize:15, marginRight:8}}>💵</span>
+                    <input type="number" value={cDeal} onChange={e=>setDeals(p=>({...p,[sel.id]:+e.target.value||0}))}
+                      placeholder="Deal value USD" style={{flex:1, background:"transparent",border:"none",color:TG.text,fontSize:14,outline:"none",fontFamily:"inherit",fontWeight:600}}/>
+                  </div>
+                ) : (
+                  <button onClick={()=>setDeals(p=>({...p,[sel.id]:100}))} style={{width:'100%', padding:'8px', background:'transparent', border:`1px dashed ${TG.elevated}`, borderRadius:8, color:TG.textSec, fontSize:13, cursor:'pointer', marginBottom: 8}}>+ Add deal value</button>
+                )}
+
+                {cFup ? (
+                  <div className="rr" style={{display:'flex', alignItems:'center', justifyContent:'space-between'}}>
+                    <span style={{fontSize:15, marginRight:8}}>📅</span>
+                    <div style={{flex:1, display:'flex', flexDirection:'column'}}>
+                      <span style={{fontSize:11, color:TG.textSec}}>Next follow-up</span>
+                      <input type="date" value={cFup} onChange={e=>setFups(p=>({...p,[sel.id]:e.target.value}))}
+                        style={{background:"transparent",border:"none",color:TG.text,fontSize:14,outline:"none",fontFamily:"inherit"}}/>
+                    </div>
+                  </div>
+                ) : (
+                  <button onClick={()=>setFups(p=>({...p,[sel.id]:new Date(Date.now()+86400000).toISOString().split("T")[0]}))} style={{width:'100%', padding:'8px', background:'transparent', border:`1px dashed ${TG.elevated}`, borderRadius:8, color:TG.textSec, fontSize:13, cursor:'pointer'}}>+ Add follow-up</button>
+                )}
               </div>
 
               <div className="rs">
@@ -105,10 +122,20 @@ export default function CRMRightPanel(props) {
 
               <div className="rs" style={{border:"none"}}>
                 <div className="rl">Quick Actions</div>
-                <button className="qb d" onClick={()=>setStages(p=>({...p,[sel.id]:"Negotiating"}))}>🔥 Mark as Negotiating</button>
-                <button className="qb d" onClick={()=>setFups(p=>({...p,[sel.id]:new Date(Date.now()+172800000).toISOString().split("T")[0]}))}>📅 Follow-up in 2 days</button>
-                <button className="qb w" onClick={()=>{setStages(p=>({...p,[sel.id]:"Closed Won"}));setProbs(p=>({...p,[sel.id]:100}))}}>✅ Closed Won</button>
-                <button className="qb l" onClick={()=>{setStages(p=>({...p,[sel.id]:"Closed Lost"}));setProbs(p=>({...p,[sel.id]:0}))}}>✕ Mark as Lost</button>
+                {cStage === 'Closed Won' ? (
+                  <>
+                    <button className="qb d" onClick={()=>setStages(p=>({...p,[sel.id]:"Negotiating"}))}>🔄 Reopen Deal</button>
+                    <button className="qb d" onClick={()=>setAddNote(true)}>📝 Add Note</button>
+                    <button className="qb l" onClick={()=>{setStages(p=>({...p,[sel.id]:"Closed Lost"}));setProbs(p=>({...p,[sel.id]:0}))}}>✕ Mark as Lost</button>
+                  </>
+                ) : (
+                  <>
+                    <button className="qb d" onClick={()=>setStages(p=>({...p,[sel.id]:"Negotiating"}))}>🔥 Mark as Negotiating</button>
+                    <button className="qb d" onClick={()=>setFups(p=>({...p,[sel.id]:new Date(Date.now()+172800000).toISOString().split("T")[0]}))}>📅 Follow-up in 2 days</button>
+                    <button className="qb w" onClick={()=>{setStages(p=>({...p,[sel.id]:"Closed Won"}));setProbs(p=>({...p,[sel.id]:100}))}}>✅ Closed Won</button>
+                    <button className="qb l" onClick={()=>{setStages(p=>({...p,[sel.id]:"Closed Lost"}));setProbs(p=>({...p,[sel.id]:0}))}}>✕ Mark as Lost</button>
+                  </>
+                )}
               </div>
             </>
           )}
