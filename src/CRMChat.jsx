@@ -1,6 +1,7 @@
 // v-edit2-083448
 // v035029
 import React, { useState, useEffect, useRef, useMemo, useCallback, useDeferredValue } from "react"
+import { ErrorBoundary } from './components/ErrorBoundary'
 import ForumTopicsView from './components/chat/ForumTopicsView';
 import ChatHeader from './components/chat/ChatHeader';
 import MessageList from './components/chat/MessageList';
@@ -1347,7 +1348,7 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
       }
       
       if (!finalAccessHash && !finalUsername) {
-        toast.error('Cannot message: Telegram user cannot be resolved.');
+        setResolveError('Cannot message: Telegram user cannot be resolved.');
         return;
       }
       
@@ -1400,6 +1401,12 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
           </div>
           <button style={{background:'none',border:'none',color:'#9b7ec8',cursor:'not-allowed',fontSize:18}}>✎</button>
         </div>
+
+        {resolveError && (
+          <div style={{background: 'rgba(229, 57, 53, 0.1)', color: '#e53935', padding: '10px 20px', fontSize: 13, borderBottom: '1px solid rgba(229, 57, 53, 0.2)'}}>
+            {resolveError}
+          </div>
+        )}
 
         <div style={{flex:1, overflowY:'auto'}}>
           {/* Top Profile */}
@@ -2632,7 +2639,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
     }
 
     if (validationResult === 'not_allowed') {
-      toast.error('This reaction is not allowed in this chat.');
+      console.error('This reaction is not allowed in this chat.');
       return;
     }
 
