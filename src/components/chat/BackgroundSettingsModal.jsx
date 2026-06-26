@@ -29,12 +29,14 @@ export function BackgroundSettingsModal({
   bgCustomUrl, setBgCustomUrl
 }) {
   const fileInputRef = useRef(null);
+  const [errorMsg, setErrorMsg] = React.useState('');
 
   const handleFileUpload = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > 5 * 1024 * 1024) {
-      alert('File too large. Maximum size is 5MB.');
+      setErrorMsg('File too large. Maximum size is 5MB.');
+      setTimeout(() => setErrorMsg(''), 3000);
       return;
     }
     const reader = new FileReader();
@@ -60,30 +62,40 @@ export function BackgroundSettingsModal({
   };
 
   return (
-    <div style={{
-      width: 360, minWidth: 360, height: '100%',
-      background: '#090e17', borderLeft: '1px solid #1f2937',
-      display: 'flex', flexDirection: 'column', flexShrink: 0
-    }}>
+    <>
+      <div 
+        style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.5)', zIndex: 999
+        }}
+        onClick={onClose}
+      />
       <div style={{
-        padding: '0 16px', height: 60, minHeight: 60, borderBottom: '1px solid #1f2937',
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        background: '#111827'
+        position: 'fixed', top: 0, right: 0, bottom: 0, zIndex: 1000,
+        width: 380, minWidth: 380,
+        background: '#090e17', borderLeft: '1px solid #1f2937',
+        display: 'flex', flexDirection: 'column',
+        boxShadow: '-4px 0 20px rgba(0,0,0,0.5)'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{
+          padding: '0 16px', height: 60, minHeight: 60, borderBottom: '1px solid #1f2937',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          background: '#111827', flexShrink: 0
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <button onClick={onClose} style={{
+              background: 'transparent', border: 'none', color: '#94a3b8',
+              fontSize: 20, cursor: 'pointer', display: 'flex', alignItems: 'center'
+            }}>←</button>
+            <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: '#f8fafc' }}>Background</h3>
+          </div>
           <button onClick={onClose} style={{
             background: 'transparent', border: 'none', color: '#94a3b8',
-            fontSize: 20, cursor: 'pointer', display: 'flex', alignItems: 'center'
-          }}>←</button>
-          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: '#f8fafc' }}>Background</h3>
+            fontSize: 20, cursor: 'pointer', lineHeight: 1
+          }}>✕</button>
         </div>
-        <button onClick={onClose} style={{
-          background: 'transparent', border: 'none', color: '#94a3b8',
-          fontSize: 20, cursor: 'pointer', lineHeight: 1
-        }}>✕</button>
-      </div>
 
-      <div style={{ display: 'flex', borderBottom: '1px solid #1f2937' }}>
+      <div style={{ display: 'flex', borderBottom: '1px solid #1f2937', flexShrink: 0 }}>
         {['Presets', 'Gallery', 'Upload'].map(tab => (
           <div key={tab} style={{
             flex: 1, textAlign: 'center', padding: '12px 0', fontSize: 13, fontWeight: 600, cursor: 'pointer',
@@ -95,27 +107,35 @@ export function BackgroundSettingsModal({
         ))}
       </div>
 
-      <div style={{ padding: '16px 20px', overflowY: 'auto', flex: 1 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+      {errorMsg && (
+        <div style={{ padding: '8px 16px', background: '#ef4444', color: '#fff', fontSize: 13, textAlign: 'center' }}>
+          {errorMsg}
+        </div>
+      )}
+
+      <div style={{ padding: '16px', overflowY: 'auto', flex: 1 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
           {BACKGROUND_OPTIONS.map((opt) => (
             <div 
               key={opt.name}
               onClick={() => handleSelectOption(opt.name)}
               title={opt.name}
               style={{
-                height: 120, borderRadius: 8, cursor: 'pointer',
+                height: 100, borderRadius: 8, cursor: 'pointer',
                 border: bgOption === opt.name ? '2px solid #7c3aed' : '2px solid transparent',
                 background: opt.image !== 'none' ? opt.image : opt.color,
                 backgroundColor: opt.color,
                 ...(opt.extraStyle || {}),
                 position: 'relative', overflow: 'hidden',
-                display: 'flex', alignItems: 'flex-end', justifyContent: 'center'
+                display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+                boxSizing: 'border-box'
               }}
             >
               <div style={{
-                background: 'linear-gradient(transparent, rgba(0,0,0,0.8))',
-                width: '100%', textAlign: 'center', padding: '24px 4px 6px',
-                fontSize: 10, color: '#fff', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
+                background: 'linear-gradient(transparent, rgba(0,0,0,0.9))',
+                width: '100%', textAlign: 'center', padding: '24px 6px 6px',
+                fontSize: 11, color: '#fff', fontWeight: 500, 
+                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
               }}>
                 {opt.name}
               </div>
@@ -133,7 +153,7 @@ export function BackgroundSettingsModal({
         </div>
       </div>
 
-      <div style={{ padding: '20px 24px', borderTop: '1px solid #1f2937', background: '#111827' }}>
+      <div style={{ padding: '20px 24px', borderTop: '1px solid #1f2937', background: '#111827', flexShrink: 0 }}>
         <div style={{ fontSize: 13, fontWeight: 500, color: '#f8fafc', marginBottom: 12, display: 'flex', justifyContent: 'space-between' }}>
           <span>Background opacity</span>
           <span style={{ color: '#94a3b8' }}>{Math.round(bgOpacity * 100)}%</span>
@@ -142,11 +162,12 @@ export function BackgroundSettingsModal({
           <input 
             type="range" min="0.05" max="1.0" step="0.01" 
             value={bgOpacity} onChange={handleOpacityChange}
-            style={{ width: '100%', accentColor: '#7c3aed' }}
+            style={{ width: '100%', accentColor: '#7c3aed', cursor: 'pointer' }}
           />
         </div>
       </div>
     </div>
+    </>
   );
 }
 

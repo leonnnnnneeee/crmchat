@@ -4055,15 +4055,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
         </>}
       </div>
 
-      {/* RIGHT COL */}
-      {showBgSettings && (
-        <BackgroundSettingsModal
-          onClose={() => setShowBgSettings(false)}
-          bgOption={bgOption} setBgOption={setBgOption}
-          bgOpacity={bgOpacity} setBgOpacity={setBgOpacity}
-          bgCustomUrl={bgCustomUrl} setBgCustomUrl={setBgCustomUrl}
-        />
-      )}
+      {/* RIGHT COL (Removed duplicate Background Settings panel) */}
 
       {/* User Profile Preview Modal */}
       <UserProfileModal 
