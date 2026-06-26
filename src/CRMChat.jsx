@@ -1108,6 +1108,8 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
   const [showMore, setShowMore] = useState(false)
   const [fullProfile, setFullProfile] = useState(null)
   const [activeTab, setActiveTab] = useState('media')
+  const [resolving, setResolving] = useState(false)
+  const [resolveError, setResolveError] = useState(null)
   
   const isTopicInfo = data?.isTopic;
   const isGroupProfile = !isTopicInfo && data?.chatId && data?.id && data.chatId.toString() !== data.id.toString();
