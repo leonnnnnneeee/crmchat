@@ -1054,7 +1054,13 @@ async function resolveFwdInfo(client, fwdFrom) {
   
   if (forwardedFromPeerId) {
     try {
-      const entity = await client.getEntity(fwdFrom.fromId || fwdFrom.savedFromPeer);
+      const cacheKey = username || forwardedFromPeerId;
+      let entity = _entityCache[cacheKey];
+      if (!entity) {
+        entity = await withTimeout(client.getEntity(fwdFrom.fromId || fwdFrom.savedFromPeer), 2000, 'FwdEntity');
+        if (entity) _entityCache[cacheKey] = entity;
+      }
+      
       if (entity) {
         if (fromType === 'user') {
           resolvedName = entity.firstName ? `${entity.firstName} ${entity.lastName || ''}`.trim() : (entity.username || resolvedName);
@@ -1102,16 +1108,18 @@ app.get('/api/chat/messages/:id', requireAuth, async (req,res) => {
     if (maxId > 0) opts.offsetId = maxId
     
     let freshOutboxMaxId = parseInt(req.query.readOutboxMaxId) || 0;
-    try {
-      const peerDialogs = await client.invoke(new Api.messages.GetPeerDialogs({ peers: [entity] }));
-      if (peerDialogs && peerDialogs.dialogs && peerDialogs.dialogs.length > 0) {
-        freshOutboxMaxId = peerDialogs.dialogs[0].readOutboxMaxId || freshOutboxMaxId;
-      }
-    } catch (e) {
-      log('GetPeerDialogs error: ' + e.message);
-    }
     
-    const msgs = await withTimeout(client.getMessages(entity, opts), 12000, 'getMessages')
+    const msgsPromise = withTimeout(client.getMessages(entity, opts), 12000, 'getMessages');
+    const peerDialogsPromise = withTimeout(client.invoke(new Api.messages.GetPeerDialogs({ peers: [entity] })), 2000, 'GetPeerDialogs').catch(e => {
+      log('GetPeerDialogs error: ' + e.message);
+      return null;
+    });
+    
+    const [msgs, peerDialogs] = await Promise.all([msgsPromise, peerDialogsPromise]);
+    
+    if (peerDialogs && peerDialogs.dialogs && peerDialogs.dialogs.length > 0) {
+      freshOutboxMaxId = peerDialogs.dialogs[0].readOutboxMaxId || freshOutboxMaxId;
+    }
     const results = (await Promise.all(msgs.reverse()
       .map(async m => {
         const isPhoto = m.media?.className === 'MessageMediaPhoto'
