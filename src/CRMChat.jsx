@@ -608,7 +608,6 @@ function ContextMenu({x,y,msg,chatId,token,allowedReactions,readOutboxMaxId,onDe
                   </span>
                   <span style={{color:'rgba(255,255,255,0.9)'}}>
                     {timeText}
-                    {errorText && <span style={{fontSize:11, color:'rgba(255,255,255,0.4)', marginLeft: 6}}>({errorText})</span>}
                   </span>
                 </div>
                 {renderGroupReadReceipts}
