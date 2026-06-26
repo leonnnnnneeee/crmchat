@@ -2162,6 +2162,17 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
   const [chatSearchOpen,setChatSearchOpen]=useState(false)
   const [globalSearch,setGlobalSearch]=useState('')
   const [globalSearchOpen,setGlobalSearchOpen]=useState(false)
+  const [loadingChats, setLoadingChats] = useState(false)
+
+  // Background Settings State
+  const [bgOption, setBgOption] = useState(() => localStorage.getItem('crm_bg_option') || 'Default dark doodle');
+  const [bgCustomUrl, setBgCustomUrl] = useState(() => localStorage.getItem('crm_bg_custom') || '');
+  const [bgOpacity, setBgOpacity] = useState(() => {
+    const val = localStorage.getItem('crm_bg_opacity');
+    return val ? parseFloat(val) : 0.2;
+  });
+  const [showBgSettings, setShowBgSettings] = useState(false);
+
   const [lightbox,setLightbox]=useState(null)
   const [gifOpen,setGifOpen]=useState(false)
   const [emojiOpen,setEmojiOpen]=useState(false)
@@ -3328,54 +3339,59 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
     /* ── ROOT GRID ── */
     .crm-root {
       display: flex;
-      height: 100%;
-      max-height: 100%;
+      height: 100vh;
+      max-height: 100vh;
       overflow: hidden;
-      background: #120929;
+      background: #0f172a;
       font-family: 'Inter', system-ui, sans-serif;
-      color: #f0e6ff;
+      color: #f8fafc;
     }
 
     /* ── SIDEBAR ── */
     .sidebar {
       display: flex; flex-direction: column; align-items: center;
-      padding: 8px 0; gap: 4px;
-      background: #0d0618;
+      padding: 12px 0; gap: 8px;
+      background: #090e17;
       overflow: hidden;
       height: 100%;
-      width: 56px;
-      min-width: 56px;
+      width: 64px;
+      min-width: 64px;
       flex-shrink: 0;
     }
     .si {
-      width: 40px; height: 40px; border-radius: 10px;
+      width: 44px; height: 44px; border-radius: 12px;
       display: flex; align-items: center; justify-content: center;
-      cursor: pointer; font-size: 18px; color: #6b4d94;
-      transition: background .15s; flex-shrink: 0; border: none; background: transparent;
+      cursor: pointer; font-size: 20px; color: #64748b;
+      transition: all .2s; flex-shrink: 0; border: none; background: transparent;
     }
-    .si:hover, .si.on { background: #1e0a3c; color: #f0e6ff; }
+    .si:hover { background: rgba(255,255,255,0.05); color: #cbd5e1; }
+    .si.on { background: #7c3aed; color: #fff; box-shadow: 0 4px 12px rgba(124,58,237,0.3); }
 
     /* ── LEFT COL ── */
     .lc {
       display: flex; flex-direction: column;
       height: 100%; max-height: 100%;
       min-height: 0;
-      width: 320px;
-      min-width: 320px;
+      width: 340px;
+      min-width: 340px;
       flex-shrink: 0;
-      background: #1a0533;
-      border-right: 1px solid #0d0618;
+      background: #111827;
+      border-right: 1px solid #1f2937;
     }
     .ci {
-      display: flex; gap: 10px; padding: 10px 12px;
+      display: flex; gap: 12px; padding: 10px 16px;
       height: 72px;
       cursor: pointer; align-items: center;
       transition: background .1s;
       flex-shrink: 0;
       box-sizing: border-box;
+      border-radius: 8px;
+      margin: 2px 8px;
     }
-    .ci:hover { background: #1e0a3c; }
-    .ci.sel  { background: #2d1155; }
+    .ci:hover { background: #1f2937; }
+    .ci.sel  { background: linear-gradient(90deg, #7c3aed, #6d28d9); color: #fff; }
+    .ci.sel .ci-preview, .ci.sel .ci-time { color: rgba(255,255,255,0.8) !important; }
+    .ci.sel .ci-unread { background: #fff !important; color: #7c3aed !important; }
     
     .sinp {
       width: 100%;
@@ -3400,27 +3416,26 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
       min-width: 0;
       min-height: 0;
       overflow: hidden;
-      background: #120929;
+      background: #0f172a;
       position: relative;
     }
 
     /* ── CHAT HEADER ── */
     .chdr {
-      height: 58px; min-height: 58px; flex-shrink: 0;
+      height: 60px; min-height: 60px; flex-shrink: 0;
       display: flex; align-items: center;
-      padding: 0 14px; gap: 10px;
-      background: #1a0533;
-      border-bottom: 1px solid #0d0618;
+      padding: 0 16px; gap: 12px;
+      background: #111827;
+      border-bottom: 1px solid #1f2937;
     }
     .hb {
-      width: 34px; height: 34px; flex-shrink: 0;
-      background: transparent; border: none; border-radius: 8px;
+      width: 36px; height: 36px; flex-shrink: 0;
+      background: transparent; border: none; border-radius: 50%;
       cursor: pointer; display: flex; align-items: center; justify-content: center;
-      color: #9b7ec8; font-size: 16px; transition: background .1s;
+      color: #94a3b8; font-size: 18px; transition: background .2s;
     }
-    .hb:hover { background: #2d1155; }
+    .hb:hover { background: rgba(255,255,255,0.05); color: #cbd5e1; }
 
-    /* ── MESSAGE LIST ── */
     .msgs {
       flex: 1;
       min-height: 0;
@@ -3430,11 +3445,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
       display: flex;
       flex-direction: column;
       gap: 0;
-      background-color: #0e1621;
-      background-image: url('https://web.telegram.org/a/chat-bg-pattern-dark.png');
-      background-size: 512px;
-      background-attachment: scroll;
-      background-blend-mode: overlay;
+      /* Dynamic background applied inline */
     }
     .msgs::-webkit-scrollbar { width: 4px; }
     .msgs::-webkit-scrollbar-thumb { background: #2d1155; border-radius: 2px; }
@@ -3479,9 +3490,9 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
     .bbl {
       position: relative;
       max-width: 100%;
-      min-width: 60px;
+      min-width: 70px;
       width: fit-content;
-      padding: 6px 10px 8px 12px;
+      padding: 6px 12px 22px 12px; /* Increased bottom padding to prevent timestamp overlap */
       border-radius: 16px;
       font-size: 14px;
       line-height: 1.45;
@@ -3555,8 +3566,9 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
       flex-shrink: 0;
       display: flex;
       flex-direction: column;
-      background: #1a0533;
-      border-top: 1px solid #0d0618;
+      background: rgba(15, 23, 42, 0.85); /* Glassmorphism background */
+      backdrop-filter: blur(10px);
+      border-top: 1px solid rgba(255, 255, 255, 0.05);
       height: auto;
     }
 
@@ -3580,25 +3592,29 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
 
     /* Icon buttons */
     .ib {
-      width: 36px; height: 36px; flex-shrink: 0;
+      width: 40px; height: 40px; flex-shrink: 0;
       background: transparent; border: none; border-radius: 50%;
       cursor: pointer; display: flex; align-items: center; justify-content: center;
-      color: #9b7ec8; font-size: 20px; transition: background .1s;
+      color: #94a3b8; font-size: 22px; transition: background .15s, color .15s;
       margin-bottom: 2px;
     }
-    .ib:hover, .ib.on { background: rgba(255,255,255,0.08); color: #f0e6ff; }
-    .ib.g { font-size: 16px; font-weight: 700; }
+    .ib:hover, .ib.on { background: rgba(255,255,255,0.08); color: #cbd5e1; }
+    .ib.g { font-size: 18px; font-weight: 700; }
+    .ib.s { color: #7c3aed; }
+    .ib.s:hover { background: #7c3aed; color: #fff; }
 
     /* Textarea */
     .message-input {
       flex: 1; min-width: 0;
-      min-height: 40px; max-height: 120px;
-      padding: 10px 14px;
-      background: #23153d; border: none; border-radius: 20px;
-      color: #f0e6ff; font-size: 15px; font-family: inherit;
+      min-height: 44px; max-height: 140px;
+      padding: 12px 16px;
+      background: #1e293b; border: 1px solid rgba(255,255,255,0.05); border-radius: 22px;
+      color: #f8fafc; font-size: 15px; font-family: inherit;
       line-height: 20px; resize: none; outline: none;
       overflow-y: auto; box-sizing: border-box;
+      box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
     }
+    .message-input::placeholder { color: #64748b; }
     .message-input::placeholder { color: #6b4d94; }
 
     /* Send button */
@@ -3825,52 +3841,56 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
           </div>
         ))}
         <div style={{flex:1}}/>
+        <div className="si" title="Background Settings" style={{fontSize:18}} onClick={() => setShowBgSettings(true)}>🖼️</div>
         <div className="si" title="Settings" style={{fontSize:18}}>⚙️</div>
         <div style={{marginTop:6,width:34,height:34,borderRadius:"50%",background:"#7c3aed",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:700,fontSize:13}}>L</div>
       </div>
 
       {/* LEFT COL */}
       <div className="lc">
-        <div style={{height:54,minHeight:54,flexShrink:0,padding:"0 14px",
+        <div style={{height:60,minHeight:60,flexShrink:0,padding:"0 16px",
           display:"flex",alignItems:"center",justifyContent:"space-between",
-          borderBottom:"1px solid #0d0618"}}>
-          <span style={{fontSize:15,fontWeight:700,color:'#f0e6ff'}}>Messages</span>
+          borderBottom:"1px solid #1f2937"}}>
+          <div style={{display:'flex', flexDirection:'column'}}>
+            <span style={{fontSize:15,fontWeight:700,color:'#f8fafc'}}>Coincu CRM</span>
+            <span style={{fontSize:11,fontWeight:500,color:'#94a3b8'}}>Telegram connected</span>
+          </div>
           <button onClick={fetchChats} disabled={loadChats}
-            style={{background:"none",border:"none",color:'#9b7ec8',
+            style={{background:"none",border:"none",color:'#64748b',
               cursor:"pointer",fontSize:16,width:32,height:32,
               display:"flex",alignItems:"center",justifyContent:"center",
-              borderRadius:8,transition:"background .1s"}}
-            title="Refresh" onMouseEnter={e=>e.currentTarget.style.background="#2d1155"}
-            onMouseLeave={e=>e.currentTarget.style.background="none"}>
+              borderRadius:8,transition:"background .2s, color .2s"}}
+            title="Refresh" onMouseEnter={e=>{e.currentTarget.style.background="rgba(255,255,255,0.05)";e.currentTarget.style.color="#cbd5e1"}}
+            onMouseLeave={e=>{e.currentTarget.style.background="none";e.currentTarget.style.color="#64748b"}}>
             🔄
           </button>
         </div>
-        {/* Folder tabs */}
+        {/* Folder tabs as pills */}
         <div style={{
-          display:'flex',flexShrink:0,
-          height:38,minHeight:38,
-          borderBottom:'1px solid #0d0618',
+          display:'flex',flexShrink:0, gap: 8,
+          padding: '12px 16px',
           overflowX:'auto',overflowY:'hidden',
           scrollbarWidth:'none',
         }}>
           {[['all','All'],['unread','Unread'],['groups','Groups'],['personal','DMs'],['archived','Archive']].map(([fid,flbl])=>(
             <div key={fid} onClick={()=>setFolder(fid)}
               style={{
-                display:'flex',alignItems:'center',gap:4,
-                padding:'0 10px',
-                height:'100%',
+                display:'flex',alignItems:'center',gap:6,
+                padding:'6px 14px',
                 cursor:'pointer',
-                fontSize:12,fontWeight:600,
+                fontSize:13,fontWeight:600,
                 flexShrink:0,whiteSpace:'nowrap',
-                color:folder===fid?'#a78bfa':'#6b4d94',
-                borderBottom:folder===fid?'2px solid #7c3aed':'2px solid transparent',
+                color:folder===fid?'#fff':'#94a3b8',
+                background:folder===fid?'#7c3aed':'rgba(255,255,255,0.05)',
+                borderRadius:20,
                 boxSizing:'border-box',
-                transition:'color .15s',
+                transition:'all .2s',
               }}>
               {flbl}
               {fid==='unread'&&chats.filter(c=>c.unread>0).length>0&&(
                 <span style={{
-                  background:'#7c3aed',color:'#fff',
+                  background:folder===fid?'#fff':'#7c3aed',
+                  color:folder===fid?'#7c3aed':'#fff',
                   borderRadius:99,padding:'1px 5px',
                   fontSize:10,fontWeight:700,
                   lineHeight:'14px',display:'inline-block',
@@ -3881,9 +3901,9 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
             </div>
           ))}
         </div>
-        <div style={{padding:"12px 24px",borderBottom:`1px solid #0d0618`}}>
-          <input type="text" placeholder="Search" style={{width:"100%",padding:"10px 16px",background:'#120929',border:"none",borderRadius:20,color:"#fff",fontSize:14,outline:"none",fontFamily:"inherit"}}
-            value={search} onChange={e=>setSearch(e.target.value)} />
+        <div style={{padding:"0 16px 12px",borderBottom:`1px solid #1f2937`}}>
+          <input type="text" placeholder="Search" style={{width:"100%",padding:"10px 16px",background:'rgba(255,255,255,0.05)',border:"none",borderRadius:12,color:"#f8fafc",fontSize:14,outline:"none",fontFamily:"inherit"}}
+            value={search === 'null' ? '' : search} onChange={e=>setSearch(e.target.value)} />
           {search.trim() && (
             <div style={{fontSize: 11, color: '#6b4d94', marginTop: 8, textAlign: 'center'}}>
               {isGlobalSearching ? 'Searching all chats...' : null}
@@ -3909,27 +3929,27 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
                 </div>
                 <div style={{flex:1,minWidth:0,display:"flex",flexDirection:"column",justifyContent:"center",gap:4}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                    <div style={{fontWeight:600,fontSize:15,color:isSel?"#fff":'#f0e6ff',overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,minWidth:0}}>
+                    <div style={{fontWeight:600,fontSize:15,color:isSel?"#fff":'#f8fafc',overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,minWidth:0}}>
                       {chat.isGroup ? <span style={{fontSize:13,marginRight:4}}>👥</span> : chat.isChannel ? <span style={{fontSize:13,marginRight:4}}>📢</span> : null}
                       {chat.name}
                     </div>
                     <div style={{display:"flex",alignItems:"center",gap:4,flexShrink:0,marginLeft:8}}>
                       {chat.isPinned || pinnedChats.has(chat.id) ? (
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{color: '#6b4d94', opacity: isSel ? 0.8 : 0.5}}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{color: '#64748b', opacity: isSel ? 0.8 : 0.5}}>
                           <path d="M12 17v5" />
                           <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z" />
                         </svg>
                       ) : null}
-                      <span style={{fontSize:12,color:isSel?"rgba(255,255,255,.7)":'#6b4d94',marginLeft:4}}>{fmtTime(chat.date)}</span>
+                      <span className="ci-time" style={{fontSize:12,color:isSel?"rgba(255,255,255,.7)":'#64748b',marginLeft:4}}>{fmtTime(chat.date)}</span>
                     </div>
                   </div>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                    <div style={{fontSize:14,color:isSel?"rgba(255,255,255,.8)":'#9b7ec8',overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,minWidth:0}}>
+                    <div className="ci-preview" style={{fontSize:14,color:isSel?"rgba(255,255,255,.8)":'#94a3b8',overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,minWidth:0}}>
                       {chat.lastMsg||"No messages"}
                     </div>
                     <div style={{display:"flex",alignItems:"center",gap:4,flexShrink:0,marginLeft:6}}>
                       {chat.unread>0 && !readChats.has(chat.id) && (
-                        <div style={{background:isSel?"#fff":'#7c3aed',color:isSel?"#7c3aed":"#fff",fontSize:11,fontWeight:700,padding:"2px 7px",borderRadius:10,minWidth:22,textAlign:"center"}}>
+                        <div className="ci-unread" style={{background:isSel?"#fff":'#7c3aed',color:isSel?"#7c3aed":"#fff",fontSize:11,fontWeight:700,padding:"2px 7px",borderRadius:10,minWidth:22,textAlign:"center"}}>
                           {chat.unread}
                         </div>
                       )}
@@ -4013,13 +4033,27 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
               }}
             />
           )}
-          <MessageList {...chatProps} />
-          <Composer {...chatProps} />
+          
+          <div style={{
+            position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 0, pointerEvents: 'none',
+            opacity: bgOpacity,
+            background: bgOption === 'Custom' && bgCustomUrl ? `url(${bgCustomUrl}) center/cover` : 
+                        (BACKGROUND_OPTIONS.find(o => o.name === bgOption)?.image.startsWith('linear-gradient') ? 
+                         BACKGROUND_OPTIONS.find(o => o.name === bgOption)?.image : 
+                         (BACKGROUND_OPTIONS.find(o => o.name === bgOption)?.image ? `url(${BACKGROUND_OPTIONS.find(o => o.name === bgOption)?.image}) center/cover` : BACKGROUND_OPTIONS.find(o => o.name === bgOption)?.color)),
+            ...(BACKGROUND_OPTIONS.find(o => o.name === bgOption)?.extraStyle || {})
+          }} />
+
+          <div style={{ zIndex: 1, display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+            <MessageList {...chatProps} />
+          </div>
+          <div style={{ zIndex: 1 }}>
+            <Composer {...chatProps} />
+          </div>
         </>}
       </div>
 
-      {/* RIGHT COL */}
-      <CRMRightPanel {...chatProps} />
+      {/* RIGHT COL (Removed for cleaner chat UI) */}
 
       {/* User Profile Preview Modal */}
       <UserProfileModal 
@@ -4275,6 +4309,16 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
           onClose={()=>setCtxMenu(null)}
         />
       )}
+
+      {showBgSettings && (
+        <BackgroundSettingsModal
+          onClose={() => setShowBgSettings(false)}
+          bgOption={bgOption} setBgOption={setBgOption}
+          bgOpacity={bgOpacity} setBgOpacity={setBgOpacity}
+          bgCustomUrl={bgCustomUrl} setBgCustomUrl={setBgCustomUrl}
+        />
+      )}
+
     </div>
   </>)
 }
