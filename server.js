@@ -3,6 +3,10 @@ const express = require('express')
 const path = require('path')
 const fs = require('fs')
 const os = require('os')
+
+// Fix JSON.stringify for BigInts (Telegram API returns many BigInts)
+BigInt.prototype.toJSON = function() { return this.toString() }
+
 const axios = require('axios')
 const { TelegramClient, Api } = require('telegram')
 const { StringSession } = require('telegram/sessions')
