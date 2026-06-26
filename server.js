@@ -507,6 +507,39 @@ app.get('/api/chat/members/:id', requireAuth, async (req, res) => {
   }
 })
 
+// ── RESOLVE ENTITY ──
+app.get('/api/telegram/entities/resolve', requireAuth, async (req, res) => {
+  if (!_session) return res.json({ok: false, error: 'No session'});
+  try {
+    const client = await getClient();
+    const query = req.query.username || req.query.peerId;
+    if (!query) return res.status(400).json({ok: false, error: 'Missing username or peerId'});
+
+    const entity = await resolveEntity(client, query, req.query.username);
+    if (!entity || typeof entity === 'string') {
+       return res.status(404).json({ok: false, code: 'ENTITY_RESOLVE_FAILED', error: 'Could not resolve Telegram user'});
+    }
+    
+    let type = 'unknown';
+    if (entity.className === 'User') type = 'user';
+    else if (entity.className === 'Channel') type = 'channel';
+    else if (entity.className === 'Chat') type = 'chat';
+    
+    res.json({
+      ok: true,
+      type,
+      userId: entity.id?.toString(),
+      accessHash: entity.accessHash?.toString(),
+      username: entity.username || null,
+      firstName: entity.firstName || null,
+      lastName: entity.lastName || null,
+      title: entity.title || null
+    });
+  } catch(e) {
+    res.status(500).json({ ok: false, code: 'ENTITY_RESOLVE_FAILED', error: e.message });
+  }
+});
+
 // ── FULL PROFILE ──
 app.get('/api/chat/profile/:id', requireAuth, async (req, res) => {
   if (!_session) return res.json({error: 'No session'})

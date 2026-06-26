@@ -1308,14 +1308,64 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
 
   if (!data) return null
 
-  const handleMessage = () => {
-    const existing = chats.find(c => c.isUser && c.id === data.id)
+  const [resolving, setResolving] = useState(false);
+
+  const handleMessage = async () => {
+    const existing = chats.find(c => c.id === data.id)
     if (existing) {
       setSel(existing)
       onClose()
       setTimeout(() => inputRef?.current?.focus(), 100)
     } else {
-      alert('Cannot open DM, user info missing / backend API pending')
+      console.log('[Fwd Debug] handleMessage clicked for:', data);
+      let finalAccessHash = data.accessHash;
+      let finalTitle = data.name || data.title;
+      let finalUsername = data.username;
+      
+      if (!finalAccessHash && (data.username || data.id)) {
+        setResolving(true);
+        try {
+          const queryParam = data.username ? `username=${data.username}` : `peerId=${data.id}`;
+          console.log(`[Fwd Debug] Resolving entity via backend: ${queryParam}`);
+          const res = await fetch(`/api/telegram/entities/resolve?${queryParam}`, { headers: {'x-auth-token': token} });
+          const json = await res.json();
+          console.log(`[Fwd Debug] Resolve response:`, json);
+          
+          if (json.ok) {
+            finalAccessHash = json.accessHash;
+            if (json.username) finalUsername = json.username;
+            if (json.firstName) {
+               finalTitle = json.firstName + (json.lastName ? ' ' + json.lastName : '');
+            } else if (json.title) {
+               finalTitle = json.title;
+            }
+          }
+        } catch (e) {
+          console.log('[Fwd Debug] Resolve failed:', e);
+        }
+        setResolving(false);
+      }
+      
+      if (!finalAccessHash && !finalUsername) {
+        toast.error('Cannot message: Telegram user cannot be resolved.');
+        return;
+      }
+      
+      const newChat = {
+        id: data.id,
+        title: finalTitle,
+        isUser: !data.isGroup && !data.isChannel,
+        isGroup: data.isGroup,
+        isChannel: data.isChannel,
+        username: finalUsername,
+        accessHash: finalAccessHash
+      };
+      
+      console.log('[Fwd Debug] Opening new DM chat object:', newChat);
+      
+      setSel(newChat);
+      onClose();
+      setTimeout(() => inputRef?.current?.focus(), 100);
     }
   }
 
@@ -1381,9 +1431,11 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
           {/* Action Buttons Row */}
           {!isTopicInfo && (
           <div style={{display:'flex', justifyContent:'space-around', padding:'12px 20px', borderBottom:'1px solid rgba(124,58,237,.2)'}}>
-            <div onClick={handleMessage} style={{display:'flex', flexDirection:'column', alignItems:'center', cursor:'pointer', color:'#7c3aed', gap:4}}>
-              <div style={{width:40,height:40,borderRadius:'50%',background:'rgba(124,58,237,.1)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18}}>💬</div>
-              <span style={{fontSize:12}}>Message</span>
+            <div onClick={resolving ? undefined : handleMessage} style={{display:'flex', flexDirection:'column', alignItems:'center', cursor: resolving ? 'wait' : 'pointer', color:'#7c3aed', gap:4}}>
+              <div style={{width:40,height:40,borderRadius:'50%',background:'rgba(124,58,237,.1)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18}}>
+                {resolving ? <span style={{display: 'inline-block', animation: 'spin 1s linear infinite'}}>⏳</span> : '💬'}
+              </div>
+              <span style={{fontSize:12}}>{resolving ? 'Opening...' : 'Message'}</span>
             </div>
             <div style={{display:'flex', flexDirection:'column', alignItems:'center', cursor:'not-allowed', color:'#9b7ec8', gap:4, opacity: 0.4}}>
               <div style={{width:40,height:40,borderRadius:'50%',background:'rgba(124,58,237,.1)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18}}>🔕</div>
