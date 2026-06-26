@@ -90,6 +90,7 @@ export default function MessageList(props) {
                 <div style={{fontSize:12,color:TG.textMuted}}>Start with a template or AI suggest</div>
               </div>
             )}
+            <div className="msgs-inner">
             {msgs.map((msg,i)=>{
               const prev=msgs[i-1]
               const next=msgs[i+1]
@@ -217,6 +218,7 @@ export default function MessageList(props) {
                         {(msg.webPage || (msg.text && (msg.text.includes('http://') || msg.text.includes('https://')))) && (
                           <LinkPreview webPage={msg.webPage} url={(msg.text?.match(/https?:\/\/\S+/)||[''])[0]}/>
                         )}
+                        <span className="time-spacer" style={{display: 'inline-block', width: msg.fromMe ? '60px' : '45px', height: '10px', float: 'none', clear: 'both'}} />
                         <div className="bfoot">
                           {(msg.edited||editedMsgs[msg.id])&&(
                             <span style={{fontSize:11,color:'rgba(255,255,255,.5)'}}>edited</span>
@@ -227,8 +229,12 @@ export default function MessageList(props) {
                             const isRead = msg.normalizedStatus === 'seen' || msg.id <= maxId;
                             const status = msg.pending ? 'sending' : msg.failed ? 'failed' : isRead ? 'read' : 'sent';
                             
-                            // Debug logs as requested
-                            console.log(`[Status Debug] msgId=${msg.id} isOutgoing=${msg.fromMe} rawStatus=${msg.pending ? 'pending' : msg.failed ? 'failed' : 'sent'} normalizedStatus=${status} maxReadId=${maxId} renderedIcon=${status} seenAt=unavailable tooltipOpened=${seenTooltip?.msgId === msg.id}`);
+                            if (i === msgs.length - 1) {
+                              const renderedBubbleWidth = document.getElementById('msg-'+msg.id)?.querySelector('.bbl')?.offsetWidth;
+                              const chatContainerWidth = msgsRef.current?.offsetWidth;
+                              const bubbleMaxWidth = chatContainerWidth ? Math.min(chatContainerWidth * 0.68, 520) : null;
+                              console.log(`[Layout Debug] messageId=${msg.id} isOutgoing=${msg.fromMe} groupedWithPrevious=${isSameGroup} chatContainerWidth=${chatContainerWidth} bubbleMaxWidth=${bubbleMaxWidth} renderedBubbleWidth=${renderedBubbleWidth}`);
+                            }
                             
                             return (
                               <span 
@@ -321,6 +327,7 @@ export default function MessageList(props) {
                 </div>
               )
             })}
+            </div>
             <div style={{height: 80, flexShrink: 0}} />
             <div ref={endRef}/>
           </div>

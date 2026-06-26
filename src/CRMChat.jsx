@@ -3202,6 +3202,14 @@ export default function CRMChat({ token, onAuthFailed }) {
     }
     .msgs::-webkit-scrollbar { width: 4px; }
     .msgs::-webkit-scrollbar-thumb { background: #2d1155; border-radius: 2px; }
+    
+    .msgs-inner {
+      max-width: 730px;
+      width: 100%;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+    }
 
     /* ── MESSAGE ROW ── */
     .msg-row {
@@ -3239,7 +3247,7 @@ export default function CRMChat({ token, onAuthFailed }) {
       max-width: 100%;
       min-width: 60px;
       width: fit-content;
-      padding: 6px 12px 8px;
+      padding: 6px 10px 8px 12px;
       border-radius: 16px;
       font-size: 14px;
       line-height: 1.45;
@@ -3271,13 +3279,13 @@ export default function CRMChat({ token, onAuthFailed }) {
       display: flex;
       justify-content: flex-end;
       align-items: center;
-      gap: 3px;
-      margin-top: 4px;
-      margin-left: 14px;
+      gap: 4px;
+      position: absolute;
+      bottom: 4px;
+      right: 8px;
       white-space: nowrap;
       font-size: 11px;
       color: rgba(255, 255, 255, 0.5);
-      float: right;
     }
 
     /* ── DATE SEPARATOR ── */
