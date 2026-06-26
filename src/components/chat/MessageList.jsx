@@ -287,7 +287,7 @@ export default function MessageList(props) {
                         {(msg.webPage || (msg.text && (msg.text.includes('http://') || msg.text.includes('https://')))) && (
                           <LinkPreview webPage={msg.webPage} url={(msg.text?.match(/https?:\/\/\S+/)||[''])[0]}/>
                         )}
-                        <span className="time-spacer" style={{display: 'inline-block', width: msg.fromMe ? '60px' : '45px', height: '15px', float: 'right', marginLeft: '4px'}} />
+                        <span className="time-spacer" style={{display: 'inline-block', width: msg.fromMe ? '78px' : '52px', height: '15px', float: 'none'}} />
                         <div className="bfoot">
                           {(msg.edited||editedMsgs[msg.id])&&(
                             <span style={{fontSize:11,color:'rgba(255,255,255,.5)'}}>edited</span>
