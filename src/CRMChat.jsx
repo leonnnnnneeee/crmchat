@@ -9,6 +9,7 @@ import Composer from './components/chat/Composer';
 import CRMRightPanel from './components/chat/CRMRightPanel';
 import PinnedMessageBar from './components/chat/PinnedMessageBar';
 import TranslateBar from './components/chat/TranslateBar';
+import { BackgroundSettingsModal, BACKGROUND_OPTIONS } from './components/chat/BackgroundSettingsModal';
 
 const translationCache = new Map();
 

@@ -106,7 +106,7 @@ export function BackgroundSettingsModal({
                 height: 140, borderRadius: 12, border: '2px dashed #334155',
                 display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
                 cursor: 'pointer', color: '#94a3b8', transition: 'border-color .2s',
-                background: bgOption === 'Custom' && bgCustomUrl ? \`url(\${bgCustomUrl}) center/cover\` : 'transparent',
+                background: bgOption === 'Custom' && bgCustomUrl ? `url(${bgCustomUrl}) center/cover` : 'transparent',
                 borderColor: bgOption === 'Custom' ? '#7c3aed' : '#334155'
               }}
             >
@@ -129,7 +129,7 @@ export function BackgroundSettingsModal({
                 style={{
                   height: 140, borderRadius: 12, cursor: 'pointer',
                   border: bgOption === opt.name ? '3px solid #7c3aed' : '3px solid transparent',
-                  background: opt.image.startsWith('linear-gradient') ? opt.image : (opt.image ? \`url(\${opt.image}) center/cover\` : opt.color),
+                  background: opt.image.startsWith('linear-gradient') ? opt.image : (opt.image ? `url(${opt.image}) center/cover` : opt.color),
                   backgroundColor: opt.color,
                   ...(opt.extraStyle || {}),
                   position: 'relative', overflow: 'hidden',
