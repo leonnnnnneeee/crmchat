@@ -683,6 +683,11 @@ const matchesMediaFilter = (m, filterType) => {
   if (filterType === 'gifs') return m.media?.document?.mimeType === 'video/mp4' // simplistic
   return false
 };
+
+if (!global.mediaMessageCache) {
+  global.mediaMessageCache = new Map();
+}
+
 const sharedMediaHandler = async (req, res) => {
   if (!_session) return res.json({error: 'No session'})
   try {
@@ -746,6 +751,11 @@ const sharedMediaHandler = async (req, res) => {
       msgs = await client.getMessages(entity, params)
     }
 
+    if (global.mediaMessageCache.size > 2000) global.mediaMessageCache.clear();
+    msgs.forEach(m => {
+      if (m.media) global.mediaMessageCache.set(`${chatIdStr}_${m.id}`, m);
+    });
+
     const results = msgs.map(formatMediaResult)
     const nextOffsetId = results.length > 0 ? results[results.length - 1].id : null
     const hasMore = results.length === limit
@@ -794,6 +804,11 @@ const sharedMediaHandler = async (req, res) => {
             attempts++;
         }
         
+        if (global.mediaMessageCache.size > 2000) global.mediaMessageCache.clear();
+        matched.forEach(m => {
+          if (m.media) global.mediaMessageCache.set(`${req.params.id || req.query.chatId}_${m.id}`, m);
+        });
+
         const results = matched.map(formatMediaResult).slice(0, limit);
         const hasMore = fetchedMsgs && fetchedMsgs.length === 100;
         const nextCursor = results.length > 0 ? results[results.length - 1].id : currentOffsetId;
@@ -885,11 +900,14 @@ app.get(['/api/chat/media/:chatId/:msgId', '/api/telegram/media/audio'], require
     const client = await getClient()
     const entity = await resolveEntity(client, chatId)
 
-    const messages = await client.getMessages(entity, { ids: [msgId] })
-    if (!messages || messages.length === 0 || !messages[0]) {
-      return res.status(404).json({error: 'Message not found'})
+    let message = global.mediaMessageCache ? global.mediaMessageCache.get(`${chatId}_${msgId}`) : null;
+    if (!message) {
+      const messages = await client.getMessages(entity, { ids: [msgId] })
+      if (!messages || messages.length === 0 || !messages[0]) {
+        return res.status(404).json({error: 'Message not found'})
+      }
+      message = messages[0]
     }
-    const message = messages[0]
 
     if (!message.media) {
       return res.status(404).json({error: 'No media found in message'})
