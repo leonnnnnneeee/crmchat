@@ -2823,25 +2823,13 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
       console.log('backendValidationResult', d.code || 'allowed');
       console.log('finalReactionsFromTelegram', d.tgRes || 'unchanged');
       if (!d.ok && !d.unchanged) {
-        if (d.error && d.error.includes('REACTION_INVALID') || d.code === 'REACTION_INVALID') {
-          alert('This reaction is not allowed in this chat (REACTION_INVALID).');
-          // Update cache to remove this emoji if it was mistakenly cached as allowed
-          setAllowedReactionsCache(prev => {
-            const current = prev[targetChatId];
-            if (current && current.ok && !current.allowAll && current.reactions) {
-              return {
-                ...prev,
-                [targetChatId]: {
-                  ...current,
-                  reactions: current.reactions.filter(e => !compareEmoji(e, emoji))
-                }
-              };
-            }
-            return prev;
-          });
-          fetchAllowedReactions(targetChatId, true);
+        if (d.error && (d.error.includes('REACTION_INVALID') || d.code === 'REACTION_INVALID')) {
+          toast.warning('Telegram không cho phép icon này (cần Premium hoặc bị cấm), nhưng đã lưu hiển thị tạm.');
+          // Giữ nguyên giao diện mượt (optimistic UI), không rollback
+          delete pendingReactionsRef.current[msgId];
+          return;
         } else {
-          alert('Lỗi thả emoji từ Telegram: ' + (d.error || 'Unknown error'));
+          toast.error('Lỗi thả emoji từ Telegram: ' + (d.error || 'Unknown error'));
         }
         delete pendingReactionsRef.current[msgId];
         setMsgs(prev => prev.map(m => m.id === msgId ? originalMsg : m));
@@ -2849,7 +2837,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
     } catch (e) {
       console.log(`[Reaction Sync] Telegram API error:`, e.message);
       console.error('API response/error', e);
-      alert('Lỗi thả emoji: ' + e.message);
+      toast.error('Lỗi thả emoji: ' + e.message);
       delete pendingReactionsRef.current[msgId];
       setMsgs(prev => prev.map(m => m.id === msgId ? originalMsg : m));
     }
