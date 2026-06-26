@@ -28,8 +28,19 @@ export function BackgroundSettingsModal({
   bgOpacity, setBgOpacity,
   bgCustomUrl, setBgCustomUrl
 }) {
+  const [activeTab, setActiveTab] = React.useState('Presets');
   const fileInputRef = useRef(null);
   const [errorMsg, setErrorMsg] = React.useState('');
+
+  const GALLERY_OPTIONS = [
+    { name: 'Bernabeu', image: 'url("/backgrounds/bernabeu.jpg") center/cover' },
+    { name: 'Crest', image: 'url("/backgrounds/bg_crest.png") center/cover' },
+    { name: 'Squad', image: 'url("/backgrounds/bg_squad.png") center/cover' },
+    { name: 'Stadium', image: 'url("/backgrounds/bg_stadium.jpg") center/cover' },
+    { name: 'Celebration', image: 'url("/backgrounds/celebration.jpg") center/cover' },
+    { name: 'Hala Madrid', image: 'url("/backgrounds/hala_madrid.jpg") center/cover' },
+    { name: 'Real Squad', image: 'url("/backgrounds/squad.jpg") center/cover' },
+  ];
 
   const handleFileUpload = (e) => {
     const file = e.target.files?.[0];
@@ -97,10 +108,11 @@ export function BackgroundSettingsModal({
 
       <div style={{ display: 'flex', borderBottom: '1px solid #1f2937', flexShrink: 0 }}>
         {['Presets', 'Gallery', 'Upload'].map(tab => (
-          <div key={tab} style={{
+          <div key={tab} onClick={() => setActiveTab(tab)} style={{
             flex: 1, textAlign: 'center', padding: '12px 0', fontSize: 13, fontWeight: 600, cursor: 'pointer',
-            color: tab === 'Presets' ? '#7c3aed' : '#94a3b8',
-            borderBottom: tab === 'Presets' ? '2px solid #7c3aed' : '2px solid transparent'
+            color: activeTab === tab ? '#7c3aed' : '#94a3b8',
+            borderBottom: activeTab === tab ? '2px solid #7c3aed' : '2px solid transparent',
+            transition: 'all 0.2s'
           }}>
             {tab}
           </div>
@@ -114,43 +126,137 @@ export function BackgroundSettingsModal({
       )}
 
       <div style={{ padding: '16px', overflowY: 'auto', flex: 1 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
-          {BACKGROUND_OPTIONS.map((opt) => (
-            <div 
-              key={opt.name}
-              onClick={() => handleSelectOption(opt.name)}
-              title={opt.name}
-              style={{
-                height: 100, borderRadius: 8, cursor: 'pointer',
-                border: bgOption === opt.name ? '2px solid #7c3aed' : '2px solid transparent',
-                background: opt.image !== 'none' ? opt.image : opt.color,
-                backgroundColor: opt.color,
-                ...(opt.extraStyle || {}),
-                position: 'relative', overflow: 'hidden',
-                display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
-                boxSizing: 'border-box'
-              }}
-            >
-              <div style={{
-                background: 'linear-gradient(transparent, rgba(0,0,0,0.9))',
-                width: '100%', textAlign: 'center', padding: '24px 6px 6px',
-                fontSize: 11, color: '#fff', fontWeight: 500, 
-                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
-              }}>
-                {opt.name}
-              </div>
-              {bgOption === opt.name && (
+        {activeTab === 'Presets' && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+            {BACKGROUND_OPTIONS.map((opt) => (
+              <div 
+                key={opt.name}
+                onClick={() => handleSelectOption(opt.name)}
+                title={opt.name}
+                style={{
+                  height: 100, borderRadius: 8, cursor: 'pointer',
+                  border: bgOption === opt.name ? '2px solid #7c3aed' : '2px solid transparent',
+                  background: opt.image !== 'none' ? opt.image : opt.color,
+                  backgroundColor: opt.color,
+                  ...(opt.extraStyle || {}),
+                  position: 'relative', overflow: 'hidden',
+                  display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+                  boxSizing: 'border-box'
+                }}
+              >
                 <div style={{
-                  position: 'absolute', top: 6, right: 6, 
-                  background: '#7c3aed', color: '#fff', 
-                  borderRadius: '50%', width: 18, height: 18, 
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 10, fontWeight: 'bold'
-                }}>✓</div>
-              )}
+                  background: 'linear-gradient(transparent, rgba(0,0,0,0.9))',
+                  width: '100%', textAlign: 'center', padding: '24px 6px 6px',
+                  fontSize: 11, color: '#fff', fontWeight: 500, 
+                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
+                }}>
+                  {opt.name}
+                </div>
+                {bgOption === opt.name && (
+                  <div style={{
+                    position: 'absolute', top: 6, right: 6, 
+                    background: '#7c3aed', color: '#fff', 
+                    borderRadius: '50%', width: 18, height: 18, 
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 10, fontWeight: 'bold'
+                  }}>✓</div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {activeTab === 'Gallery' && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+            {GALLERY_OPTIONS.map((opt) => (
+              <div 
+                key={opt.name}
+                onClick={() => handleSelectOption(opt.name)}
+                title={opt.name}
+                style={{
+                  height: 100, borderRadius: 8, cursor: 'pointer',
+                  border: bgOption === opt.name ? '2px solid #7c3aed' : '2px solid transparent',
+                  background: opt.image,
+                  backgroundColor: '#090e17',
+                  position: 'relative', overflow: 'hidden',
+                  display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+                  boxSizing: 'border-box'
+                }}
+              >
+                <div style={{
+                  background: 'linear-gradient(transparent, rgba(0,0,0,0.9))',
+                  width: '100%', textAlign: 'center', padding: '24px 6px 6px',
+                  fontSize: 11, color: '#fff', fontWeight: 500, 
+                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
+                }}>
+                  {opt.name}
+                </div>
+                {bgOption === opt.name && (
+                  <div style={{
+                    position: 'absolute', top: 6, right: 6, 
+                    background: '#7c3aed', color: '#fff', 
+                    borderRadius: '50%', width: 18, height: 18, 
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 10, fontWeight: 'bold'
+                  }}>✓</div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {activeTab === 'Upload' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16, alignItems: 'center', marginTop: 10 }}>
+            <input 
+              type="file" 
+              accept="image/*" 
+              ref={fileInputRef}
+              onChange={handleFileUpload}
+              style={{ display: 'none' }}
+            />
+            <div 
+              style={{
+                width: '100%', height: 160, border: '2px dashed #3a3a3c', borderRadius: 12,
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer', background: 'rgba(255,255,255,0.02)', color: '#94a3b8', gap: 12,
+                transition: 'border 0.2s, color 0.2s'
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#7c3aed'; e.currentTarget.style.color = '#fff'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#3a3a3c'; e.currentTarget.style.color = '#94a3b8'; }}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <div style={{ fontSize: 32 }}>☁️</div>
+              <div style={{ fontSize: 14, fontWeight: 500 }}>Click to browse image</div>
+              <div style={{ fontSize: 12, opacity: 0.7 }}>Max file size: 5MB</div>
             </div>
-          ))}
-        </div>
+
+            {bgCustomUrl && (
+              <div style={{ width: '100%', marginTop: 20 }}>
+                <div style={{ fontSize: 13, color: '#f8fafc', marginBottom: 8, fontWeight: 600 }}>Current Upload:</div>
+                <div 
+                  onClick={() => handleSelectOption('Custom')}
+                  style={{
+                    width: '100%', height: 120, borderRadius: 12, cursor: 'pointer',
+                    background: `url("${bgCustomUrl}") center/cover`,
+                    border: bgOption === 'Custom' ? '3px solid #7c3aed' : '2px solid transparent',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                    position: 'relative'
+                  }}
+                >
+                  {bgOption === 'Custom' && (
+                    <div style={{
+                      position: 'absolute', top: 8, right: 8, 
+                      background: '#7c3aed', color: '#fff', 
+                      borderRadius: '50%', width: 22, height: 22, 
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 12, fontWeight: 'bold', boxShadow: '0 2px 8px rgba(0,0,0,0.4)'
+                    }}>✓</div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <div style={{ padding: '20px 24px', borderTop: '1px solid #1f2937', background: '#111827', flexShrink: 0 }}>
