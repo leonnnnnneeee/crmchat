@@ -3365,7 +3365,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
       cursor: pointer; font-size: 20px; color: #64748b;
       transition: all .2s; flex-shrink: 0; border: none; background: transparent;
     }
-    .si:hover { background: rgba(255,255,255,0.05); color: #cbd5e1; }
+    .si:hover { background: rgba(124,58,237,0.15); color: #a78bfa; }
     .si.on { background: #7c3aed; color: #fff; box-shadow: 0 4px 12px rgba(124,58,237,0.3); }
 
     /* ── LEFT COL ── */
@@ -3835,16 +3835,10 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
 
       {/* SIDEBAR */}
       <div className="sidebar">
-        <div style={{width:36,height:36,background:'#7c3aed',borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:15,marginBottom:10}}>⚡</div>
-        {[["🏠","Dashboard"],["👥","Leads"],["💬","Chat"],["📊","Reports"],["📈","Analytics"]].map(([icon,label],i)=>(
-          <div key={label} className={`si${i===2?" on":""}`} title={label} style={{fontSize:18}}>
-            {icon}
-          </div>
-        ))}
+        <div title="Coincu App" style={{width:36,height:36,background:'#7c3aed',borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:15,marginBottom:10,cursor:"pointer",boxShadow:"0 4px 12px rgba(124,58,237,0.3)"}}>⚡</div>
         <div style={{flex:1}}/>
-        <div className="si" title="Background Settings" style={{fontSize:18}} onClick={() => setShowBgSettings(true)}>🖼️</div>
-        <div className="si" title="Settings" style={{fontSize:18}}>⚙️</div>
-        <div style={{marginTop:6,width:34,height:34,borderRadius:"50%",background:"#7c3aed",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:700,fontSize:13}}>L</div>
+        <div className={`si${showBgSettings ? ' on' : ''}`} title="Background Settings" style={{fontSize:18}} onClick={() => setShowBgSettings(true)}>🖼️</div>
+        <div style={{marginTop:6,width:34,height:34,borderRadius:"50%",background:"#7c3aed",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}} title="Account">L</div>
       </div>
 
       {/* LEFT COL */}
