@@ -1124,9 +1124,12 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
   };
   
   useEffect(() => {
-    if (!data?.chatId) return
+    const targetId = data?.chatId || data?.id;
+    console.log('[Debug] UserProfileModal selectedUserId/targetId:', targetId, '| raw sender object:', data);
+    if (!targetId) return;
     let isMounted = true
-    fetch(`/api/chat/profile/${data.chatId}`, { headers: {'x-auth-token': token} })
+    console.log(`[Debug] Resolve endpoint URL: /api/chat/profile/${targetId}`);
+    fetch(`/api/chat/profile/${targetId}`, { headers: {'x-auth-token': token} })
       .then(async r => {
         const ct = r.headers.get('content-type');
         if (ct && ct.includes('text/html')) throw new Error('API route not found or backend returned HTML');
@@ -1137,8 +1140,13 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
         }
         return r.json();
       })
-      .then(d => { if(isMounted && d.ok && d.full) setFullProfile(d.full) })
-      .catch(e => console.error(e))
+      .then(d => { 
+        if(isMounted && d.ok && d.full) {
+          console.log('[Debug] Resolved profile object:', d.full);
+          setFullProfile(d.full);
+        }
+      })
+      .catch(e => console.error('[Debug] Resolve error:', e))
     return () => { isMounted = false }
   }, [data?.chatId, token])
 
@@ -1257,6 +1265,8 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
     const accessHashQuery = (isGroupProfile && data.accessHash) ? `&accessHash=${data.accessHash}` : '';
     const topicIdQuery = isTopicInfo ? `&topicId=${data.topicId}` : '';
     
+    console.log(`[Debug] Media tab type: ${tab} | API URL: /api/telegram/shared-media?chatId=${data.chatId}&type=${tab}${fromUserQuery}${accessHashQuery}${topicIdQuery}&cursor=${tabOffsetId[tab]}&limit=30`);
+    
     fetch(`/api/telegram/shared-media?chatId=${data.chatId}&type=${tab}${fromUserQuery}${accessHashQuery}${topicIdQuery}&cursor=${tabOffsetId[tab]}&limit=30`, { headers: {'x-auth-token': token} })
       .then(async r => {
         const ct = r.headers.get('content-type');
@@ -1272,6 +1282,7 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
         if (isMounted && d.ok) {
            const items = d.items || d.media || [];
            const nextCursor = d.nextCursor || d.nextOffsetId || 0;
+           console.log(`[Debug] Media API status success: ${tab} loaded ${items.length} items`);
            setTabData(prev => {
              // Deduplicate by id just in case
              const existingIds = new Set(prev[tab].map(m => m.id));
@@ -1288,11 +1299,12 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
            setTabHasMore(prev => ({...prev, [tab]: d.hasMore}));
            setTabOffsetId(prev => ({...prev, [tab]: nextCursor}));
         } else if (isMounted && !d.ok) {
+           console.log(`[Debug] Media API status error: ${tab} failed - ${d.error}`);
            setTabError(prev => ({...prev, [tab]: d.error || 'Failed to fetch'}));
         }
       })
       .catch(e => {
-        console.error(e);
+        console.error(`[Debug] Media API throw error: ${tab} -`, e);
         if (isMounted) {
             setTabError(prev => {
                 sharedMediaCache[`${data.chatId}_${data.topicId||''}_${data.id}_${tab}`] = { 
@@ -1429,13 +1441,20 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
               <div style={{width: 72, height: 72, borderRadius: '50%', background: '#2b5278', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 32, fontWeight: 600}}>
                 #
               </div>
-            ) : (
-              <Avatar name={data.name||'User'} chatId={data.id} username={data.username} accessHash={data.accessHash} size={72}/>
-            )}
+            ) : (() => {
+              const fullUserObj = fullProfile?.users?.[0] || fullProfile?.chats?.[0];
+              const resolvedName = fullUserObj ? [fullUserObj.firstName, fullUserObj.lastName].filter(Boolean).join(' ') : null;
+              const displayName = data.name || resolvedName || 'Unknown User';
+              return <Avatar name={displayName} chatId={data.id} username={data.username || fullUserObj?.username} accessHash={data.accessHash} size={72}/>;
+            })()}
             <div style={{minWidth: 0, flex: 1}}>
               <div style={{fontSize:18,fontWeight:600,display:'flex',alignItems:'center',gap:4}}>
                 <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
-                  {isTopicInfo ? data.topicTitle : (data.name||'Unknown User')}
+                  {isTopicInfo ? data.topicTitle : (() => {
+                    const fullUserObj = fullProfile?.users?.[0] || fullProfile?.chats?.[0];
+                    const resolvedName = fullUserObj ? [fullUserObj.firstName, fullUserObj.lastName].filter(Boolean).join(' ') : null;
+                    return data.name || resolvedName || 'Unknown User';
+                  })()}
                 </span>
                 {!isTopicInfo && fullProfile?.fullUser?.verified && <span style={{color:'#0088cc',fontSize:14,flexShrink:0}}>✓</span>}
               </div>

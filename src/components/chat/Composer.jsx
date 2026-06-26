@@ -26,7 +26,8 @@ export default function Composer(props) {
     pastedFile, setPastedFile, filePreview, setFilePreview, handleComposerPaste
   } = props;
 
-  const safeInput = (input === "null" || input == null) ? "" : input;
+  const safeInputValue = (input === "null" || input == null) ? "" : input;
+  console.log('[Debug] Composer raw input value before render:', input);
 
   return (
     <>
@@ -104,8 +105,8 @@ export default function Composer(props) {
               <button className="ib g" title="Attach file"
                 onClick={()=>fileInputRef.current?.click()} style={{fontSize:17}}>📎</button>
               <input type="file" ref={fileInputRef} style={{display:'none'}} onChange={handleFileChange} />
-              <textarea className="message-input" placeholder="Type a message..."
-                ref={inputRef} value={safeInput} rows={1}
+              <textarea className="message-input" placeholder="Message"
+                ref={inputRef} value={safeInputValue} rows={1}
                 onChange={e=>{
                   setInput(e.target.value)
                 }}
@@ -122,8 +123,8 @@ export default function Composer(props) {
                 style={{background:aiLoading?"rgba(124,58,237,.25)":TG.elevated,fontSize:17}}>
                 {aiLoading?"⏳":"✨"}
               </button>
-              <button className="ib s" onClick={send} disabled={(!safeInput.trim() && !pastedFile)||sending}
-                style={{opacity:(safeInput.trim() || pastedFile)&&!sending?1:.4,fontSize:17,background:editingMsg?'#4caf50':'',color:editingMsg?'#fff':''}} title={editingMsg?"Save Edit":"Send"}>
+              <button className="ib s" onClick={send} disabled={(!safeInputValue.trim() && !pastedFile)||sending}
+                style={{opacity:(safeInputValue.trim() || pastedFile)&&!sending?1:.4,fontSize:17,background:editingMsg?'#4caf50':'',color:editingMsg?'#fff':''}} title={editingMsg?"Save Edit":"Send"}>
                 {editingMsg?"✓":"➤"}
               </button>
             </div>

@@ -749,10 +749,10 @@ const sharedMediaHandler = async (req, res) => {
         topMsgId: topicId,
         hash: BigInt(0)
       })
-      const result = await client.invoke(searchReq)
+      const result = await withTimeout(client.invoke(searchReq), 15000, 'Search Media');
       msgs = result.messages || []
     } else {
-      msgs = await client.getMessages(entity, params)
+      msgs = await withTimeout(client.getMessages(entity, params), 15000, 'GetMessages Media');
     }
 
     if (global.mediaMessageCache.size > 2000) global.mediaMessageCache.clear();
