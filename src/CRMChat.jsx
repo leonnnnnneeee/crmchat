@@ -3283,9 +3283,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
     .msgs::-webkit-scrollbar-thumb { background: #2d1155; border-radius: 2px; }
     
     .msgs-inner {
-      max-width: 730px;
       width: 100%;
-      margin: 0 auto;
       display: flex;
       flex-direction: column;
     }

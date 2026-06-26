@@ -228,13 +228,7 @@ export default function MessageList(props) {
                             const maxId = sel?.readOutboxMaxId || 0;
                             const isRead = msg.normalizedStatus === 'seen' || msg.id <= maxId;
                             const status = msg.pending ? 'sending' : msg.failed ? 'failed' : isRead ? 'read' : 'sent';
-                            
-                            if (i === msgs.length - 1) {
-                              const renderedBubbleWidth = document.getElementById('msg-'+msg.id)?.querySelector('.bbl')?.offsetWidth;
-                              const chatContainerWidth = msgsRef.current?.offsetWidth;
-                              const bubbleMaxWidth = chatContainerWidth ? Math.min(chatContainerWidth * 0.68, 520) : null;
-                              console.log(`[Layout Debug] messageId=${msg.id} isOutgoing=${msg.fromMe} groupedWithPrevious=${isSameGroup} chatContainerWidth=${chatContainerWidth} bubbleMaxWidth=${bubbleMaxWidth} renderedBubbleWidth=${renderedBubbleWidth}`);
-                            }
+
                             
                             return (
                               <span 
