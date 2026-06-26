@@ -1131,7 +1131,11 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
       .then(async r => {
         const ct = r.headers.get('content-type');
         if (ct && ct.includes('text/html')) throw new Error('API route not found or backend returned HTML');
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        if (!r.ok) {
+          if (r.status === 401 && typeof onAuthFailed === 'function') onAuthFailed();
+          const err = await r.json().catch(()=>({}));
+          throw new Error(err.error || err.code || `HTTP ${r.status}`);
+        }
         return r.json();
       })
       .then(d => { if(isMounted && d.ok && d.full) setFullProfile(d.full) })
@@ -1146,7 +1150,11 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
       .then(async r => {
         const ct = r.headers.get('content-type');
         if (ct && ct.includes('text/html')) throw new Error('API route not found or backend returned HTML');
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        if (!r.ok) {
+          if (r.status === 401 && typeof onAuthFailed === 'function') onAuthFailed();
+          const err = await r.json().catch(()=>({}));
+          throw new Error(err.error || err.code || `HTTP ${r.status}`);
+        }
         return r.json();
       })
       .then(d => { if(isMounted) setStatus(d.status) })
@@ -1214,7 +1222,8 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
           const ct = r.headers.get('content-type');
           if (ct && ct.includes('text/html')) throw new Error('API route not found or backend returned HTML');
           if (!r.ok) {
-            const err = await r.json().catch(()=>({}));
+            if (r.status === 401 && typeof onAuthFailed === 'function') onAuthFailed();
+          const err = await r.json().catch(()=>({}));
             throw new Error(err.error || `HTTP ${r.status}`);
           }
           return r.json()
@@ -1253,7 +1262,11 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
       .then(async r => {
         const ct = r.headers.get('content-type');
         if (ct && ct.includes('text/html')) throw new Error('API route not found or backend returned HTML');
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        if (!r.ok) {
+          if (r.status === 401 && typeof onAuthFailed === 'function') onAuthFailed();
+          const err = await r.json().catch(()=>({}));
+          throw new Error(err.error || err.code || `HTTP ${r.status}`);
+        }
         return r.json();
       })
       .then(d => {
