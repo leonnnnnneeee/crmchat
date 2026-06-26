@@ -7,7 +7,18 @@ const TG = {
   textMuted: "#6b4d94"
 };
 
-export default function TranslateBar({ onTranslate, onDismiss }) {
+export default function TranslateBar({ onTranslate, onDismiss, chatId, topicId, sourceComponent, targetLanguage = 'English' }) {
+  React.useEffect(() => {
+    console.log('[TranslateBar Rendered]', {
+      selectedChatId: chatId,
+      selectedTopicId: topicId,
+      translateBarRenderCount: 1, // Rendered once per mount
+      translateBarSourceComponent: sourceComponent,
+      translateBarVisible: true,
+      dismissedState: false
+    });
+  }, [chatId, topicId, sourceComponent]);
+
   return (
     <div style={{
       display: 'flex',
@@ -31,7 +42,7 @@ export default function TranslateBar({ onTranslate, onDismiss }) {
           A文
         </div>
         <div style={{ fontSize: 14, color: TG.blueLight, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          Translate to English
+          Translate to {targetLanguage}
         </div>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>

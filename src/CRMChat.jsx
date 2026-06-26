@@ -2184,12 +2184,13 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
        setForceNormalView(false)
        setTopicError(false)
        setPinnedMessage(null) // reset pin on chat change
-       setDismissedTranslate(localStorage.getItem(`dismissed_translate_${sel.id}`) === 'true')
+       setDismissedTranslate(localStorage.getItem(`dismissed_translate_${sel.id}_main`) === 'true')
        setDismissedPin(localStorage.getItem(`dismissed_pin_${sel.id}_main`) === 'true')
     } else if (prevSelTopicId.current !== selTopic?.id) {
        prevSelTopicId.current = selTopic?.id
        chatOrTopicChanged = true
        setPinnedMessage(null) // reset pin on topic change
+       setDismissedTranslate(localStorage.getItem(`dismissed_translate_${sel.id}_${selTopic?.id}`) === 'true')
        setDismissedPin(localStorage.getItem(`dismissed_pin_${sel.id}_${selTopic?.id}`) === 'true')
     }
     
@@ -3839,10 +3840,14 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
 
           {!dismissedTranslate && (
             <TranslateBar 
+              chatId={sel.id}
+              topicId={selTopic?.id}
+              sourceComponent="CRMChat"
+              targetLanguage="English"
               onTranslate={() => alert('TODO: Translate API integration (Feature Placeholder)')}
               onDismiss={() => {
                 setDismissedTranslate(true)
-                localStorage.setItem(`dismissed_translate_${sel.id}`, 'true')
+                localStorage.setItem(`dismissed_translate_${sel.id}_${selTopic?.id || 'main'}`, 'true')
               }}
             />
           )}
