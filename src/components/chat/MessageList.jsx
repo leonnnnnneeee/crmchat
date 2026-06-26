@@ -42,7 +42,7 @@ export default function MessageList(props) {
     AISuggestPanel, aiText, setAiText, aiSuggestions, setAiSuggestions, aiAnalysis, setAiAnalysis,
     aiAlt, setAiAlt, setAiLoading, tmplCats, setTmplCat,
     tmplCat, TEMPLATES, setMsgs, setSelectMode, lightbox, StageBadge, gifOpen, setGifOpen,
-    gifQuery, setGifQuery, searchGifs, gifs, loadingRef, showScrollBtn, aiError, onAuthFailed
+    gifQuery, setGifQuery, searchGifs, gifs, loadingRef, showScrollBtn, aiError, onAuthFailed, activeTranslations
   } = props;
 
   const [seenTooltip, setSeenTooltip] = React.useState(null);
