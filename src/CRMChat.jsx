@@ -3467,6 +3467,11 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
       overflow-wrap: break-word;
       white-space: pre-wrap;
     }
+    .bbl::after {
+      content: "";
+      display: block;
+      clear: both;
+    }
     .bbl.out { background: #8774e1; color: #fff; box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
     .bbl.in { background: #212d3b; color: #fff; box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
     .bbl.del { opacity: .5; font-style: italic; }
