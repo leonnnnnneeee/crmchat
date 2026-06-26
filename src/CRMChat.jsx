@@ -4039,9 +4039,10 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
             position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 0, pointerEvents: 'none',
             opacity: bgOpacity,
             background: bgOption === 'Custom' && bgCustomUrl ? `url(${bgCustomUrl}) center/cover` : 
-                        (BACKGROUND_OPTIONS.find(o => o.name === bgOption)?.image.startsWith('linear-gradient') ? 
+                        (BACKGROUND_OPTIONS.find(o => o.name === bgOption)?.image && BACKGROUND_OPTIONS.find(o => o.name === bgOption)?.image !== 'none' ? 
                          BACKGROUND_OPTIONS.find(o => o.name === bgOption)?.image : 
-                         (BACKGROUND_OPTIONS.find(o => o.name === bgOption)?.image ? `url(${BACKGROUND_OPTIONS.find(o => o.name === bgOption)?.image}) center/cover` : BACKGROUND_OPTIONS.find(o => o.name === bgOption)?.color)),
+                         BACKGROUND_OPTIONS.find(o => o.name === bgOption)?.color || '#120929'),
+            backgroundColor: BACKGROUND_OPTIONS.find(o => o.name === bgOption)?.color || '#120929',
             ...(BACKGROUND_OPTIONS.find(o => o.name === bgOption)?.extraStyle || {})
           }} />
 
@@ -4054,7 +4055,15 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
         </>}
       </div>
 
-      {/* RIGHT COL (Removed for cleaner chat UI) */}
+      {/* RIGHT COL */}
+      {showBgSettings && (
+        <BackgroundSettingsModal
+          onClose={() => setShowBgSettings(false)}
+          bgOption={bgOption} setBgOption={setBgOption}
+          bgOpacity={bgOpacity} setBgOpacity={setBgOpacity}
+          bgCustomUrl={bgCustomUrl} setBgCustomUrl={setBgCustomUrl}
+        />
+      )}
 
       {/* User Profile Preview Modal */}
       <UserProfileModal 
