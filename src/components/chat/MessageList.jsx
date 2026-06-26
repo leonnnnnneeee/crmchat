@@ -350,39 +350,52 @@ export default function MessageList(props) {
                         </div>
                       </div>
                       {msg.reactions && msg.reactions.length > 0 && (
-                        <div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:4,marginLeft: msg.fromMe?0:12,marginRight: msg.fromMe?12:0,justifyContent:msg.fromMe?"flex-end":"flex-start"}}>
-                          {msg.reactions.map((r, idx)=>{
-                            const isCustom = r.type === 'custom';
-                            const keyStr = isCustom ? r.customEmojiId : r.emoticon;
+                        <div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:2,justifyContent:msg.fromMe?"flex-end":"flex-start"}}>
+                          {(()=>{
+                            // Ensure no duplicates are rendered
+                            const uniqueReactions = [];
+                            const seen = new Set();
+                            for (const r of msg.reactions) {
+                              if (!r || r.count === 0) continue;
+                              const keyStr = r.type === 'custom' ? r.customEmojiId : r.emoticon;
+                              if (!seen.has(keyStr)) {
+                                seen.add(keyStr);
+                                uniqueReactions.push(r);
+                              } else if (r.chosen) {
+                                // Prefer the chosen one if duplicates exist
+                                const existingIdx = uniqueReactions.findIndex(x => (x.type==='custom'?x.customEmojiId:x.emoticon) === keyStr);
+                                if (existingIdx >= 0) uniqueReactions[existingIdx] = r;
+                              }
+                            }
                             
-                            return (
-                            <span key={`${keyStr}-${idx}`} onClick={(e)=>{ 
-                                e.stopPropagation(); 
-                                const payload = isCustom ? { type: 'custom', customEmojiId: r.customEmojiId } : r.emoticon;
-                                toggleReaction(sel.id, selTopic?.id || null, msg.id, payload); 
-                              }}
-                              style={{
-                                background: r.chosen ? "rgba(124,58,237,.3)" : "rgba(0,0,0,.4)",
-                                border: r.chosen ? "1px solid rgba(124,58,237,.5)" : "1px solid rgba(255,255,255,.05)",
-                                borderRadius:16,padding:"3px 8px 3px 6px",fontSize:13,color:"rgba(255,255,255,.8)",
-                                cursor:"pointer",userSelect:"none",display:"inline-flex",alignItems:"center",gap:6,
-                                boxShadow: "0 1px 2px rgba(0,0,0,.2)"
-                              }}>
-                              <span style={{display:'flex', alignItems:'center', gap:2}}>
-                                {msg.recentReactions?.filter(rr => (rr.type === 'custom' ? rr.customEmojiId === r.customEmojiId : rr.emoticon === r.emoticon)).slice(0, 3).map((rr, rrIdx) => (
-                                  <span key={rrIdx} style={{display:'inline-flex', borderRadius:'50%', overflow:'hidden', width:16, height:16}}>
-                                    <Avatar chatId={rr.peerId} size={16} name="" />
-                                  </span>
-                                ))}
-                                {isCustom ? (
-                                  <img src={r.thumbnailUrl} style={{width:18, height:18, objectFit:'contain'}} onError={(e)=>{e.target.style.display='none'}} alt="custom_emoji" />
-                                ) : (
-                                  r.emoticon
-                                )}
+                            return uniqueReactions.map((r, idx)=>{
+                              const isCustom = r.type === 'custom';
+                              const keyStr = isCustom ? r.customEmojiId : r.emoticon;
+                              
+                              return (
+                              <span key={`${keyStr}-${idx}`} onClick={(e)=>{ 
+                                  e.stopPropagation(); 
+                                  const payload = isCustom ? { type: 'custom', customEmojiId: r.customEmojiId } : r.emoticon;
+                                  toggleReaction(sel.id, selTopic?.id || null, msg.id, payload); 
+                                }}
+                                style={{
+                                  background: r.chosen ? "rgba(124,58,237,.3)" : "rgba(0,0,0,.35)",
+                                  border: r.chosen ? "1px solid rgba(124,58,237,.6)" : "1px solid rgba(255,255,255,.08)",
+                                  borderRadius:12,padding:"2px 6px",fontSize:13,color:"rgba(255,255,255,.9)",
+                                  cursor:"pointer",userSelect:"none",display:"inline-flex",alignItems:"center",gap:4,
+                                }}>
+                                <span style={{display:'flex', alignItems:'center', gap:2}}>
+                                  {isCustom ? (
+                                    <img src={r.thumbnailUrl} style={{width:16, height:16, objectFit:'contain'}} onError={(e)=>{e.target.style.display='none'}} alt="custom_emoji" />
+                                  ) : (
+                                    <span style={{fontSize: 14}}>{r.emoticon}</span>
+                                  )}
+                                </span>
+                                <span style={{fontSize:12, fontWeight:600}}>{r.count}</span>
                               </span>
-                              {r.count > 0 ? <span style={{fontSize:12, fontWeight:500}}>{r.count}</span> : ""}
-                            </span>
-                          )})}
+                              )
+                            });
+                          })()}
                         </div>
                       )}
                     </div>

@@ -845,15 +845,15 @@ function LinkPreview({url, webPage}) {
   
   return (
     <a href={webPage?.url || url} target="_blank" rel="noreferrer"
-      style={{display:"block",textDecoration:"none",marginTop:6}}>
-      <div ref={ref} style={{background:"rgba(0,0,0,.2)",borderRadius:8,overflow:"hidden",
-        border:"1px solid rgba(255,255,255,.08)", borderLeft: "3px solid #3b82f6"}}>
-        {meta.img&&<img src={meta.img} alt="" style={{width:"100%",maxHeight:120,objectFit:"cover",display:"block"}}
+      style={{display:"block",textDecoration:"none",marginTop:4}}>
+      <div ref={ref} style={{background:"rgba(0,0,0,.15)",borderRadius:6,overflow:"hidden",
+        borderLeft: "3px solid #3b82f6"}}>
+        {meta.img&&<img src={meta.img} alt="" style={{width:"100%",maxHeight:140,objectFit:"cover",display:"block"}}
           onError={e=>e.target.style.display="none"}/>}
-        <div style={{padding:"8px 12px"}}>
-          <div style={{fontSize:12,color:"#3b82f6",marginBottom:4,fontWeight:500}}>{meta.domain}</div>
-          {meta.title&&<div style={{fontSize:14,fontWeight:600,color:"#fff",marginBottom:4,lineHeight:1.3}}>{meta.title}</div>}
-          {meta.desc&&<div style={{fontSize:13,color:"rgba(255,255,255,.7)",lineHeight:1.4}}>{meta.desc.length > 150 ? meta.desc.slice(0, 150) + '...' : meta.desc}</div>}
+        <div style={{padding:"6px 10px"}}>
+          <div style={{fontSize:12,color:"#3b82f6",marginBottom:2,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{meta.domain}</div>
+          {meta.title&&<div style={{fontSize:14,fontWeight:600,color:"#fff",marginBottom:2,lineHeight:1.3,display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{meta.title}</div>}
+          {meta.desc&&<div style={{fontSize:13,color:"rgba(255,255,255,.6)",lineHeight:1.4,display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{meta.desc}</div>}
         </div>
       </div>
     </a>
@@ -2025,27 +2025,32 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
   useEffect(()=>{ msgsRef.current = msgs },[msgs])
 
   const pendingReactionsRef = useRef({})
-  const mergeReactions = (msgId, backendReactions) => {
+  const mergeReactions = (msgId, backendReactions = []) => {
+    // 1. Start with the backend reactions as truth
+    const mergedMap = new Map()
+    for (const r of backendReactions) {
+      if (!r || r.count === 0) continue
+      const key = r.type === 'custom' ? `custom_${r.customEmojiId}` : `emoji_${r.emoticon}`
+      mergedMap.set(key, { ...r })
+    }
+
+    // 2. Check for recent pending optimistic reactions (within 10s)
     const pending = pendingReactionsRef.current[msgId]
     if (pending && Date.now() - pending.timestamp < 10000) {
-      const optimisticChosen = pending.reactions.find(r => r.chosen)
-      if (optimisticChosen) {
-        const backendHasIt = backendReactions.find(r => r.chosen && r.emoticon === optimisticChosen.emoticon)
-        if (backendHasIt) {
-          // Keep pending alive to protect against stale background polling for 10s
-          return backendReactions
+      for (const pr of pending.reactions) {
+        if (!pr || pr.count === 0) continue
+        const key = pr.type === 'custom' ? `custom_${pr.customEmojiId}` : `emoji_${pr.emoticon}`
+        
+        // If backend hasn't reflected our optimistic choice yet, apply optimistic choice
+        if (pr.chosen && !mergedMap.has(key)) {
+          mergedMap.set(key, { ...pr })
+        } else if (pr.chosen && mergedMap.has(key)) {
+          mergedMap.get(key).chosen = true
         }
-        return pending.reactions
-      } else {
-        const backendHasChosen = backendReactions.find(r => r.chosen)
-        if (!backendHasChosen) {
-          // Keep pending alive to protect against stale background polling for 10s
-          return backendReactions
-        }
-        return pending.reactions
       }
     }
-    return backendReactions
+
+    return Array.from(mergedMap.values())
   }
   const [showProfile,setShowProfile]=useState(()=>{
     try{
