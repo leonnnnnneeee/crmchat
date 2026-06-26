@@ -21,7 +21,7 @@ const resolveSender = (msg, chat) => {
   return "Unknown user";
 };
 
-export default function MessageList(props) {
+const MessageList = React.memo(function MessageList(props) {
   const { 
     sel, selTopic, setSelTopic, TG, setProfilePreview, setShowMembers, onlineStatus, setChatSearchOpen, showProfile, setShowProfile,
     topics, loadingTopics, topicSearch, setTopicSearch, topicError, setTopicCtxMenu, topicCtxMenu, setSel,
@@ -132,7 +132,7 @@ export default function MessageList(props) {
                 unreadCount > 0 &&
                 i === Math.max(0, msgs.length - unreadCount)
               return(
-                <div key={i} ref={isFirstUnread?firstUnreadRef:null}>
+                <div key={msg.id || `pending_${i}`} ref={isFirstUnread?firstUnreadRef:null}>
                   {isFirstUnread&&(
                     <div ref={firstUnreadRef} style={{
                       display:"flex",alignItems:"center",gap:10,
@@ -560,4 +560,27 @@ export default function MessageList(props) {
           )}
     </>
   );
-}
+}, (prev, next) => {
+  // Custom comparator to skip rendering when typing or when input state changes
+  if (prev.msgs !== next.msgs) return false;
+  if (prev.sel?.id !== next.sel?.id) return false;
+  if (prev.selTopic?.id !== next.selTopic?.id) return false;
+  if (prev.loadMsgs !== next.loadMsgs) return false;
+  if (prev.messagesLoaded !== next.messagesLoaded) return false;
+  if (prev.recording !== next.recording) return false;
+  if (prev.recordSecs !== next.recordSecs) return false;
+  if (prev.selectMode !== next.selectMode) return false;
+  if (prev.selectedMsgs !== next.selectedMsgs) return false;
+  if (prev.aiLoading !== next.aiLoading) return false;
+  if (prev.aiSuggestions !== next.aiSuggestions) return false;
+  if (prev.pollOpen !== next.pollOpen) return false;
+  if (prev.scheduleOpen !== next.scheduleOpen) return false;
+  if (prev.msgInfoOpen !== next.msgInfoOpen) return false;
+  if (prev.highlightedMsgId !== next.highlightedMsgId) return false;
+  if (prev.seenTooltip !== next.seenTooltip) return false;
+  // If we reach here, it means only input, editingMsg, pastedFile, or stable functions changed.
+  // We can safely skip the massive re-render!
+  return true;
+});
+
+export default MessageList;
