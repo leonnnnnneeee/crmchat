@@ -264,6 +264,25 @@ export default function MessageList(props) {
                           const displayText = editedMsgs[msg.id] || msg.text || ''
                           return renderMessageText(displayText, chatSearch, msg.entities)
                         })()}
+                        {activeTranslations && activeTranslations[msg.id] && (
+                          <div style={{
+                            marginTop: 6,
+                            padding: '8px 12px',
+                            background: 'rgba(0,0,0,0.2)',
+                            borderRadius: 6,
+                            fontSize: 14,
+                            borderLeft: `2px solid ${msg.fromMe ? '#fff' : TG.blueLight}`,
+                            color: '#e2d3f5'
+                          }}>
+                            <div style={{fontSize: 11, fontWeight: 'bold', marginBottom: 4, opacity: 0.7, display: 'flex', alignItems: 'center', gap: 4}}>
+                              <span>A文</span>
+                              <span>Translated</span>
+                            </div>
+                            <div style={{whiteSpace: 'pre-wrap', wordBreak: 'break-word'}}>
+                              {activeTranslations[msg.id]}
+                            </div>
+                          </div>
+                        )}
                         {/* Link preview */}
                         {(msg.webPage || (msg.text && (msg.text.includes('http://') || msg.text.includes('https://')))) && (
                           <LinkPreview webPage={msg.webPage} url={(msg.text?.match(/https?:\/\/\S+/)||[''])[0]}/>

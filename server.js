@@ -1701,6 +1701,77 @@ app.post('/api/ai/extract', requireAuth, async (req,res) => {
   }
 })
 
+// ── TRANSLATE API ──
+app.post('/api/translate', requireAuth, async (req,res) => {
+  const { chatId, topicId, messageIds, messages, targetLanguage = 'vi', sourceLanguage = 'auto' } = req.body
+  
+  if (!GROQ_KEY) {
+    return res.json({ ok: false, code: 'TRANSLATE_FAILED', error: 'Translation service is not configured.' })
+  }
+  
+  try {
+    const textsToTranslate = {}
+    
+    // If frontend passed the explicit texts (useful for local voice transcripts)
+    if (messages && Array.isArray(messages)) {
+      for (const msg of messages) {
+        if (msg && msg.id && msg.text && msg.text.trim().length > 0) {
+          textsToTranslate[msg.id] = msg.text
+        }
+      }
+    } 
+    // Otherwise fallback to fetching from Telegram using messageIds
+    else if (messageIds && messageIds.length) {
+      const entity = _entityCache[chatId] || await client.getEntity(chatId)
+      const tgMsgs = await client.getMessages(entity, { ids: messageIds.map(id => parseInt(id)) })
+      for (const msg of tgMsgs) {
+        if (!msg) continue
+        const text = msg.message || '' // Telegram text or caption
+        if (text.trim().length > 0) {
+          textsToTranslate[msg.id] = text
+        }
+      }
+    }
+    
+    if (Object.keys(textsToTranslate).length === 0) {
+      return res.json({ ok: true, translations: [] })
+    }
+    
+    const prompt = `Translate the following JSON object's values to ${targetLanguage}. 
+Return ONLY a valid JSON object keeping the exact same keys, with translated values. 
+Do not include any markdown formatting or extra text.
+Original JSON:
+${JSON.stringify(textsToTranslate)}`
+
+    const r = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
+      model: 'llama-3.3-70b-versatile',
+      messages: [{ role: 'system', content: prompt }],
+      max_tokens: 2000, temperature: 0.1
+    }, { headers: { Authorization: 'Bearer ' + GROQ_KEY, 'Content-Type': 'application/json' }})
+    
+    let raw = r.data.choices[0].message.content.trim().replace(/```json|```/g,'')
+    const resultObj = JSON.parse(raw)
+    const translations = []
+    
+    for (const [id, translatedText] of Object.entries(resultObj)) {
+      translations.push({
+        messageId: parseInt(id),
+        sourceLanguage,
+        targetLanguage,
+        originalText: textsToTranslate[id],
+        translatedText
+      })
+    }
+    
+    res.json({ ok: true, translations })
+  } catch(e) {
+    if (e.response?.status === 401 || e.response?.status === 403) {
+      return res.status(401).json({ ok: false, code: 'TRANSLATE_FAILED', error: 'Translation service token is invalid or expired' });
+    }
+    log('Translate Error: ' + e.message)
+    res.json({ ok: false, code: 'TRANSLATE_FAILED', error: e.message })
+  }
+})
 
 // ── EDIT MESSAGE ──
 app.post('/api/chat/edit', requireAuth, async (req,res) => {

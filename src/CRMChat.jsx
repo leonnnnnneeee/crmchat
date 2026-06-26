@@ -10,6 +10,8 @@ import CRMRightPanel from './components/chat/CRMRightPanel';
 import PinnedMessageBar from './components/chat/PinnedMessageBar';
 import TranslateBar from './components/chat/TranslateBar';
 
+const translationCache = new Map();
+
 const TG = {
   bg:"#120929", panel:"#1a0533", surface:"#1e0a3c", elevated:"#2d1155",
   border:"#0d0618", blue:"#7c3aed", blueHover:"#6d2ed5", blueDim:"rgba(124,58,237,.15)", blueLight:"#5288c1",
@@ -1789,6 +1791,74 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
   const [globalMatches, setGlobalMatches] = useState([])
   const [isGlobalSearching, setIsGlobalSearching] = useState(false)
   const [hasSearchedGlobal, setHasSearchedGlobal] = useState(true)
+
+  const [activeTranslations, setActiveTranslations] = useState({})
+  const [isTranslating, setIsTranslating] = useState(false)
+  const [translateTargetLanguage, setTranslateTargetLanguage] = useState('Vietnamese')
+
+  const handleTranslate = async () => {
+    if (!sel && !selTopic) return;
+    
+    // Collect all text messages in the current view that haven't been translated
+    const msgsToTranslate = msgs.filter(m => {
+      const voiceTranscript = m.media?.document ? localStorage.getItem(`transcript_${m.id}`) : null;
+      const text = m.text || voiceTranscript || m.message || '';
+      return text.trim().length > 0 && !activeTranslations[m.id];
+    });
+    
+    if (msgsToTranslate.length === 0) {
+      toast.success('No new messages to translate.');
+      return;
+    }
+    
+    setIsTranslating(true);
+    
+    try {
+      const payload = {
+        chatId: sel?.id,
+        topicId: selTopic?.id,
+        messageIds: msgsToTranslate.map(m => m.id),
+        messages: msgsToTranslate.map(m => {
+          const voiceTranscript = m.media?.document ? localStorage.getItem(`transcript_${m.id}`) : null;
+          return {
+            id: m.id,
+            text: m.text || voiceTranscript || m.message || ''
+          };
+        }),
+        targetLanguage: translateTargetLanguage,
+        sourceLanguage: 'auto'
+      };
+      
+      const res = await fetch('/api/translate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-auth-token': token
+        },
+        body: JSON.stringify(payload)
+      });
+      
+      const data = await res.json();
+      if (!data.ok) {
+        toast.error(data.error || 'Translation failed');
+        return;
+      }
+      
+      const newTranslations = { ...activeTranslations };
+      for (const t of data.translations) {
+        const cacheKey = `${t.messageId}_${t.targetLanguage}`;
+        translationCache.set(cacheKey, t.translatedText);
+        newTranslations[t.messageId] = t.translatedText;
+      }
+      
+      setActiveTranslations(newTranslations);
+    } catch (e) {
+      console.error('Translation error:', e);
+      toast.error('Failed to connect to translation service');
+    } finally {
+      setIsTranslating(false);
+    }
+  };
 
   useEffect(() => {
     setGlobalMatches([])
@@ -3639,7 +3709,8 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
     AISuggestPanel, aiText, setAiText, aiSuggestions, setAiSuggestions, aiAnalysis, setAiAnalysis,
     aiAlt, setAiAlt, setAiLoading, tmplCats, setTmplCat,
     tmplCat, TEMPLATES: [], setMsgs, setSelectMode, lightbox, StageBadge, gifOpen, setGifOpen,
-    gifQuery, setGifQuery, searchGifs, gifs, loadingRef, showScrollBtn, aiError, highlightedMsgId, onAuthFailed
+    gifQuery, setGifQuery, searchGifs, gifs, loadingRef, showScrollBtn, aiError, highlightedMsgId, onAuthFailed,
+    activeTranslations, handleTranslate
   };
 
   const handlePinnedMessageClick = async (pinnedMessageId) => {
@@ -3900,8 +3971,9 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
               chatId={sel.id}
               topicId={selTopic?.id}
               sourceComponent="CRMChat"
-              targetLanguage="English"
-              onTranslate={() => alert('TODO: Translate API integration (Feature Placeholder)')}
+              targetLanguage={translateTargetLanguage}
+              isTranslating={isTranslating}
+              onTranslate={handleTranslate}
               onDismiss={() => {
                 setDismissedTranslate(true)
                 localStorage.setItem(`dismissed_translate_${sel.id}_${selTopic?.id || 'main'}`, 'true')
