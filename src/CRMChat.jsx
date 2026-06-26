@@ -1309,8 +1309,6 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
 
   if (!data) return null
 
-  const [resolving, setResolving] = useState(false);
-
   const handleMessage = async () => {
     const existing = chats.find(c => c.id === data.id)
     if (existing) {
