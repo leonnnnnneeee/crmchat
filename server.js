@@ -53,13 +53,13 @@ log('🚀 Coincu CRM Chat v16 — 20260619_071242')
 
 function requireAuth(req,res,next){
   const t=req.headers['x-auth-token']||req.query.token
-  if(!t)return res.status(401).json({ok: false, error:'TOKEN_EXPIRED'})
+  if(!t)return res.status(401).json({ok: false, code: 'TOKEN_EXPIRED', error:'Session expired'})
   try {
     const decoded = jwt.verify(t, JWT_SECRET)
     req.user = decoded
     return next()
   } catch(err) {
-    return res.status(401).json({ok: false, error:'TOKEN_EXPIRED'})
+    return res.status(401).json({ok: false, code: 'TOKEN_EXPIRED', error:'Session expired'})
   }
 }
 
@@ -74,6 +74,27 @@ app.post('/api/login', loginLimiter, (req,res)=>{
     res.json({ok:false,message:'Sai username hoặc password'})
   }
 })
+// ── REFRESH TOKEN ──
+app.post('/api/auth/refresh', (req, res) => {
+  const t = req.headers['x-auth-token'] || req.body.token;
+  if (!t) return res.status(401).json({ok: false, code: 'NO_TOKEN', error: 'No token provided'});
+  try {
+    const decoded = jwt.verify(t, JWT_SECRET, { ignoreExpiration: true });
+    const user = USERS.find(v => v.u === decoded.username);
+    if (!user) return res.status(401).json({ok: false, code: 'INVALID_USER', error: 'User not found'});
+    
+    // Check if token is older than 7 days (7 * 24 * 60 * 60)
+    const now = Math.floor(Date.now() / 1000);
+    if (decoded.exp && (now - decoded.exp > 604800)) {
+      return res.status(401).json({ok: false, code: 'TOKEN_TOO_OLD', error: 'Session expired too long ago. Please login again.'});
+    }
+    
+    const newToken = jwt.sign({ username: user.u }, JWT_SECRET, { expiresIn: '24h' });
+    res.json({ok: true, token: newToken});
+  } catch (err) {
+    res.status(401).json({ok: false, code: 'INVALID_TOKEN', error: 'Invalid token'});
+  }
+});
 
 // ── TELEGRAM SESSION (in-memory + env fallback) ──
 let _session = process.env.TG_SESSION || ''
@@ -1402,7 +1423,10 @@ Return EXACTLY this JSON structure.
         try {
            r = await makeGroqCall("llama-3.1-8b-instant", currentPrompt);
         } catch(e2) {
-           apiErrorStr = e2.message;
+           apiErrorStr = e2.response?.data?.error?.message || e2.message;
+           if (e2.response?.status === 401 || e2.response?.status === 403) {
+             return res.status(401).json({ ok: false, code: "AI_PROVIDER_AUTH_ERROR", error: "AI provider token is invalid or expired" });
+           }
            break; // Both failed, break out of retry loop
         }
       }
@@ -1533,7 +1557,12 @@ app.post('/api/ai/summarize', requireAuth, async (req,res) => {
       max_tokens: 200, temperature: 0.3
     }, { headers: { Authorization:'Bearer '+GROQ_KEY, 'Content-Type':'application/json' }})
     res.json({ summary: r.data.choices[0].message.content.trim() })
-  } catch(e) { res.json({ summary: 'Error: '+e.message }) }
+  } catch(e) { 
+    if (e.response?.status === 401 || e.response?.status === 403) {
+      return res.status(401).json({ ok: false, code: "AI_PROVIDER_AUTH_ERROR", error: "AI provider token is invalid or expired" });
+    }
+    res.json({ summary: 'Error: '+e.message }) 
+  }
 })
 
 // ── AI EXTRACT LEAD INFO ──
@@ -1553,7 +1582,12 @@ app.post('/api/ai/extract', requireAuth, async (req,res) => {
     let raw = r.data.choices[0].message.content.trim().replace(/```json|```/g,'')
     try { res.json({ info: JSON.parse(raw) }) }
     catch { res.json({ info: { raw } }) }
-  } catch(e) { res.json({ info: { error: e.message } }) }
+  } catch(e) { 
+    if (e.response?.status === 401 || e.response?.status === 403) {
+      return res.status(401).json({ ok: false, code: "AI_PROVIDER_AUTH_ERROR", error: "AI provider token is invalid or expired" });
+    }
+    res.json({ info: { error: e.message } }) 
+  }
 })
 
 

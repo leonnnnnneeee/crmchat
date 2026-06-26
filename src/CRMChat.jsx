@@ -634,7 +634,7 @@ function ContextMenu({x,y,msg,chatId,token,allowedReactions,readOutboxMaxId,onDe
 
 
 // ── AI Suggest Panel ──
-function AISuggestPanel({text,suggestions,analysis,alternative,messages,loading,onUse,onUseAlt,onUseAll,onRegenerate,onClose,hasResearch,aiInstruction,setAiInstruction,aiError}) {
+function AISuggestPanel({text,suggestions,analysis,alternative,messages,loading,onUse,onUseAlt,onUseAll,onRegenerate,onClose,hasResearch,aiInstruction,setAiInstruction,aiError,onReconnect}) {
   const [editIdx,setEditIdx] = useState(null)
   const [edited,setEdited]   = useState({})
 
@@ -705,10 +705,26 @@ function AISuggestPanel({text,suggestions,analysis,alternative,messages,loading,
       {/* Error State */}
       {aiError && (
         <div style={{padding:"16px", background:"rgba(229,57,53,.1)", display:"flex", flexDirection:"column", alignItems:"center", gap:12}}>
-          <div style={{color:"#f87171", fontSize:13, fontWeight:600, textAlign:"center"}}>{aiError}</div>
-          <button onClick={onRegenerate} disabled={loading} style={{background:"#ef4444", color:"#fff", border:"none", borderRadius:6, padding:"6px 16px", fontSize:13, fontWeight:600, cursor:loading?"not-allowed":"pointer", opacity:loading?0.5:1}}>
-            {loading ? "Retrying..." : "Retry"}
-          </button>
+          {aiError === 'TOKEN_EXPIRED' ? (
+            <>
+              <div style={{color:"#f87171", fontSize:13, fontWeight:600, textAlign:"center"}}>Session expired. Please reconnect or refresh your token.</div>
+              <div style={{display:"flex", gap: 10}}>
+                <button onClick={onRegenerate} disabled={loading} style={{background:"#ef4444", color:"#fff", border:"none", borderRadius:6, padding:"6px 16px", fontSize:13, fontWeight:600, cursor:loading?"not-allowed":"pointer", opacity:loading?0.5:1}}>
+                  {loading ? "Retrying..." : "Retry"}
+                </button>
+                <button onClick={onReconnect} style={{background:"#4a5568", color:"#fff", border:"none", borderRadius:6, padding:"6px 16px", fontSize:13, fontWeight:600, cursor:"pointer"}}>
+                  Reconnect / Login again
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={{color:"#f87171", fontSize:13, fontWeight:600, textAlign:"center"}}>{aiError}</div>
+              <button onClick={onRegenerate} disabled={loading} style={{background:"#ef4444", color:"#fff", border:"none", borderRadius:6, padding:"6px 16px", fontSize:13, fontWeight:600, cursor:loading?"not-allowed":"pointer", opacity:loading?0.5:1}}>
+                {loading ? "Retrying..." : "Retry"}
+              </button>
+            </>
+          )}
         </div>
       )}
 
@@ -1679,7 +1695,7 @@ function renderMessageText(text, searchStr, entities = []) {
   });
 }
 
-export default function CRMChat({ token, onAuthFailed }) {
+export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
   _authToken = token
   const [theme,setTheme]=useState(()=>localStorage.getItem('crm_theme')||'dark')
   useEffect(()=>{
@@ -2917,6 +2933,13 @@ export default function CRMChat({ token, onAuthFailed }) {
       userCommand: aiPayload.instruction
     });
 
+    console.log("[AI Suggest Request Started]", {
+      endpoint: "/api/ai/suggest",
+      aiReplyRequestStarted: true,
+      tokenExists: !!token,
+      attemptId
+    });
+
     try {
       const r = await fetch("/api/ai/suggest", {
         method: "POST",
@@ -2925,14 +2948,69 @@ export default function CRMChat({ token, onAuthFailed }) {
       })
       const d = await r.json()
       
+      console.log(`[AI Suggest API Response - ${attemptId}]`, {
+        responseStatus: r.status,
+        errorCode: d.code || null,
+        tokenRefreshAttempted: false
+      });
+
       // Ignore if a newer request was started
       if (activeAiRequest.current !== attemptId) {
         console.log(`[AI Suggest API Response - ${attemptId}] Ignored (stale request)`);
         return;
       }
+      
+      if (r.status === 401 && d.code === 'TOKEN_EXPIRED') {
+        console.log("[AI Suggest] Token expired, attempting refresh...", { tokenExists: !!token });
+        
+        try {
+          const refR = await fetch('/api/auth/refresh', {
+            method: 'POST',
+            headers: { 'x-auth-token': token }
+          });
+          const refD = await refR.json();
+          console.log("[AI Suggest] Token refresh attempted", { success: refD.ok, refreshSuccess: refD.ok });
+          
+          if (refD.ok && refD.token) {
+            if (typeof onTokenRefresh === 'function') onTokenRefresh(refD.token);
+            console.log("[AI Suggest] Token refresh successful, retrying...", { retryAfterRefresh: true });
+            
+            const retryR = await fetch("/api/ai/suggest", {
+              method: "POST",
+              headers: {"Content-Type":"application/json","x-auth-token":refD.token},
+              body: JSON.stringify(aiPayload)
+            });
+            const retryD = await retryR.json();
+            
+            if (activeAiRequest.current !== attemptId) return;
+            
+            console.log(`[AI Suggest API Retry Response]`, {
+              responseSource: retryD.source || "unknown",
+              finalResponseSource: "retry",
+              errorMessage: retryD.error || null
+            });
+            
+            if (retryD.ok === false || retryD.error) {
+              setAiError(retryD.code === 'TOKEN_EXPIRED' ? 'TOKEN_EXPIRED' : (retryD.error || "Failed to generate custom reply."));
+            } else if (retryD.suggestions) {
+              setAiSuggestions(retryD.suggestions)
+            } else if (retryD.suggestion) {
+              setAiText(retryD.suggestion)
+            }
+          } else {
+            console.log("[AI Suggest] Token refresh failed", { failReason: refD.error });
+            setAiError('TOKEN_EXPIRED'); 
+          }
+        } catch (refErr) {
+          console.log("[AI Suggest] Token refresh network error", { err: refErr });
+          setAiError('TOKEN_EXPIRED');
+        }
+        return;
+      }
 
-      console.log(`[AI Suggest API Response - ${attemptId}]`, {
+      console.log(`[AI Suggest API Response Data]`, {
         responseSource: d.source || "unknown",
+        finalResponseSource: "initial",
         normalizedIntent: d.normalizedIntent,
         finalPromptPreview: d.finalPromptPreview,
         suggestionsCount: d.suggestions?.length || 0,
@@ -2940,7 +3018,7 @@ export default function CRMChat({ token, onAuthFailed }) {
       });
 
       if (d.ok === false || d.error) {
-        setAiError(d.error || "Failed to generate custom reply. Please try rephrasing your command.");
+        setAiError(d.code === 'AI_PROVIDER_AUTH_ERROR' ? "AI Service Provider is unavailable. Please check backend configuration." : (d.error || "Failed to generate custom reply."));
       } else if (d.suggestions) {
         setAiSuggestions(d.suggestions)
       } else if (d.suggestion) {
@@ -2950,7 +3028,7 @@ export default function CRMChat({ token, onAuthFailed }) {
       console.error("AI:", e) 
       setAiError("Network error connecting to AI service.")
     } finally {
-      setAiLoading(false)
+      if (activeAiRequest.current === attemptId) setAiLoading(false)
     }
   }
 
@@ -3503,7 +3581,7 @@ export default function CRMChat({ token, onAuthFailed }) {
     AISuggestPanel, aiText, setAiText, aiSuggestions, setAiSuggestions, aiAnalysis, setAiAnalysis,
     aiAlt, setAiAlt, setAiLoading, tmplCats, setTmplCat,
     tmplCat, TEMPLATES: [], setMsgs, setSelectMode, lightbox, StageBadge, gifOpen, setGifOpen,
-    gifQuery, setGifQuery, searchGifs, gifs, loadingRef, showScrollBtn, aiError, highlightedMsgId
+    gifQuery, setGifQuery, searchGifs, gifs, loadingRef, showScrollBtn, aiError, highlightedMsgId, onAuthFailed
   };
 
   const handlePinnedMessageClick = async (pinnedMessageId) => {

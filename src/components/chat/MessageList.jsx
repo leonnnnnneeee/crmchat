@@ -42,7 +42,7 @@ export default function MessageList(props) {
     AISuggestPanel, aiText, setAiText, aiSuggestions, setAiSuggestions, aiAnalysis, setAiAnalysis,
     aiAlt, setAiAlt, setAiLoading, tmplCats, setTmplCat,
     tmplCat, TEMPLATES, setMsgs, setSelectMode, lightbox, StageBadge, gifOpen, setGifOpen,
-    gifQuery, setGifQuery, searchGifs, gifs, loadingRef, showScrollBtn, aiError
+    gifQuery, setGifQuery, searchGifs, gifs, loadingRef, showScrollBtn, aiError, onAuthFailed
   } = props;
 
   const [seenTooltip, setSeenTooltip] = React.useState(null);
@@ -342,6 +342,7 @@ export default function MessageList(props) {
             onClose={()=>{setAiText("");setAiSuggestions([]);setAiAnalysis("");setAiAlt("");setAiLoading(false);setAiInstruction("")}}
             aiInstruction={aiInstruction}
             setAiInstruction={setAiInstruction}
+            onReconnect={onAuthFailed}
           />
 
           {/* Reply bar */}

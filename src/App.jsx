@@ -279,7 +279,7 @@ export default function App() {
         </div>
       </div>
       <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column",minWidth:0,minHeight:0}}>
-        <CRMChat token={token} onAuthFailed={() => setTgOk(false)} />
+        <CRMChat token={token} onAuthFailed={() => setTgOk(false)} onTokenRefresh={login} />
       </div>
     </div>
   )
