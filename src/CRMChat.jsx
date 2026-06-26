@@ -535,9 +535,9 @@ function ContextMenu({x,y,msg,chatId,token,allowedReactions,readOutboxMaxId,onDe
               const isYesterday = d.getDate() === yesterday.getDate() && d.getMonth() === yesterday.getMonth() && d.getFullYear() === yesterday.getFullYear();
               
               const timeStr = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-              if (isToday) return `Hôm nay lúc ${timeStr}`;
-              if (isYesterday) return `Hôm qua lúc ${timeStr}`;
-              return `${d.toLocaleDateString('vi-VN')} lúc ${timeStr}`;
+              if (isToday) return `Today at ${timeStr}`;
+              if (isYesterday) return `Yesterday at ${timeStr}`;
+              return `${d.toLocaleString('en-US', { month: 'short', day: 'numeric' })} at ${timeStr}`;
             };
 
             let timeText = 'Unknown status';
@@ -545,14 +545,14 @@ function ContextMenu({x,y,msg,chatId,token,allowedReactions,readOutboxMaxId,onDe
             let errorText = null;
 
             if (status === 'read') {
-              timeText = 'Đã xem';
+              timeText = 'Seen';
               if (readInfo.error) {
                 errorText = readInfo.error;
               } else if (readInfo.data) {
                 if (readInfo.data.type === 'private' && readInfo.data.date) {
-                  timeText = `Đã xem (${formatTime(readInfo.data.date)})`;
+                  timeText = `Seen (${formatTime(readInfo.data.date)})`;
                 } else if (readInfo.data.type === 'group' && readInfo.data.participants && readInfo.data.participants.length > 0) {
-                  timeText = `Đã xem bởi ${readInfo.data.participants.length} người`;
+                  timeText = `Seen by ${readInfo.data.participants.length}`;
                   renderGroupReadReceipts = (
                     <div style={{maxHeight: 120, overflowY: 'auto', borderTop: '1px solid rgba(255,255,255,0.05)', padding: '4px 0'}}>
                       {readInfo.data.participants.map(p => (
@@ -570,11 +570,11 @@ function ContextMenu({x,y,msg,chatId,token,allowedReactions,readOutboxMaxId,onDe
                 }
               }
             } else if (status === 'sent') {
-              timeText = 'Đã gửi';
+              timeText = 'Sent';
             } else if (status === 'sending') {
-              timeText = 'Đang gửi...';
+              timeText = 'Sending...';
             } else if (status === 'failed') {
-              timeText = 'Lỗi gửi';
+              timeText = 'Failed';
             }
             
             return (
