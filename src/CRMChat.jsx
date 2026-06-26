@@ -1444,7 +1444,8 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
             ) : (() => {
               const fullUserObj = fullProfile?.users?.[0] || fullProfile?.chats?.[0];
               const resolvedName = fullUserObj ? [fullUserObj.firstName, fullUserObj.lastName].filter(Boolean).join(' ') : null;
-              const displayName = data.name || resolvedName || 'Unknown User';
+              const hasName = data.name && data.name !== 'Unknown user' && data.name !== 'Unknown User';
+              const displayName = hasName ? data.name : (resolvedName || 'Unknown User');
               return <Avatar name={displayName} chatId={data.id} username={data.username || fullUserObj?.username} accessHash={data.accessHash} size={72}/>;
             })()}
             <div style={{minWidth: 0, flex: 1}}>
@@ -1453,7 +1454,8 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
                   {isTopicInfo ? data.topicTitle : (() => {
                     const fullUserObj = fullProfile?.users?.[0] || fullProfile?.chats?.[0];
                     const resolvedName = fullUserObj ? [fullUserObj.firstName, fullUserObj.lastName].filter(Boolean).join(' ') : null;
-                    return data.name || resolvedName || 'Unknown User';
+                    const hasName = data.name && data.name !== 'Unknown user' && data.name !== 'Unknown User';
+                    return hasName ? data.name : (resolvedName || 'Unknown User');
                   })()}
                 </span>
                 {!isTopicInfo && fullProfile?.fullUser?.verified && <span style={{color:'#0088cc',fontSize:14,flexShrink:0}}>✓</span>}
@@ -1560,7 +1562,9 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
             )}
             
             {tabError[activeTab] && !isFallback && (
-              <div style={{padding:20,textAlign:'center',color:'#e53935',fontSize:13}}>Error: {tabError[activeTab]}</div>
+              <div style={{padding:20,textAlign:'center',color:'#e53935',fontSize:13}}>
+                {tabError[activeTab].includes('API route not found') ? 'Shared media unavailable' : `Error: ${tabError[activeTab]}`}
+              </div>
             )}
 
             {isFallback && activeTab !== 'groups' && (
@@ -1582,8 +1586,8 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
                 {tabLoading.media ? (
                   <div style={{textAlign:'center',color:'#9b7ec8',paddingTop:10}}>Loading media...</div>
                 ) : !isFallback && tabHasMore.media ? (
-                  <div onClick={()=>loadMore('media')} style={{textAlign:'center',color:'#7c3aed',cursor:'pointer',padding:8,background:'rgba(124,58,237,.1)',borderRadius:8}}>Load More</div>
-                ) : (isFallback ? fallbackData.media.length === 0 : tabData.media.length === 0) && (
+                  <div onClick={()=>loadMore('media')} style={{textAlign:'center',color:'#7c3aed',cursor:'pointer',padding:8,background:'rgba(124,58,237,.1)',borderRadius:8}}>{tabError.media ? 'Retry' : 'Load More'}</div>
+                ) : (isFallback ? fallbackData.media.length === 0 : tabData.media.length === 0) && !tabError.media && (
                   <div style={{textAlign:'center',color:'#9b7ec8',paddingTop:10}}>No media found</div>
                 )}
               </div>
@@ -1602,8 +1606,8 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
                 {tabLoading.files ? (
                   <div style={{textAlign:'center',color:'#9b7ec8',paddingTop:10}}>Loading files...</div>
                 ) : !isFallback && tabHasMore.files ? (
-                  <div onClick={()=>loadMore('files')} style={{textAlign:'center',color:'#7c3aed',cursor:'pointer',padding:8,background:'rgba(124,58,237,.1)',borderRadius:8}}>Load More</div>
-                ) : (isFallback ? fallbackData.files.length === 0 : tabData.files.length === 0) && (
+                  <div onClick={()=>loadMore('files')} style={{textAlign:'center',color:'#7c3aed',cursor:'pointer',padding:8,background:'rgba(124,58,237,.1)',borderRadius:8}}>{tabError.files ? 'Retry' : 'Load More'}</div>
+                ) : (isFallback ? fallbackData.files.length === 0 : tabData.files.length === 0) && !tabError.files && (
                   <div style={{textAlign:'center',color:'#9b7ec8',paddingTop:10}}>No files found</div>
                 )}
               </div>
@@ -1629,8 +1633,8 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
                 {tabLoading.links ? (
                   <div style={{textAlign:'center',color:'#9b7ec8',paddingTop:10}}>Loading links...</div>
                 ) : !isFallback && tabHasMore.links ? (
-                  <div onClick={()=>loadMore('links')} style={{textAlign:'center',color:'#7c3aed',cursor:'pointer',padding:8,background:'rgba(124,58,237,.1)',borderRadius:8}}>Load More</div>
-                ) : (isFallback ? fallbackData.links.length === 0 : tabData.links.length === 0) && (
+                  <div onClick={()=>loadMore('links')} style={{textAlign:'center',color:'#7c3aed',cursor:'pointer',padding:8,background:'rgba(124,58,237,.1)',borderRadius:8}}>{tabError.links ? 'Retry' : 'Load More'}</div>
+                ) : (isFallback ? fallbackData.links.length === 0 : tabData.links.length === 0) && !tabError.links && (
                   <div style={{textAlign:'center',color:'#9b7ec8',paddingTop:10}}>No links found</div>
                 )}
               </div>
