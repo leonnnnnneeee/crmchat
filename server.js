@@ -952,6 +952,69 @@ function parseRecentReactions(recentReactions) {
   }).filter(Boolean);
 }
 
+async function resolveFwdInfo(client, fwdFrom) {
+  if (!fwdFrom) return null;
+  
+  let fromIdStr = null;
+  let fromType = null;
+  let resolvedName = fwdFrom.fromName || null;
+  let resolvedTitle = null;
+  let fallbackUsed = true;
+  
+  if (fwdFrom.fromId) {
+    if (fwdFrom.fromId.userId) {
+      fromIdStr = fwdFrom.fromId.userId.toString();
+      fromType = 'user';
+    } else if (fwdFrom.fromId.channelId) {
+      fromIdStr = fwdFrom.fromId.channelId.toString();
+      fromType = 'channel';
+    } else if (fwdFrom.fromId.chatId) {
+      fromIdStr = fwdFrom.fromId.chatId.toString();
+      fromType = 'chat';
+    }
+  } else if (fwdFrom.savedFromPeer) {
+    if (fwdFrom.savedFromPeer.userId) {
+      fromIdStr = fwdFrom.savedFromPeer.userId.toString();
+      fromType = 'user';
+    } else if (fwdFrom.savedFromPeer.channelId) {
+      fromIdStr = fwdFrom.savedFromPeer.channelId.toString();
+      fromType = 'channel';
+    } else if (fwdFrom.savedFromPeer.chatId) {
+      fromIdStr = fwdFrom.savedFromPeer.chatId.toString();
+      fromType = 'chat';
+    }
+  }
+
+  if (fromIdStr) {
+    try {
+      const entity = await client.getEntity(fwdFrom.fromId || fwdFrom.savedFromPeer);
+      if (entity) {
+        if (fromType === 'user') {
+          resolvedName = entity.firstName ? `${entity.firstName} ${entity.lastName || ''}`.trim() : (entity.username || resolvedName);
+        } else {
+          resolvedTitle = entity.title || entity.username || null;
+        }
+        fallbackUsed = false;
+      }
+    } catch (err) {
+      // Keep fallback
+    }
+  } else if (fwdFrom.fromName) {
+    fallbackUsed = false;
+  }
+  
+  return {
+    isForwarded: true,
+    forwardedFromId: fromIdStr,
+    forwardedFromType: fromType,
+    forwardedFromName: resolvedName,
+    forwardedFromTitle: resolvedTitle,
+    postAuthor: fwdFrom.postAuthor || null,
+    date: fwdFrom.date,
+    fallbackUsed
+  };
+}
+
 // ── MESSAGES ──
 app.get('/api/chat/messages/:id', requireAuth, async (req,res) => {
   if (!_session) return res.json([])
@@ -974,8 +1037,8 @@ app.get('/api/chat/messages/:id', requireAuth, async (req,res) => {
     }
     
     const msgs = await withTimeout(client.getMessages(entity, opts), 12000, 'getMessages')
-    const results = msgs.reverse()
-      .map(m => {
+    const results = (await Promise.all(msgs.reverse()
+      .map(async m => {
         const isPhoto = m.media?.className === 'MessageMediaPhoto'
         const isDoc   = m.media?.className === 'MessageMediaDocument'
         const isVideo = isDoc && m.media?.document?.mimeType?.startsWith('video/')
@@ -1007,12 +1070,7 @@ app.get('/api/chat/messages/:id', requireAuth, async (req,res) => {
             userId: e.userId ? e.userId.toString() : null,
             customEmojiId: e.customEmojiId ? e.customEmojiId.toString() : null
           })) : [],
-          fwdFrom: m.fwdFrom ? {
-            fromId: m.fwdFrom.fromId ? (m.fwdFrom.fromId.userId?.toString() || m.fwdFrom.fromId.channelId?.toString()) : null,
-            fromName: m.fwdFrom.fromName || null,
-            date: m.fwdFrom.date,
-            postAuthor: m.fwdFrom.postAuthor || null
-          } : null,
+          fwdFrom: await resolveFwdInfo(client, m.fwdFrom),
           webPage: m.media?.className === 'MessageMediaWebPage' && m.media.webpage ? {
             className: m.media.webpage.className,
             url: m.media.webpage.url,
@@ -1032,7 +1090,7 @@ app.get('/api/chat/messages/:id', requireAuth, async (req,res) => {
           seenTimeUnavailableReason: 'Telegram API did not provide exact read timestamp',
           normalizedStatus: m.out ? (m.id <= freshOutboxMaxId ? 'seen' : 'sent') : null,
         }
-      })
+      })))
       .filter(m => m.text || m.isPhoto || m.isVideo || m.isDoc)
     log('messages loaded: ' + results.length + ' msgs in ' + (Date.now()-t0) + 'ms')
     res.json(results)
@@ -1658,8 +1716,8 @@ app.get('/api/telegram/messages/around', requireAuth, async (req, res) => {
       log('GetPeerDialogs error: ' + e.message);
     }
     
-    const results = msgs.reverse()
-      .map(m => {
+    const results = await Promise.all(msgs.reverse()
+      .map(async m => {
         const isPhoto = m.media?.className === 'MessageMediaPhoto'
         const isDoc   = m.media?.className === 'MessageMediaDocument'
         const isVideo = isDoc && m.media?.document?.mimeType?.startsWith('video/')
@@ -1691,12 +1749,7 @@ app.get('/api/telegram/messages/around', requireAuth, async (req, res) => {
             userId: e.userId ? e.userId.toString() : null,
             customEmojiId: e.customEmojiId ? e.customEmojiId.toString() : null
           })) : [],
-          fwdFrom: m.fwdFrom ? {
-            fromId: m.fwdFrom.fromId ? (m.fwdFrom.fromId.userId?.toString() || m.fwdFrom.fromId.channelId?.toString()) : null,
-            fromName: m.fwdFrom.fromName || null,
-            date: m.fwdFrom.date,
-            postAuthor: m.fwdFrom.postAuthor || null
-          } : null,
+          fwdFrom: await resolveFwdInfo(client, m.fwdFrom),
           webPage: m.media?.className === 'MessageMediaWebPage' && m.media.webpage ? {
             className: m.media.webpage.className,
             url: m.media.webpage.url,
@@ -1710,7 +1763,7 @@ app.get('/api/telegram/messages/around', requireAuth, async (req, res) => {
           isPinned: !!m.pinned,
           normalizedStatus: m.out ? (m.id <= freshOutboxMaxId ? 'seen' : 'sent') : null,
         }
-      })
+      }))
       
     res.json({ ok: true, messages: results, targetMessageId: messageId, source: "telegram_history" });
   } catch (e) {
@@ -1937,6 +1990,7 @@ async function startTGListener() {
             action: m.action ? true : false,
             // Try to resolve sender info if possible
             senderId: m.senderId ? m.senderId.toString() : null,
+            fwdFrom: await resolveFwdInfo(lc, m.fwdFrom),
             topicId: (m.replyTo?.forumTopic ? m.replyTo.replyToMsgId : m.replyTo?.replyToTopId) || null,
             messageId: m.id,
             isOutgoing: m.out,

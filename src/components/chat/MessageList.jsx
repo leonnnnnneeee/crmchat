@@ -207,7 +207,24 @@ export default function MessageList(props) {
                         {msg.fwdFrom && (
                           <div style={{color: '#8b5cf6', fontSize: 13, marginBottom: 4, paddingLeft: 8, borderLeft: '2px solid #8b5cf6', display: 'flex', flexDirection: 'column'}}>
                             <span style={{fontSize: 11, fontWeight: 500, opacity: 0.8}}>Forwarded from</span>
-                            <span style={{fontWeight: 600}}>{msg.fwdFrom.fromName || `User ${msg.fwdFrom.fromId}`}</span>
+                            {(()=>{
+                              let displayName = 'Unknown Sender';
+                              if (msg.fwdFrom.forwardedFromName && msg.fwdFrom.forwardedFromTitle) {
+                                displayName = `${msg.fwdFrom.forwardedFromName} | ${msg.fwdFrom.forwardedFromTitle}`;
+                              } else if (msg.fwdFrom.forwardedFromName) {
+                                displayName = msg.fwdFrom.forwardedFromName;
+                              } else if (msg.fwdFrom.forwardedFromTitle) {
+                                displayName = msg.fwdFrom.forwardedFromTitle;
+                              } else if (msg.fwdFrom.postAuthor) {
+                                displayName = msg.fwdFrom.postAuthor;
+                              }
+                              
+                              if (i === msgs.length - 1) {
+                                console.log(`[Fwd Debug] msgId=${msg.id}`, msg.fwdFrom, `resolvedName=${displayName}`, `fallbackUsed=${msg.fwdFrom.fallbackUsed}`);
+                              }
+                              
+                              return <span style={{fontWeight: 600}}>{displayName}</span>;
+                            })()}
                           </div>
                         )}
                         {(()=>{
