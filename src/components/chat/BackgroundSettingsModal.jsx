@@ -9,9 +9,9 @@ const BACKGROUND_OPTIONS = [
   { name: 'Cyber Grid', color: '#000000', image: 'linear-gradient(transparent 95%, #32CD32 100%), linear-gradient(90deg, transparent 95%, #32CD32 100%)', extraStyle: { backgroundSize: '40px 40px' } },
   { name: 'Ocean', color: '#020024', image: 'linear-gradient(180deg, rgba(2,0,36,1) 0%, rgba(9,9,121,1) 35%, rgba(0,212,255,1) 100%)' },
   { name: 'Coffee', color: '#3c2b21', image: 'linear-gradient(135deg, #3c2b21, #1a0f0a)' },
-  { name: 'Real Madrid Classic', color: '#090e17', image: 'url("https://commons.wikimedia.org/wiki/Special:FilePath/Real_Madrid_CF.svg?width=800") center/40% no-repeat, linear-gradient(135deg, #0f172a, #000)' },
-  { name: 'Bernabéu Night', color: '#090e17', image: 'url("https://commons.wikimedia.org/wiki/Special:FilePath/Santiago_Bernabeu_Stadium_-_Madrid.jpg?width=1200") center/cover' },
-  { name: 'Starting XI', color: '#111827', image: 'url("https://commons.wikimedia.org/wiki/Special:FilePath/Real_Madrid_CF.svg?width=400") center/15% no-repeat, url("https://commons.wikimedia.org/wiki/Special:FilePath/Estadio_Santiago_Bernab%C3%A9u_-_panoramic_view.jpg?width=1200") center/cover', extraStyle: { backgroundBlendMode: 'overlay' } },
+  { name: 'Real Madrid Classic', color: '#090e17', image: 'url("/backgrounds/bg_crest.png") center/cover' },
+  { name: 'Bernabéu Night', color: '#090e17', image: 'url("/backgrounds/bg_stadium.jpg") center/cover' },
+  { name: 'Starting XI', color: '#111827', image: 'url("/backgrounds/bg_squad.png") center/cover' },
   { name: 'Squad Lineup', color: '#111827', image: 'url("https://commons.wikimedia.org/wiki/Special:FilePath/Real_Madrid_C.F._vs_FC_Shakhtar_Donetsk_-_15_September_2015_(1).jpg?width=1200") center/cover' },
   { name: 'Matchday', color: '#000', image: 'url("https://commons.wikimedia.org/wiki/Special:FilePath/Real_Madrid_vs_M%C3%A1laga_CF_(1).jpg?width=1200") center/cover' },
   { name: 'Champions Celebration', color: '#111827', image: 'url("https://commons.wikimedia.org/wiki/Special:FilePath/Madrid_2018_Liga_de_Campeones_06.jpg?width=1200") center/cover' },
@@ -19,7 +19,7 @@ const BACKGROUND_OPTIONS = [
   { name: 'White Kits', color: '#f8fafc', image: 'url("https://commons.wikimedia.org/wiki/Special:FilePath/Real_Madrid_CF.svg?width=400") center/20% no-repeat, url("https://commons.wikimedia.org/wiki/Special:FilePath/Real_Madrid_C.F._vs_FC_Shakhtar_Donetsk_-_15_September_2015_(1).jpg?width=1200") center/cover', extraStyle: { backgroundBlendMode: 'overlay' } },
   { name: 'UCL Night', color: '#020024', image: 'url("https://commons.wikimedia.org/wiki/Special:FilePath/Estadio_Santiago_Bernab%C3%A9u_-_panoramic_view.jpg?width=1200") center/cover', extraStyle: { backgroundBlendMode: 'hard-light' } },
   { name: 'Hala Madrid', color: '#00529F', image: 'url("https://commons.wikimedia.org/wiki/Special:FilePath/Real_Madrid_vs_M%C3%A1laga_CF_(1).jpg?width=1200") center/cover' },
-  { name: 'Santiago Bernabéu', color: '#090e17', image: 'url("https://commons.wikimedia.org/wiki/Special:FilePath/Santiago_Bernabeu_Stadium_-_Madrid.jpg?width=1200") center/cover' },
+  { name: 'Santiago Bernabéu', color: '#090e17', image: 'url("/backgrounds/bg_stadium.jpg") center/cover' },
 ];
 
 export function BackgroundSettingsModal({
