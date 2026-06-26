@@ -1925,6 +1925,43 @@ app.get('/api/telegram/messages/around', requireAuth, async (req, res) => {
     res.status(500).json({ error: e.message })
   }
 })
+// ── MULTI-ACCOUNT SHELL ENDPOINTS ──
+app.get('/api/telegram/accounts', (req, res) => {
+  if (!_session) return res.json([]);
+  res.json([{
+    accountId: 'default',
+    displayName: 'Default Account',
+    username: '',
+    phone: '',
+    isActive: true,
+    sessionStatus: 'connected'
+  }]);
+});
+
+app.post('/api/telegram/accounts/add', (req, res) => {
+  res.status(501).json({ error: 'Multi-account backend not connected yet' });
+});
+
+app.post('/api/telegram/accounts/switch', (req, res) => {
+  res.json({ ok: true, message: 'Switched to ' + req.body.accountId });
+});
+
+app.post('/api/telegram/accounts/logout', (req, res) => {
+  res.status(501).json({ error: 'Multi-account backend not connected yet' });
+});
+
+app.get('/api/telegram/accounts/:accountId/status', (req, res) => {
+  res.json({ status: req.params.accountId === 'default' && _session ? 'connected' : 'disconnected' });
+});
+
+app.post('/api/telegram/accounts/qr/start', (req, res) => {
+  res.status(501).json({ error: 'Multi-account backend not connected yet' });
+});
+
+app.get('/api/telegram/accounts/qr/status', (req, res) => {
+  res.status(501).json({ error: 'Multi-account backend not connected yet' });
+});
+
 
 app.get('/api/health', (req,res) => res.json({ ok: true, tgConnected: _session.length > 10 }))
 app.get('/api/logs', requireAuth, (req,res) => res.json(logs))

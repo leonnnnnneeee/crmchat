@@ -65,6 +65,34 @@ const photoCache = {}
 const linkCache = {}
 let sharedMediaCache = {}
 let _authToken = ''
+export let _activeAccountId = 'default'
+
+export function setActiveAccountId(id) {
+  _activeAccountId = id;
+}
+
+if (!window._fetchIntercepted) {
+  const originalFetch = window.fetch;
+  window.fetch = async (...args) => {
+    const url = typeof args[0] === 'string' ? args[0] : (args[0]?.url || '');
+    if (url.startsWith('/api/')) {
+      args[1] = args[1] || {};
+      let headers = args[1].headers;
+      if (headers instanceof Headers) {
+        if (_authToken && !headers.has('x-auth-token')) headers.set('x-auth-token', _authToken);
+        if (_activeAccountId && !headers.has('x-account-id')) headers.set('x-account-id', _activeAccountId);
+      } else {
+        headers = headers || {};
+        // Use case-insensitive check for x-auth-token since some calls use 'x-auth-token' and some use 'X-Auth-Token' (if any)
+        if (_authToken && !headers['x-auth-token']) headers['x-auth-token'] = _authToken;
+        if (_activeAccountId && !headers['x-account-id']) headers['x-account-id'] = _activeAccountId;
+        args[1].headers = headers;
+      }
+    }
+    return originalFetch(...args);
+  };
+  window._fetchIntercepted = true;
+}
 
 function Avatar({name, chatId, username, accessHash, size=40}) {
   const colors=["#c03d33","#4fad2d","#d09306","#168acd","#8544d6","#cd4073","#2996ad","#ce671b"]
@@ -1791,10 +1819,189 @@ function renderMessageText(text, searchStr, entities = []) {
     return <span key={idx} style={{whiteSpace: 'pre-wrap'}}>{renderContent(part.content)}</span>;
   });
 }
+function AccountMenu({ accounts, activeAccountId, onClose, onAddAccount, onSwitchAccount }) {
+  const activeAcc = accounts.find(a => a.accountId === activeAccountId) || accounts[0];
+  
+  return (
+    <div style={{
+      position: 'absolute', bottom: 60, left: 20, width: 280,
+      background: '#1c1c1d', borderRadius: 12, boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
+      border: '1px solid #2c2c2e', zIndex: 99999, overflow: 'hidden', display: 'flex', flexDirection: 'column'
+    }}>
+      {/* Active Account Info */}
+      <div style={{ padding: '16px', borderBottom: '1px solid #2c2c2e', display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ width: 44, height: 44, borderRadius: '50%', background: '#7c3aed', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 18, fontWeight: 600 }}>
+          {activeAcc?.displayName ? activeAcc.displayName.charAt(0).toUpperCase() : 'A'}
+        </div>
+        <div style={{ flex: 1, overflow: 'hidden' }}>
+          <div style={{ color: '#fff', fontWeight: 600, fontSize: 15, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {activeAcc?.displayName || 'Unknown Account'}
+          </div>
+          <div style={{ color: '#8e8e93', fontSize: 13, marginTop: 2 }}>
+            {activeAcc?.phone || activeAcc?.username || 'Telegram Connected'}
+          </div>
+        </div>
+      </div>
+
+      {/* Account List */}
+      <div style={{ maxHeight: 200, overflowY: 'auto' }}>
+        {accounts.map(acc => (
+          <div key={acc.accountId} 
+            onClick={() => { onSwitchAccount(acc.accountId); onClose(); }}
+            style={{ padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', background: acc.accountId === activeAccountId ? 'rgba(124,58,237,0.1)' : 'transparent' }}
+            onMouseEnter={e => { if(acc.accountId !== activeAccountId) e.currentTarget.style.background = 'rgba(255,255,255,0.05)' }}
+            onMouseLeave={e => { if(acc.accountId !== activeAccountId) e.currentTarget.style.background = 'transparent' }}
+          >
+            <div style={{ width: 32, height: 32, borderRadius: '50%', background: acc.accountId === activeAccountId ? '#7c3aed' : '#3a3a3c', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 13, fontWeight: 600 }}>
+              {acc.displayName ? acc.displayName.charAt(0).toUpperCase() : 'A'}
+            </div>
+            <div style={{ flex: 1, color: acc.accountId === activeAccountId ? '#fff' : '#e5e5ea', fontSize: 14 }}>
+              {acc.displayName || acc.accountId}
+            </div>
+            {acc.accountId === activeAccountId && <div style={{ color: '#7c3aed', fontSize: 16 }}>✓</div>}
+          </div>
+        ))}
+      </div>
+
+      {/* Actions */}
+      <div style={{ padding: '8px 0', borderTop: '1px solid #2c2c2e' }}>
+        <div onClick={() => { onAddAccount(); onClose(); }} style={{ padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', color: '#f2f2f7', fontSize: 14 }}
+          onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
+          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+          <span style={{ fontSize: 18 }}>➕</span> Add Account
+        </div>
+        <div onClick={onClose} style={{ padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', color: '#f2f2f7', fontSize: 14 }}
+          onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
+          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+          <span style={{ fontSize: 18 }}>⚙️</span> Manage Accounts
+        </div>
+        <div onClick={() => { alert('Sign out multi-account not connected yet'); onClose(); }} style={{ padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', color: '#ff453a', fontSize: 14 }}
+          onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,69,58,0.1)'}
+          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+          <span style={{ fontSize: 18 }}>🚪</span> Sign Out
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AddAccountModal({ onClose }) {
+  const [activeTab, setActiveTab] = useState('qr');
+
+  const tabStyle = (id) => ({
+    flex: 1, textAlign: 'center', padding: '10px 0', cursor: 'pointer',
+    color: activeTab === id ? '#7c3aed' : '#8e8e93',
+    borderBottom: activeTab === id ? '2px solid #7c3aed' : '2px solid transparent',
+    fontWeight: activeTab === id ? 600 : 500,
+    fontSize: 14, transition: 'all 0.2s'
+  });
+
+  return (
+    <div style={{
+      position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+      background: 'rgba(0,0,0,0.6)', zIndex: 100000, display: 'flex', alignItems: 'center', justifyContent: 'center'
+    }} onClick={onClose}>
+      <div style={{
+        width: 400, background: '#1c1c1d', borderRadius: 16, overflow: 'hidden',
+        boxShadow: '0 20px 40px rgba(0,0,0,0.4)', display: 'flex', flexDirection: 'column'
+      }} onClick={e => e.stopPropagation()}>
+        
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid #2c2c2e' }}>
+          <div style={{ fontSize: 18, fontWeight: 600, color: '#fff' }}>Add Account</div>
+          <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: '#8e8e93', fontSize: 20, cursor: 'pointer' }}>×</button>
+        </div>
+
+        {/* Warning Alert */}
+        <div style={{ margin: '20px 20px 0', padding: '12px 16px', background: 'rgba(255,69,58,0.1)', border: '1px solid rgba(255,69,58,0.2)', borderRadius: 8, display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+          <span style={{ color: '#ff453a', fontSize: 16 }}>⚠️</span>
+          <div style={{ color: '#ff453a', fontSize: 13, lineHeight: '1.4' }}>
+            <strong>Multi-account backend not connected yet.</strong><br/>
+            Adding new accounts is disabled. Your existing Telegram connection will continue to work normally as the default account.
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div style={{ display: 'flex', padding: '0 20px', marginTop: 20, borderBottom: '1px solid #2c2c2e' }}>
+          <div style={tabStyle('qr')} onClick={() => setActiveTab('qr')}>QR Login</div>
+          <div style={tabStyle('phone')} onClick={() => setActiveTab('phone')}>Phone Number</div>
+          <div style={tabStyle('session')} onClick={() => setActiveTab('session')}>Session String</div>
+        </div>
+
+        {/* Content */}
+        <div style={{ padding: '30px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', minHeight: 200 }}>
+          {activeTab === 'qr' && (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, width: '100%' }}>
+              <div style={{ width: 160, height: 160, background: '#2c2c2e', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8e8e93' }}>
+                [ QR Code Placeholder ]
+              </div>
+              <div style={{ color: '#8e8e93', fontSize: 14, textAlign: 'center', lineHeight: '1.5' }}>
+                Open Telegram on your phone<br/>
+                Go to <strong>Settings {'>'} Devices {'>'} Link Desktop Device</strong><br/>
+                Point your phone at this screen to confirm login
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'phone' && (
+            <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div>
+                <div style={{ color: '#8e8e93', fontSize: 13, marginBottom: 8 }}>Phone Number</div>
+                <input type="text" placeholder="+1 234 567 8900" disabled style={{ width: '100%', padding: '12px 16px', background: '#2c2c2e', border: '1px solid #3a3a3c', borderRadius: 8, color: '#fff', fontSize: 15, outline: 'none', cursor: 'not-allowed', opacity: 0.7 }} />
+              </div>
+              <button disabled style={{ width: '100%', padding: '12px', background: '#7c3aed', border: 'none', borderRadius: 8, color: '#fff', fontSize: 15, fontWeight: 600, cursor: 'not-allowed', opacity: 0.5 }}>
+                Send Code
+              </button>
+            </div>
+          )}
+
+          {activeTab === 'session' && (
+            <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div>
+                <div style={{ color: '#8e8e93', fontSize: 13, marginBottom: 8 }}>StringSession</div>
+                <textarea placeholder="Paste your generated StringSession here..." disabled style={{ width: '100%', height: 100, padding: '12px 16px', background: '#2c2c2e', border: '1px solid #3a3a3c', borderRadius: 8, color: '#fff', fontSize: 14, outline: 'none', cursor: 'not-allowed', opacity: 0.7, resize: 'none' }} />
+              </div>
+              <button disabled style={{ width: '100%', padding: '12px', background: '#7c3aed', border: 'none', borderRadius: 8, color: '#fff', fontSize: 15, fontWeight: 600, cursor: 'not-allowed', opacity: 0.5 }}>
+                Import Session
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 
 export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
   _authToken = token
   const [theme,setTheme]=useState(()=>localStorage.getItem('crm_theme')||'dark')
+  
+  // ── MULTI-ACCOUNT STATE ──
+  const [accounts, setAccounts] = useState([]);
+  const [activeAccountId, setActiveAccId] = useState('default');
+  const [showAccountMenu, setShowAccountMenu] = useState(false);
+  const [showAddAccount, setShowAddAccount] = useState(false);
+
+  // Sync activeAccountId with global interceptor var
+  useEffect(() => { setActiveAccountId(activeAccountId); }, [activeAccountId]);
+
+  // Load Accounts on Mount
+  useEffect(() => {
+    fetch('/api/telegram/accounts', { headers: { 'x-auth-token': token } })
+      .then(r => r.json())
+      .then(data => {
+        if (Array.isArray(data) && data.length > 0) {
+          setAccounts(data);
+        } else {
+          setAccounts([{ accountId: 'default', displayName: 'Default Account', sessionStatus: 'connected' }]);
+        }
+      })
+      .catch(() => {
+        setAccounts([{ accountId: 'default', displayName: 'Default Account', sessionStatus: 'connected' }]);
+      });
+  }, [token]);
+
   useEffect(()=>{
     document.body.style.background=theme==='light'?'#fff':''
     document.body.style.colorScheme=theme
@@ -1823,6 +2030,8 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
   const [topicCtxMenu,setTopicCtxMenu]=useState(null)
   const [msgs,setMsgs]=useState([])
   const msgsCacheRef = useRef({})
+  const activeAccRef = useRef(activeAccountId);
+  useEffect(() => { activeAccRef.current = activeAccountId; }, [activeAccountId]);
   const [search,setSearch]=useState(() => localStorage.getItem('crm_search') || '')
   const [globalMatches, setGlobalMatches] = useState([])
   const [isGlobalSearching, setIsGlobalSearching] = useState(false)
@@ -2272,7 +2481,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
     loadingChatsRef.current = false
   }, [token])
 
-  useEffect(()=>{ fetchChats() }, [fetchChats])
+  useEffect(()=>{ fetchChats() }, [fetchChats, activeAccountId])
 
   // Load messages when chat selected
   const prevSelId = useRef(sel?.id || null)
@@ -2377,7 +2586,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
     
     if (chatOrTopicChanged) {
       hasRestoredScroll.current = false
-      const cacheKey = sel.id + (currentTopic ? '_' + currentTopic.id : '')
+      const cacheKey = activeAccRef.current + '_' + sel.id + (currentTopic ? '_' + currentTopic.id : '')
       if (msgsCacheRef.current[cacheKey]) {
         setMsgs(msgsCacheRef.current[cacheKey])
         setMessagesLoaded(true)
@@ -2580,7 +2789,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
                 msg.reactions = mergeReactions(msg.id, msg.reactions || [])
                 const updated = [...prev, msg]
                 const nextState = updated.sort((a,b) => a.date - b.date)
-                msgsCacheRef.current[selRef.current.id + (selTopicRef.current ? '_' + selTopicRef.current.id : '')] = nextState
+                msgsCacheRef.current[activeAccRef.current + '_' + selRef.current.id + (selTopicRef.current ? '_' + selTopicRef.current.id : '')] = nextState
                 return nextState
               })
               
@@ -2599,7 +2808,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
              if (selRef.current?.id === chatId) {
                 setMsgs(prev => {
                   const nextState = prev.filter(m => !ids.includes(m.id))
-                  msgsCacheRef.current[selRef.current.id + (selTopicRef.current ? '_' + selTopicRef.current.id : '')] = nextState
+                  msgsCacheRef.current[activeAccRef.current + '_' + selRef.current.id + (selTopicRef.current ? '_' + selTopicRef.current.id : '')] = nextState
                   return nextState
                 })
              }
@@ -2628,7 +2837,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
                   reactions: mergeReactions(msgId, reactions || []),
                   recentReactions: recentReactions || []
                 };
-                msgsCacheRef.current[selRef.current.id + (selTopicRef.current ? '_' + selTopicRef.current.id : '')] = updatedMsgs;
+                msgsCacheRef.current[activeAccRef.current + '_' + selRef.current.id + (selTopicRef.current ? '_' + selTopicRef.current.id : '')] = updatedMsgs;
                 return updatedMsgs;
               });
             }
@@ -2706,7 +2915,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
             ...m,
             reactions: mergeReactions(m.id, m.reactions || [])
           }))
-          msgsCacheRef.current[chat.id + (topicId ? '_' + topicId : '')] = finalState;
+          msgsCacheRef.current[activeAccRef.current + '_' + chat.id + (topicId ? '_' + topicId : '')] = finalState;
           return finalState;
         })
       } else if (d && d.error === 'AUTH_FAILED') {
@@ -2830,7 +3039,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
     // Apply optimistic update strictly by messageId
     setMsgs(prevMsgs => {
       const updated = prevMsgs.map(m => m.id === msgId ? { ...m, reactions: newReactions } : m);
-      msgsCacheRef.current[targetChatId + (targetTopicId ? '_' + targetTopicId : '')] = updated;
+      msgsCacheRef.current[activeAccRef.current + '_' + targetChatId + (targetTopicId ? '_' + targetTopicId : '')] = updated;
       return updated;
     });
     
@@ -3804,7 +4013,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
           [...d.messages, ...prev].forEach(m => map.set(m.id, m));
           const merged = Array.from(map.values()).sort((a,b) => a.date - b.date);
           
-          msgsCacheRef.current[sel.id + (selTopic?.id ? '_' + selTopic.id : '')] = merged;
+          msgsCacheRef.current[activeAccRef.current + '_' + sel.id + (selTopic?.id ? '_' + selTopic.id : '')] = merged;
           return merged;
         });
         
@@ -3838,8 +4047,30 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
         <div title="Coincu App" style={{width:36,height:36,background:'#7c3aed',borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:15,marginBottom:10,cursor:"pointer",boxShadow:"0 4px 12px rgba(124,58,237,0.3)"}}>⚡</div>
         <div style={{flex:1}}/>
         <div className={`si${showBgSettings ? ' on' : ''}`} title="Background Settings" style={{fontSize:18}} onClick={() => setShowBgSettings(true)}>🖼️</div>
-        <div style={{marginTop:6,width:34,height:34,borderRadius:"50%",background:"#7c3aed",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}} title="Account">L</div>
+        <div style={{marginTop:6,width:34,height:34,borderRadius:"50%",background:"#7c3aed",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}} title="Account" onClick={() => setShowAccountMenu(p => !p)}>L</div>
       </div>
+      
+      {showAccountMenu && (
+        <div style={{position: 'fixed', top:0, left:0, right:0, bottom:0, zIndex: 99998}} onClick={() => setShowAccountMenu(false)}>
+          <AccountMenu 
+            accounts={accounts} 
+            activeAccountId={activeAccountId} 
+            onClose={() => setShowAccountMenu(false)} 
+            onAddAccount={() => setShowAddAccount(true)}
+            onSwitchAccount={(id) => {
+              console.log('[MultiAccount] Switching to account:', id);
+              setActiveAccId(id);
+              setSel(null);
+              setSelTopic(null);
+              setMsgs([]);
+              setChats([]);
+              setShowAccountMenu(false);
+            }}
+          />
+        </div>
+      )}
+      
+      {showAddAccount && <AddAccountModal onClose={() => setShowAddAccount(false)} />}
 
       {/* LEFT COL */}
       <div className="lc">
