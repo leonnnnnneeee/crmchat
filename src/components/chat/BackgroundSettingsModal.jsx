@@ -9,15 +9,17 @@ const BACKGROUND_OPTIONS = [
   { name: 'Cyber Grid', color: '#000000', image: 'linear-gradient(transparent 95%, #32CD32 100%), linear-gradient(90deg, transparent 95%, #32CD32 100%)', extraStyle: { backgroundSize: '40px 40px' } },
   { name: 'Ocean', color: '#020024', image: 'linear-gradient(180deg, rgba(2,0,36,1) 0%, rgba(9,9,121,1) 35%, rgba(0,212,255,1) 100%)' },
   { name: 'Coffee', color: '#3c2b21', image: 'linear-gradient(135deg, #3c2b21, #1a0f0a)' },
-  { name: 'Real Madrid Classic', color: '#0f172a', image: 'linear-gradient(135deg, #00529F, #EE324E)' }, // Placeholder
-  { name: 'Santiago Bernabéu', color: '#090e17', image: 'linear-gradient(to bottom, #111, #333)' }, // Placeholder
-  { name: 'Real Madrid Squad / Lineup', color: '#111827', image: 'linear-gradient(45deg, #1e293b, #334155)' }, // Placeholder
-  { name: 'Real Madrid Matchday', color: '#000', image: 'linear-gradient(180deg, #1a2a6c, #EE324E)' }, // Placeholder
-  { name: 'Real Madrid Champions Celebration', color: '#111827', image: 'linear-gradient(45deg, #FFD700, #00529F)' }, // Placeholder
-  { name: 'Tactical Board', color: '#2f4f4f', image: 'linear-gradient(to right, #2f4f4f 1px, transparent 1px), linear-gradient(to bottom, #2f4f4f 1px, transparent 1px)' }, // Placeholder
-  { name: 'White Kits', color: '#f8fafc', image: 'linear-gradient(135deg, #ffffff, #e2e8f0)' }, // Placeholder
-  { name: 'UCL Night', color: '#020024', image: 'linear-gradient(45deg, #000033, #000099)' }, // Placeholder
-  { name: 'Hala Madrid', color: '#00529F', image: 'linear-gradient(to right, #00529F, #fff, #00529F)' }, // Placeholder
+  { name: 'Real Madrid Classic', color: '#0f172a', image: 'https://images.unsplash.com/photo-1504450758481-7338eba7524a?auto=format&fit=crop&q=80&w=1920' },
+  { name: 'Bernabéu Night', color: '#090e17', image: 'https://images.unsplash.com/photo-1522778119026-d647f0596c20?auto=format&fit=crop&q=80&w=1920' },
+  { name: 'Starting XI', color: '#111827', image: 'https://images.unsplash.com/photo-1518605368461-1e12c1c6888c?auto=format&fit=crop&q=80&w=1920' },
+  { name: 'Squad Lineup', color: '#111827', image: 'https://images.unsplash.com/photo-1574629810360-7efbb1925536?auto=format&fit=crop&q=80&w=1920' },
+  { name: 'Matchday', color: '#000', image: 'https://images.unsplash.com/photo-1563823251940-272cb2500d02?auto=format&fit=crop&q=80&w=1920' },
+  { name: 'Champions Celebration', color: '#111827', image: 'https://images.unsplash.com/photo-1623094406614-7f152e825a2d?auto=format&fit=crop&q=80&w=1920' },
+  { name: 'Tactical Board', color: '#2f4f4f', image: 'https://images.unsplash.com/photo-1589487391730-58f20eb2c308?auto=format&fit=crop&q=80&w=1920' },
+  { name: 'White Kits', color: '#f8fafc', image: 'https://images.unsplash.com/photo-1551280857-2b9ebf241ac7?auto=format&fit=crop&q=80&w=1920' },
+  { name: 'UCL Night', color: '#020024', image: 'https://images.unsplash.com/photo-1556056504-5c7696c4c28d?auto=format&fit=crop&q=80&w=1920' },
+  { name: 'Hala Madrid', color: '#00529F', image: 'https://images.unsplash.com/photo-1518091043644-c1d44570a2c9?auto=format&fit=crop&q=80&w=1920' },
+  { name: 'Santiago Bernabéu', color: '#090e17', image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/1/1f/Santiago_Bernabeu_Stadium_-_Madrid.jpg/1200px-Santiago_Bernabeu_Stadium_-_Madrid.jpg' },
 ];
 
 export function BackgroundSettingsModal({
@@ -144,14 +146,6 @@ export function BackgroundSettingsModal({
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     fontSize: 12, fontWeight: 'bold'
                   }}>✓</div>
-                )}
-                {opt.name.includes('Real Madrid') && (
-                  <div style={{
-                    position: 'absolute', top: 6, left: 6, right: 6,
-                    background: 'rgba(0,0,0,0.6)', color: '#fff',
-                    borderRadius: 4, padding: '2px 4px',
-                    fontSize: 9, textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
-                  }}>TODO Asset</div>
                 )}
               </div>
             ))}
