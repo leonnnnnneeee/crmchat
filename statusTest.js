@@ -1,7 +1,0 @@
-const { Api } = require('telegram')
-console.log(Api.UserStatusOnline.className)
-console.log(Api.UserStatusRecently.className)
-console.log(Api.UserStatusLastWeek.className)
-console.log(Api.UserStatusLastMonth.className)
-console.log(Api.UserStatusOffline.className)
-console.log(Api.UserStatusEmpty.className)
