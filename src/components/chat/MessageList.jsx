@@ -223,7 +223,40 @@ export default function MessageList(props) {
                                 console.log(`[Fwd Debug] msgId=${msg.id}`, msg.fwdFrom, `resolvedName=${displayName}`, `fallbackUsed=${msg.fwdFrom.fallbackUsed}`);
                               }
                               
-                              return <span style={{fontWeight: 600}}>{displayName}</span>;
+                              return (
+                                <span 
+                                  style={{
+                                    fontWeight: 600, 
+                                    cursor: msg.fwdFrom.forwardedFromPeerId ? 'pointer' : 'default',
+                                    display: 'inline-block'
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    if (msg.fwdFrom.forwardedFromPeerId) e.target.style.textDecoration = 'underline';
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    if (msg.fwdFrom.forwardedFromPeerId) e.target.style.textDecoration = 'none';
+                                  }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (!msg.fwdFrom.forwardedFromPeerId) {
+                                      console.log('[Fwd Debug] Cannot open profile: No peer ID available.', msg.fwdFrom);
+                                      return;
+                                    }
+                                    
+                                    console.log(`[Fwd Debug] Clicked fwd from ${msg.fwdFrom.forwardedFromPeerId} (type: ${msg.fwdFrom.forwardedFromType})`);
+                                    
+                                    setProfilePreview({
+                                      id: msg.fwdFrom.forwardedFromPeerId,
+                                      chatId: msg.fwdFrom.forwardedFromPeerId,
+                                      name: displayName,
+                                      username: msg.fwdFrom.username,
+                                      accessHash: msg.fwdFrom.forwardedFromAccessHash
+                                    });
+                                  }}
+                                >
+                                  {displayName}
+                                </span>
+                              );
                             })()}
                           </div>
                         )}

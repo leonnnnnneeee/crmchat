@@ -955,37 +955,49 @@ function parseRecentReactions(recentReactions) {
 async function resolveFwdInfo(client, fwdFrom) {
   if (!fwdFrom) return null;
   
-  let fromIdStr = null;
-  let fromType = null;
-  let resolvedName = fwdFrom.fromName || null;
-  let resolvedTitle = null;
-  let fallbackUsed = true;
+  let forwardedFromUserId = null;
+  let forwardedFromChannelId = null;
+  let forwardedFromChatId = null;
+  let fromType = 'unknown';
+  let forwardedFromPeerId = null;
   
   if (fwdFrom.fromId) {
     if (fwdFrom.fromId.userId) {
-      fromIdStr = fwdFrom.fromId.userId.toString();
+      forwardedFromUserId = fwdFrom.fromId.userId.toString();
+      forwardedFromPeerId = forwardedFromUserId;
       fromType = 'user';
     } else if (fwdFrom.fromId.channelId) {
-      fromIdStr = fwdFrom.fromId.channelId.toString();
+      forwardedFromChannelId = fwdFrom.fromId.channelId.toString();
+      forwardedFromPeerId = '-100' + forwardedFromChannelId;
       fromType = 'channel';
     } else if (fwdFrom.fromId.chatId) {
-      fromIdStr = fwdFrom.fromId.chatId.toString();
+      forwardedFromChatId = fwdFrom.fromId.chatId.toString();
+      forwardedFromPeerId = '-' + forwardedFromChatId;
       fromType = 'chat';
     }
   } else if (fwdFrom.savedFromPeer) {
     if (fwdFrom.savedFromPeer.userId) {
-      fromIdStr = fwdFrom.savedFromPeer.userId.toString();
+      forwardedFromUserId = fwdFrom.savedFromPeer.userId.toString();
+      forwardedFromPeerId = forwardedFromUserId;
       fromType = 'user';
     } else if (fwdFrom.savedFromPeer.channelId) {
-      fromIdStr = fwdFrom.savedFromPeer.channelId.toString();
+      forwardedFromChannelId = fwdFrom.savedFromPeer.channelId.toString();
+      forwardedFromPeerId = '-100' + forwardedFromChannelId;
       fromType = 'channel';
     } else if (fwdFrom.savedFromPeer.chatId) {
-      fromIdStr = fwdFrom.savedFromPeer.chatId.toString();
+      forwardedFromChatId = fwdFrom.savedFromPeer.chatId.toString();
+      forwardedFromPeerId = '-' + forwardedFromChatId;
       fromType = 'chat';
     }
   }
 
-  if (fromIdStr) {
+  let resolvedName = fwdFrom.fromName || null;
+  let resolvedTitle = null;
+  let forwardedFromAccessHash = null;
+  let username = null;
+  let fallbackUsed = true;
+  
+  if (forwardedFromPeerId) {
     try {
       const entity = await client.getEntity(fwdFrom.fromId || fwdFrom.savedFromPeer);
       if (entity) {
@@ -994,6 +1006,8 @@ async function resolveFwdInfo(client, fwdFrom) {
         } else {
           resolvedTitle = entity.title || entity.username || null;
         }
+        forwardedFromAccessHash = entity.accessHash ? entity.accessHash.toString() : null;
+        username = entity.username || null;
         fallbackUsed = false;
       }
     } catch (err) {
@@ -1005,10 +1019,16 @@ async function resolveFwdInfo(client, fwdFrom) {
   
   return {
     isForwarded: true,
-    forwardedFromId: fromIdStr,
+    forwardedFromId: forwardedFromPeerId, // legacy fallback for frontend
+    forwardedFromPeerId,
+    forwardedFromUserId,
+    forwardedFromChannelId,
+    forwardedFromChatId,
+    forwardedFromAccessHash,
     forwardedFromType: fromType,
     forwardedFromName: resolvedName,
     forwardedFromTitle: resolvedTitle,
+    username,
     postAuthor: fwdFrom.postAuthor || null,
     date: fwdFrom.date,
     fallbackUsed
