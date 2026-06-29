@@ -1443,9 +1443,85 @@ app.post('/api/ai/transcribe-voice', requireAuth, async (req,res) => {
   }
 })
 
+// ── AI RESEARCH PROJECT ──
+app.post('/api/ai/research-project', requireAuth, async (req, res) => {
+  const { accountId, chatId, projectName, links, recentMessages } = req.body;
+  if (!global.researchCache) global.researchCache = {};
+
+  const safeLinks = links || [];
+  const cacheKey = `${accountId}_${chatId}_${projectName}_${safeLinks[0] || 'no_link'}`;
+
+  // Check cache (24 hours)
+  if (global.researchCache[cacheKey] && (Date.now() - global.researchCache[cacheKey].timestamp) < 24 * 60 * 60 * 1000) {
+    return res.json({ ok: true, research: global.researchCache[cacheKey].data, source: "cache", cached: true });
+  }
+
+  if (!GROQ_KEY) return res.json({ ok: false, error: "AI API key not configured." });
+
+  try {
+    const axios = require('axios');
+    let scrapedData = "";
+    
+    // Scrape up to 2 links
+    for (const link of safeLinks.slice(0, 2)) {
+      try {
+        const resp = await axios.get(link, { timeout: 3000 });
+        const text = (resp.data || "").toString()
+          .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+          .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+          .replace(/<[^>]*>?/gm, ' ')
+          .replace(/\s+/g, ' ')
+          .substring(0, 3000);
+        scrapedData += `\nSource: ${link}\nContent: ${text}\n`;
+      } catch(e) {
+        log(`[Research Scraping Failed] ${link}: ${e.message}`);
+      }
+    }
+
+    const prompt = `You are an elite BD researcher for Coincu, a Web3 news media platform.
+Research the project "${projectName}" based on the following context and scraped data.
+
+Chat context: ${(recentMessages || []).map(m => m.text).join(' ')}
+Links: ${safeLinks.join(', ')}
+Scraped Data: ${scrapedData}
+
+Based on this information, return a JSON object with the following fields:
+{
+  "projectName": "Name of the project",
+  "website": "Main website URL if found",
+  "category": "e.g. DeFi, L1, GameFi, Exchange",
+  "shortDescription": "1-2 sentence summary of what they do",
+  "productStage": "e.g. Mainnet, Testnet, IDO soon, Unknown",
+  "tractionSignals": "Any metric or hype signals found",
+  "currentNeeds": "What they likely need (e.g. PR, User Acquisition, Exchange listing)",
+  "marketingAngle": "How Coincu can pitch to them",
+  "CoincuFit": "High/Medium/Low and why",
+  "bestNextQuestion": "The best single BD question to ask them next",
+  "risksOrUnknowns": "What is missing from our understanding",
+  "sources": ["List of sources used"]
+}`;
+
+    const r = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
+      model: 'llama-3.1-8b-instant',
+      messages: [{ role: 'user', content: prompt }],
+      response_format: { type: 'json_object' },
+      temperature: 0.3
+    }, { headers: { 'Authorization': 'Bearer ' + GROQ_KEY }});
+
+    const result = JSON.parse(r.data.choices[0].message.content);
+    
+    global.researchCache[cacheKey] = { timestamp: Date.now(), data: result };
+    
+    res.json({ ok: true, research: result, source: "web_and_chat", cached: false });
+  } catch(e) {
+    log(`[Project Research Error] ${e.message}`);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 // ── AI SUGGEST (Groq) ──
 app.post('/api/ai/suggest', requireAuth, async (req,res) => {
-  const { contactName, lastMessage, messages, stage, notes, instruction, chatId, topicId } = req.body
+  const { contactName, lastMessage, messages, stage, notes, instruction, chatId, topicId, projectResearch } = req.body
   const history = (messages||[]).slice(-40)
   const lastClientMsg = (lastMessage||'').trim()
   const leonLines = history.filter(m=>m.fromMe).map(m=>m.text).filter(Boolean)
@@ -1595,6 +1671,7 @@ Return EXACTLY this JSON structure.
 
   try {
     const userPrompt = [
+      projectResearch ? `=== PRIORITY 2: PROJECT RESEARCH ===\n${projectResearch}\n` : null,
       '=== PRIORITY 3: CONVERSATION CONTEXT ===',
       `Chat ID: ${chatId || 'Unknown'}, Topic ID: ${topicId || 'None'}`,
       history.slice(-40).map(m=>(m.fromMe?'Leon':'Client')+': '+m.text).join('\n') || '(no messages yet)',

@@ -665,11 +665,11 @@ function ContextMenu({x,y,msg,chatId,token,allowedReactions,readOutboxMaxId,onDe
 
 
 // ── AI Suggest Panel ──
-function AISuggestPanel({text,suggestions,analysis,alternative,messages,loading,onUse,onUseAlt,onUseAll,onRegenerate,onClose,hasResearch,aiInstruction,setAiInstruction,aiError,onReconnect}) {
+function AISuggestPanel({text,suggestions,analysis,alternative,messages,loading,onUse,onUseAlt,onUseAll,onRegenerate,onClose,hasResearch,aiInstruction,setAiInstruction,aiError,onReconnect, projectResearch, useResearch, setUseResearch, onRefreshResearch}) {
   const [editIdx,setEditIdx] = useState(null)
   const [edited,setEdited]   = useState({})
 
-  if(!text && !loading && (!suggestions || suggestions.length === 0) && !aiError && !aiInstruction) return null
+  if(!text && !loading && (!suggestions || suggestions.length === 0) && !aiError && !aiInstruction && !projectResearch) return null
 
   // Support both new suggestions array and old text/alternative format
   let msgs = []
@@ -688,6 +688,45 @@ function AISuggestPanel({text,suggestions,analysis,alternative,messages,loading,
     <div style={{margin:"0 16px 8px",background:"rgba(124,58,237,.08)",
       border:"1px solid rgba(124,58,237,.25)",borderRadius:12,overflow:"hidden",flexShrink:0}}>
       {/* Header */}
+      
+      {/* Project Research Card */}
+      {projectResearch && projectResearch.status === 'ready' && projectResearch.data && (
+        <div style={{margin: "12px 16px", padding: 12, background: "rgba(255,255,255,0.03)", borderRadius: 8, border: "1px solid rgba(255,255,255,0.05)"}}>
+          <div style={{display: "flex", justifyContent: "space-between", alignItems: "flex-start"}}>
+            <div>
+              <div style={{fontSize: 14, fontWeight: 600, color: "#a78bfa"}}>
+                {projectResearch.data.projectName} 
+                <span style={{fontSize: 11, color: "#94a3b8", marginLeft: 8, fontWeight: 400}}>{projectResearch.data.category}</span>
+              </div>
+              <div style={{fontSize: 12, color: "#cbd5e1", marginTop: 4}}>{projectResearch.data.shortDescription}</div>
+              <div style={{fontSize: 11, color: "#94a3b8", marginTop: 6}}><strong>Need:</strong> {projectResearch.data.currentNeeds}</div>
+            </div>
+            <label style={{display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 11, color: useResearch ? "#a78bfa" : "#64748b"}}>
+              <input type="checkbox" checked={useResearch} onChange={e => setUseResearch(e.target.checked)} style={{cursor: "pointer", accentColor: "#7c3aed"}} />
+              Use research
+            </label>
+          </div>
+          <div style={{display: "flex", gap: 12, marginTop: 10, fontSize: 11}}>
+            <span style={{color: "#38bdf8", cursor: "pointer"}} onClick={() => alert(JSON.stringify(projectResearch.data, null, 2))}>View details</span>
+            <span style={{color: "#64748b", cursor: "pointer"}} onClick={onRefreshResearch}>Refresh research</span>
+          </div>
+        </div>
+      )}
+
+      {/* Research Status */}
+      {projectResearch && projectResearch.status === 'loading' && (
+        <div style={{margin: "12px 16px", fontSize: 12, color: "#94a3b8"}}>
+          <span className="spinner" style={{display: 'inline-block', width: 12, height: 12, border: '2px solid rgba(124,58,237,0.3)', borderTopColor: '#7c3aed', borderRadius: '50%', animation: 'spin 1s linear infinite', marginRight: 6}} />
+          Researching project...
+        </div>
+      )}
+      {projectResearch && projectResearch.status === 'error' && (
+        <div style={{margin: "12px 16px", fontSize: 12, color: "#ef4444", display: "flex", alignItems: "center", gap: 8}}>
+          Research unavailable, using chat context only.
+          <span style={{cursor: "pointer", textDecoration: "underline"}} onClick={onRefreshResearch}>Retry</span>
+        </div>
+      )}
+
       <div style={{padding:"6px 12px",background:"rgba(124,58,237,.12)",
         display:"flex",alignItems:"center",gap:8,borderBottom:"1px solid rgba(124,58,237,.15)"}}>
         <span style={{fontSize:13}}>✨</span>
@@ -1905,6 +1944,8 @@ function AccountMenu({ accounts, activeAccountId, onClose, onAddAccount, onSwitc
           </div>
         </div>
       </div>
+      
+
 
       {/* Account List */}
       <div style={{ maxHeight: 200, overflowY: 'auto' }}>
@@ -2220,6 +2261,15 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
   const [topicSearch,setTopicSearch]=useState("")
   const [topicCtxMenu,setTopicCtxMenu]=useState(null)
   const [msgs,setMsgs]=useState([])
+  
+  const [projectResearch, setProjectResearch] = useState(null)
+  const [useResearch, setUseResearch] = useState(true)
+  
+  useEffect(() => {
+    setProjectResearch(null);
+    setUseResearch(true);
+  }, [sel?.id, selTopic?.id]);
+
   const msgsCacheRef = useRef({})
   const chatsCacheRef = useRef({})
   const activeAccRef = useRef(activeAccountId);
@@ -2692,6 +2742,63 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
   const chatsRef = useRef([])
   useEffect(() => { chatsRef.current = chats }, [chats])
 
+  // --- Auto Project Detection ---
+  const doProjectResearch = useCallback((links, projectName) => {
+    console.log('[DEBUG] shouldResearch', true, 'detectedLinks', links);
+    setProjectResearch(prev => ({...prev, status: 'loading'}));
+    
+    const payload = {
+      accountId: activeAccRef.current,
+      chatId: sel?.id,
+      projectName: projectName || 'Detected Project',
+      links: links,
+      recentMessages: msgs.slice(-10)
+    };
+    
+    fetch('/api/ai/research-project', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
+      body: JSON.stringify(payload)
+    })
+    .then(r => r.json())
+    .then(d => {
+       console.log('[DEBUG] researchApiStatus', d);
+       if (d.ok) {
+         setProjectResearch({ status: 'ready', data: d.research });
+         setUseResearch(true);
+       } else {
+         setProjectResearch({ status: 'error' });
+       }
+    })
+    .catch(e => {
+       console.log('[DEBUG] researchApiError', e);
+       setProjectResearch({ status: 'error' });
+    });
+  }, [msgs, sel?.id, token]);
+
+  useEffect(() => {
+    if (!msgs || msgs.length === 0 || !sel) return;
+    
+    const lastMsg = msgs[msgs.length - 1];
+    if (lastMsg.fromMe || lastMsg.pending) return;
+    
+    // Only detect once per message ID for this chat
+    if (projectResearch && projectResearch.lastScannedMsgId === lastMsg.id) return;
+    if (projectResearch && projectResearch.status === 'loading') return;
+    if (projectResearch && projectResearch.status === 'ready') return;
+    
+    const text = lastMsg.text || "";
+    const linkRegex = /(https?:\/\/(?:www\.)?(?:twitter\.com|x\.com|t\.me|coinmarketcap\.com|coingecko\.com)[^\s]+)|(https?:\/\/[a-zA-Z0-9-]+\.(?:io|xyz|network|finance|money|tech|app|org)[^\s]*)|(docs\.[a-zA-Z0-9-]+\.[a-zA-Z]+[^\s]*)/gi;
+    const matches = text.match(linkRegex);
+    
+    if (matches && matches.length > 0) {
+      setProjectResearch({ status: 'loading', lastScannedMsgId: lastMsg.id });
+      doProjectResearch(matches, 'Detected Project');
+    } else {
+      setProjectResearch(prev => ({ ...(prev || {}), lastScannedMsgId: lastMsg.id }));
+    }
+  }, [msgs.length, doProjectResearch, sel, projectResearch]);
+
   // Load chats
   const fetchChats = useCallback(async (append=false) => {
     if (loadingChatsRef.current) return
@@ -2859,6 +2966,8 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
     if (prevSelId.current !== sel.id) {
        currentTopic = null
        setSelTopic(null)
+       setProjectResearch(null)
+       setUseResearch(false)
        chatOrTopicChanged = true
        prevSelId.current = sel.id
        prevSelTopicId.current = null
@@ -3767,8 +3876,12 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
       notes: (notes[sel.id]||[]).map(n=>n.content).join(" | "),
       instruction: cmd,
       chatId: sel.id,
-      topicId: selTopic?.id || null
+      topicId: selTopic?.id || null,
+      projectResearch: useResearch && projectResearch?.data ? JSON.stringify(projectResearch.data, null, 2) : null
     };
+
+    console.log('[DEBUG] finalPromptIncludesResearch', !!aiPayload.projectResearch);
+    console.log('[DEBUG] researchUsedInReply', !!(useResearch && projectResearch?.data));
 
     try {
       const r = await fetch("/api/ai/suggest", {
@@ -4409,7 +4522,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
     aiAlt, setAiAlt, setAiLoading, tmplCats, setTmplCat,
     tmplCat, TEMPLATES: [], setMsgs, setSelectMode, lightbox, StageBadge, gifOpen, setGifOpen,
     gifQuery, setGifQuery, searchGifs, gifs, loadingRef, showScrollBtn, aiError, highlightedMsgId, onAuthFailed,
-    activeTranslations, handleTranslate
+    activeTranslations, handleTranslate, projectResearch, useResearch, setUseResearch, doProjectResearch
   };
 
   const handlePinnedMessageClick = async (pinnedMessageId) => {
@@ -4821,6 +4934,14 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
               aiInstruction={aiInstruction}
               setAiInstruction={setAiInstruction}
               onReconnect={onAuthFailed}
+              projectResearch={projectResearch} useResearch={useResearch} setUseResearch={setUseResearch}
+              onRefreshResearch={() => {
+                 if (projectResearch?.data?.website) {
+                    doProjectResearch([projectResearch.data.website], projectResearch.data.projectName);
+                 } else {
+                    alert("No website found to refresh research.");
+                 }
+              }}
             />
             <Composer {...chatProps} />
           </div>
