@@ -81,7 +81,7 @@ function Login({ onLogin }) {
 }
 
 // ── TELEGRAM OTP CONNECT ──
-function TelegramConnect({ token, onConnected }) {
+function TelegramConnect({ token, onConnected, onLogout }) {
   const [step,setStep]   = useState("phone")
   const [phone,setPhone] = useState("+84")
   const [code,setCode]   = useState("")
@@ -98,6 +98,7 @@ function TelegramConnect({ token, onConnected }) {
         method:"POST", headers:{"Content-Type":"application/json","x-auth-token":token},
         body: JSON.stringify({phone})
       })
+      if (r.status === 401) return onLogout();
       const d = await r.json()
       if (d.ok) { setHash(d.phoneCodeHash); setStep("otp") }
       else setErr(d.error || "Gửi OTP thất bại")
@@ -113,6 +114,7 @@ function TelegramConnect({ token, onConnected }) {
         method:"POST", headers:{"Content-Type":"application/json","x-auth-token":token},
         body: JSON.stringify({phone, code, phoneCodeHash:hash, password:pw})
       })
+      if (r.status === 401) return onLogout();
       const d = await r.json()
       if (d.ok) { setStep("done"); setTimeout(onConnected, 1200) }
       else if (d.error?.includes("PASSWORD")) { setStep("2fa"); setErr("") }
@@ -251,7 +253,7 @@ export default function App() {
     </div>
   )
 
-  if (!tgOk) return <TelegramConnect token={token} onConnected={()=>setTgOk(true)}/>
+  if (!tgOk) return <TelegramConnect token={token} onConnected={()=>setTgOk(true)} onLogout={logout}/>
 
   return (
     <div style={{height:"100vh",display:"flex",flexDirection:"column",background:TG.bg,overflow:"hidden"}}>

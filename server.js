@@ -36,8 +36,8 @@ const bcrypt = require('bcryptjs')
 const jwt = require('jsonwebtoken')
 const rateLimit = require('express-rate-limit')
 
-// JWT Secret: Nên lưu trong file .env, nếu không có sẽ tự động random mỗi lần restart (an toàn hơn static token)
-const JWT_SECRET = process.env.JWT_SECRET || require('crypto').randomBytes(32).toString('hex')
+// JWT Secret: Dùng fallback cố định để tránh mất session khi server (Railway) restart
+const JWT_SECRET = process.env.JWT_SECRET || 'crmchat_super_secret_jwt_key_2026_fallback'
 
 // Tạm thời mã hóa password cứng lúc khởi động để bảo vệ trên bộ nhớ.
 // TODO: Tốt nhất nên lưu trực tiếp chuỗi hash (đã mã hóa) vào file .env thay vì plaintext.
