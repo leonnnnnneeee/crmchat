@@ -1132,8 +1132,29 @@ function SharedMediaModal({ initialTab, msgs, data, onClose, token, setLightbox,
     </div>
   )
 }
+const MediaSkeleton = () => (
+  <div style={{display:'grid',gridTemplateColumns:'repeat(3, 1fr)',gap:4}}>
+    {[...Array(12)].map((_, i) => (
+      <div key={i} style={{aspectRatio:'1/1', background:'rgba(124,58,237,.15)', borderRadius:4, animation:'pulse 1.5s infinite ease-in-out'}} />
+    ))}
+  </div>
+);
 
-function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs, messagesLoaded, hasMore, onOpenMedia, setLightbox }) {
+const RowSkeleton = () => (
+  <div style={{display:'flex',flexDirection:'column',gap:12}}>
+    {[...Array(6)].map((_, i) => (
+      <div key={i} style={{display:'flex',gap:12,padding:12,borderRadius:8,alignItems:'center'}}>
+        <div style={{width:40,height:40,borderRadius:8,background:'rgba(124,58,237,.15)', animation:'pulse 1.5s infinite ease-in-out'}} />
+        <div style={{flex:1, display:'flex', flexDirection:'column', gap:6}}>
+          <div style={{height:14, background:'rgba(124,58,237,.15)', borderRadius:4, width:'70%', animation:'pulse 1.5s infinite ease-in-out'}} />
+          <div style={{height:12, background:'rgba(124,58,237,.15)', borderRadius:4, width:'40%', animation:'pulse 1.5s infinite ease-in-out'}} />
+        </div>
+      </div>
+    ))}
+  </div>
+);
+
+function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs, messagesLoaded, hasMore, onOpenMedia, setLightbox, activeAcc }) {
   const [status, setStatus] = useState(null)
   const [showMore, setShowMore] = useState(false)
   const [fullProfile, setFullProfile] = useState(null)
@@ -1210,9 +1231,11 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
   const [tabOffsetId, setTabOffsetId] = useState({ media: 0, files: 0, links: 0, groups: 0 });
   const [tabError, setTabError] = useState({ media: null, files: null, links: null, groups: null });
 
+  const fetchedTabsRef = useRef(new Set());
+  
   useEffect(() => {
     if (!data) return;
-    const keyBase = `${data.chatId}_${data.topicId||''}_${data.id}`;
+    const keyBase = `${activeAcc}_${data.chatId}_${data.topicId||''}_${data.id}`;
     
     const initialTabData = { media: [], files: [], links: [], groups: [] };
     const initialTabHasMore = { media: true, files: true, links: true, groups: true };
@@ -1233,28 +1256,45 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
     setTabHasMore(initialTabHasMore);
     setTabOffsetId(initialTabOffsetId);
     setTabError(initialTabError);
-  }, [data?.id, data?.chatId, data?.topicId]);
+    fetchedTabsRef.current.clear(); // Reset tracking on profile change
+  }, [data?.id, data?.chatId, data?.topicId, activeAcc]);
 
   useEffect(() => {
     if (!data?.chatId && activeTab !== 'groups') return;
     if (!data?.id && activeTab === 'groups') return;
-    if (tabData[activeTab].length === 0 && tabHasMore[activeTab] && !tabLoading[activeTab]) {
-      loadMore(activeTab);
+    
+    if (!tabLoading[activeTab]) {
+      if (tabData[activeTab].length === 0 && tabHasMore[activeTab]) {
+        loadMore(activeTab);
+      } else if (!fetchedTabsRef.current.has(activeTab)) {
+        // Background refresh for latest items if already cached
+        loadMore(activeTab, true);
+      }
     }
   }, [activeTab, data?.chatId, data?.id, tabData]);
 
-  const loadMore = (tab) => {
-    if (tabLoading[tab] || !tabHasMore[tab]) return;
+  const loadMore = (tab, isBackgroundRefresh = false) => {
+    if (tabLoading[tab] || (!isBackgroundRefresh && !tabHasMore[tab])) return;
+    fetchedTabsRef.current.add(tab);
     setTabLoading(prev => ({...prev, [tab]: true}));
     
     let isMounted = true;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      if (isMounted) {
+        controller.abort();
+        setTabError(prev => ({...prev, [tab]: "Media is taking longer than usual"}));
+        setTabLoading(prev => ({...prev, [tab]: false}));
+      }
+    }, 10000);
 
     if (tab === 'groups') {
       const accessHashQuery = data.accessHash ? `?accessHash=${data.accessHash}` : '';
       const usernameQuery = data.username ? (data.accessHash ? `&username=${data.username}` : `?username=${data.username}`) : '';
       
-      fetch(`/api/chat/common_groups/${data.id}${accessHashQuery}${usernameQuery}`, { headers: {'x-auth-token': token} })
+      fetch(`/api/chat/common_groups/${data.id}${accessHashQuery}${usernameQuery}`, { headers: {'x-auth-token': token}, signal: controller.signal })
         .then(async r => {
+          clearTimeout(timeoutId);
           const ct = r.headers.get('content-type');
           if (ct && ct.includes('text/html')) throw new Error('API route not found or backend returned HTML');
           if (!r.ok) {
@@ -1268,7 +1308,7 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
           if (isMounted && d.ok) {
              setTabData(prev => {
                const updated = d.groups || [];
-               sharedMediaCache[`${data.chatId}_${data.topicId||''}_${data.id}_groups`] = { items: updated, hasMore: false, nextCursor: 0, error: null };
+               sharedMediaCache[`${activeAcc}_${data.chatId}_${data.topicId||''}_${data.id}_groups`] = { items: updated, hasMore: false, nextCursor: 0, error: null };
                return {...prev, groups: updated};
              });
              setTabHasMore(prev => ({...prev, groups: false}));
@@ -1276,13 +1316,14 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
           }
         })
         .catch(e => {
+          clearTimeout(timeoutId);
           console.error(e);
-          if (isMounted) setTabError(prev => ({...prev, groups: e.message}));
+          if (isMounted && e.name !== 'AbortError') setTabError(prev => ({...prev, groups: e.message}));
         })
         .finally(() => {
           if (isMounted) setTabLoading(prev => ({...prev, groups: false}));
         });
-      return () => { isMounted = false; };
+      return () => { isMounted = false; controller.abort(); };
     }
 
     if (!data?.chatId) {
@@ -1294,10 +1335,12 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
     const accessHashQuery = (isGroupProfile && data.accessHash) ? `&accessHash=${data.accessHash}` : '';
     const topicIdQuery = isTopicInfo ? `&topicId=${data.topicId}` : '';
     
-    console.log(`[Debug] Media tab type: ${tab} | API URL: /api/telegram/shared-media?chatId=${data.chatId}&type=${tab}${fromUserQuery}${accessHashQuery}${topicIdQuery}&cursor=${tabOffsetId[tab]}&limit=30`);
+    const currentCursor = isBackgroundRefresh ? 0 : tabOffsetId[tab];
+    console.log(`[Debug] Media tab type: ${tab} | API URL: /api/telegram/shared-media?chatId=${data.chatId}&type=${tab}${fromUserQuery}${accessHashQuery}${topicIdQuery}&cursor=${currentCursor}&limit=30`);
     
-    fetch(`/api/telegram/shared-media?chatId=${data.chatId}&type=${tab}${fromUserQuery}${accessHashQuery}${topicIdQuery}&cursor=${tabOffsetId[tab]}&limit=30`, { headers: {'x-auth-token': token} })
+    fetch(`/api/telegram/shared-media?chatId=${data.chatId}&type=${tab}${fromUserQuery}${accessHashQuery}${topicIdQuery}&cursor=${currentCursor}&limit=30`, { headers: {'x-auth-token': token}, signal: controller.signal })
       .then(async r => {
+        clearTimeout(timeoutId);
         const ct = r.headers.get('content-type');
         if (ct && ct.includes('text/html')) throw new Error('API route not found or backend returned HTML');
         if (!r.ok) {
@@ -1316,27 +1359,35 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
              // Deduplicate by id just in case
              const existingIds = new Set(prev[tab].map(m => m.id));
              const newItems = items.filter(m => !existingIds.has(m.id));
-             const updated = [...prev[tab], ...newItems];
-             sharedMediaCache[`${data.chatId}_${data.topicId||''}_${data.id}_${tab}`] = {
+             let updated;
+             if (isBackgroundRefresh) {
+               updated = [...newItems, ...prev[tab]];
+             } else {
+               updated = [...prev[tab], ...newItems];
+             }
+             sharedMediaCache[`${activeAcc}_${data.chatId}_${data.topicId||''}_${data.id}_${tab}`] = {
                items: updated,
-               hasMore: d.hasMore,
-               nextCursor: nextCursor,
+               hasMore: isBackgroundRefresh ? prev.hasMore : d.hasMore,
+               nextCursor: isBackgroundRefresh ? prev.nextCursor : nextCursor,
                error: null
              };
              return {...prev, [tab]: updated};
            });
-           setTabHasMore(prev => ({...prev, [tab]: d.hasMore}));
-           setTabOffsetId(prev => ({...prev, [tab]: nextCursor}));
+           if (!isBackgroundRefresh) {
+             setTabHasMore(prev => ({...prev, [tab]: d.hasMore}));
+             setTabOffsetId(prev => ({...prev, [tab]: nextCursor}));
+           }
         } else if (isMounted && !d.ok) {
            console.log(`[Debug] Media API status error: ${tab} failed - ${d.error}`);
            setTabError(prev => ({...prev, [tab]: d.error || 'Failed to fetch'}));
         }
       })
       .catch(e => {
+        clearTimeout(timeoutId);
         console.error(`[Debug] Media API throw error: ${tab} -`, e);
-        if (isMounted) {
+        if (isMounted && e.name !== 'AbortError') {
             setTabError(prev => {
-                sharedMediaCache[`${data.chatId}_${data.topicId||''}_${data.id}_${tab}`] = { 
+                sharedMediaCache[`${activeAcc}_${data.chatId}_${data.topicId||''}_${data.id}_${tab}`] = { 
                     items: tabData[tab], hasMore: tabHasMore[tab], nextCursor: tabOffsetId[tab], error: e.message 
                 };
                 return {...prev, [tab]: e.message};
@@ -1604,66 +1655,78 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
 
             {activeTab === 'media' && (
               <div style={{display:'flex', flexDirection:'column', gap:16}}>
-                <div style={{display:'grid',gridTemplateColumns:'repeat(3, 1fr)',gap:4}}>
-                  {(isFallback ? fallbackData.media : tabData.media).map(m => (
-                    <div key={m.id} style={{aspectRatio:'1/1',background:'rgba(124,58,237,.1)',cursor:'pointer',position:'relative'}} onClick={()=>handleMediaClick(m)}>
-                      <ChatPhoto msg={m} chatId={data.chatId} authToken={token} onImageClick={()=>{}} thumb={1} />
-                      {m.isVideo && <div style={{position:'absolute',top:'50%',left:'50%',transform:'translate(-50%,-50%)',color:'#fff',fontSize:24,textShadow:'0 2px 8px rgba(0,0,0,0.5)'}}>▶</div>}
-                    </div>
-                  ))}
-                </div>
-                {tabLoading.media ? (
-                  <div style={{textAlign:'center',color:'#9b7ec8',paddingTop:10}}>Loading media...</div>
-                ) : !isFallback && tabHasMore.media ? (
+                {tabData.media.length === 0 && tabLoading.media ? (
+                  <MediaSkeleton />
+                ) : (
+                  <div style={{display:'grid',gridTemplateColumns:'repeat(3, 1fr)',gap:4}}>
+                    {(isFallback ? fallbackData.media : tabData.media).map(m => (
+                      <div key={m.id} style={{aspectRatio:'1/1',background:'rgba(124,58,237,.1)',cursor:'pointer',position:'relative'}} onClick={()=>handleMediaClick(m)}>
+                        <ChatPhoto msg={m} chatId={data.chatId} authToken={token} onImageClick={()=>{}} thumb={1} />
+                        {m.isVideo && <div style={{position:'absolute',top:'50%',left:'50%',transform:'translate(-50%,-50%)',color:'#fff',fontSize:24,textShadow:'0 2px 8px rgba(0,0,0,0.5)'}}>▶</div>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {tabLoading.media && tabData.media.length > 0 ? (
+                  <div style={{textAlign:'center', padding:10}}><div className="small-spinner" style={{display:'inline-block',width:16,height:16,border:'2px solid rgba(124,58,237,.3)',borderTopColor:'#7c3aed',borderRadius:'50%',animation:'spin 1s linear infinite'}}/></div>
+                ) : !isFallback && tabHasMore.media && tabData.media.length > 0 ? (
                   <div onClick={()=>loadMore('media')} style={{textAlign:'center',color:'#7c3aed',cursor:'pointer',padding:8,background:'rgba(124,58,237,.1)',borderRadius:8}}>{tabError.media ? 'Retry' : 'Load More'}</div>
-                ) : (isFallback ? fallbackData.media.length === 0 : tabData.media.length === 0) && !tabError.media && (
+                ) : (isFallback ? fallbackData.media.length === 0 : tabData.media.length === 0) && !tabError.media && !tabLoading.media && (
                   <div style={{textAlign:'center',color:'#9b7ec8',paddingTop:10}}>No media found</div>
                 )}
               </div>
             )}
             {activeTab === 'files' && (
               <div style={{display:'flex',flexDirection:'column',gap:12}}>
-                {(isFallback ? fallbackData.files : tabData.files).map(m => (
-                  <div key={m.id} onClick={()=>handleMediaClick(m)} style={{display:'flex',alignItems:'center',gap:12,cursor:'pointer',background:'rgba(124,58,237,.1)',padding:12,borderRadius:8}}>
-                    <div style={{width:40,height:40,borderRadius:8,background:'#7c3aed',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20}}>📄</div>
-                    <div style={{flex:1,overflow:'hidden'}}>
-                      <div style={{fontSize:14,fontWeight:500,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{m.fileName || 'Document'}</div>
-                      <div style={{fontSize:12,color:'#9b7ec8'}}>{new Date(m.date*1000).toLocaleString()} • {m.fileSize ? (m.fileSize/1024).toFixed(1)+' KB' : ''}</div>
+                {tabData.files.length === 0 && tabLoading.files ? (
+                  <RowSkeleton />
+                ) : (
+                  (isFallback ? fallbackData.files : tabData.files).map(m => (
+                    <div key={m.id} onClick={()=>handleMediaClick(m)} style={{display:'flex',alignItems:'center',gap:12,cursor:'pointer',background:'rgba(124,58,237,.1)',padding:12,borderRadius:8}}>
+                      <div style={{width:40,height:40,borderRadius:8,background:'#7c3aed',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20}}>📄</div>
+                      <div style={{flex:1,overflow:'hidden'}}>
+                        <div style={{fontSize:14,fontWeight:500,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{m.fileName || 'Document'}</div>
+                        <div style={{fontSize:12,color:'#9b7ec8'}}>{new Date(m.date*1000).toLocaleString()} • {m.fileSize ? (m.fileSize/1024).toFixed(1)+' KB' : ''}</div>
+                      </div>
                     </div>
-                  </div>
-                ))}
-                {tabLoading.files ? (
-                  <div style={{textAlign:'center',color:'#9b7ec8',paddingTop:10}}>Loading files...</div>
-                ) : !isFallback && tabHasMore.files ? (
+                  ))
+                )}
+                {tabLoading.files && tabData.files.length > 0 ? (
+                  <div style={{textAlign:'center', padding:10}}><div className="small-spinner" style={{display:'inline-block',width:16,height:16,border:'2px solid rgba(124,58,237,.3)',borderTopColor:'#7c3aed',borderRadius:'50%',animation:'spin 1s linear infinite'}}/></div>
+                ) : !isFallback && tabHasMore.files && tabData.files.length > 0 ? (
                   <div onClick={()=>loadMore('files')} style={{textAlign:'center',color:'#7c3aed',cursor:'pointer',padding:8,background:'rgba(124,58,237,.1)',borderRadius:8}}>{tabError.files ? 'Retry' : 'Load More'}</div>
-                ) : (isFallback ? fallbackData.files.length === 0 : tabData.files.length === 0) && !tabError.files && (
+                ) : (isFallback ? fallbackData.files.length === 0 : tabData.files.length === 0) && !tabError.files && !tabLoading.files && (
                   <div style={{textAlign:'center',color:'#9b7ec8',paddingTop:10}}>No files found</div>
                 )}
               </div>
             )}
             {activeTab === 'links' && (
               <div style={{display:'flex',flexDirection:'column',gap:12}}>
-                {(isFallback ? fallbackData.links : tabData.links).map((m, i) => {
-                  const urlMatch = m.webpageUrl || (m.text ? m.text.match(/(https?:\/\/[^\s]+)/) : null);
-                  const finalUrl = typeof urlMatch === 'string' ? urlMatch : (urlMatch ? urlMatch[0] : '#');
-                  
-                  if (!finalUrl || finalUrl === '#') return null;
-
-                  return (
-                    <div key={i} onClick={()=>window.open(finalUrl, '_blank')} style={{display:'flex',gap:12,background:'rgba(124,58,237,.1)',padding:12,borderRadius:8,alignItems:'center',cursor:'pointer'}}>
-                      <div style={{width:40,height:40,borderRadius:8,background:'rgba(124,58,237,.2)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18}}>🔗</div>
-                      <div style={{flex:1,overflow:'hidden'}}>
-                        <div style={{fontSize:14,fontWeight:500,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',color:'#7dd3fc'}}>{m.webpageTitle || m.webpageUrl || 'Link'}</div>
-                        <div style={{fontSize:12,color:'#9b7ec8'}}>{new Date(m.date*1000).toLocaleString()}</div>
+                {tabData.links.length === 0 && tabLoading.links ? (
+                  <RowSkeleton />
+                ) : (
+                  (isFallback ? fallbackData.links : tabData.links).map((m, i) => {
+                    const urlMatch = m.webpageUrl || (m.text ? m.text.match(/(https?:\/\/[^\s]+)/) : null);
+                    const finalUrl = typeof urlMatch === 'string' ? urlMatch : (urlMatch ? urlMatch[0] : '#');
+                    
+                    if (!finalUrl || finalUrl === '#') return null;
+  
+                    return (
+                      <div key={i} onClick={()=>window.open(finalUrl, '_blank')} style={{display:'flex',gap:12,background:'rgba(124,58,237,.1)',padding:12,borderRadius:8,alignItems:'center',cursor:'pointer'}}>
+                        <div style={{width:40,height:40,borderRadius:8,background:'rgba(124,58,237,.2)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18}}>🔗</div>
+                        <div style={{flex:1,overflow:'hidden'}}>
+                          <div style={{fontSize:14,fontWeight:500,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',color:'#7dd3fc'}}>{m.webpageTitle || m.webpageUrl || 'Link'}</div>
+                          <div style={{fontSize:12,color:'#9b7ec8'}}>{new Date(m.date*1000).toLocaleString()}</div>
+                        </div>
                       </div>
-                    </div>
-                  )
-                })}
-                {tabLoading.links ? (
-                  <div style={{textAlign:'center',color:'#9b7ec8',paddingTop:10}}>Loading links...</div>
-                ) : !isFallback && tabHasMore.links ? (
+                    )
+                  })
+                )}
+                {tabLoading.links && tabData.links.length > 0 ? (
+                  <div style={{textAlign:'center', padding:10}}><div className="small-spinner" style={{display:'inline-block',width:16,height:16,border:'2px solid rgba(124,58,237,.3)',borderTopColor:'#7c3aed',borderRadius:'50%',animation:'spin 1s linear infinite'}}/></div>
+                ) : !isFallback && tabHasMore.links && tabData.links.length > 0 ? (
                   <div onClick={()=>loadMore('links')} style={{textAlign:'center',color:'#7c3aed',cursor:'pointer',padding:8,background:'rgba(124,58,237,.1)',borderRadius:8}}>{tabError.links ? 'Retry' : 'Load More'}</div>
-                ) : (isFallback ? fallbackData.links.length === 0 : tabData.links.length === 0) && !tabError.links && (
+                ) : (isFallback ? fallbackData.links.length === 0 : tabData.links.length === 0) && !tabError.links && !tabLoading.links && (
                   <div style={{textAlign:'center',color:'#9b7ec8',paddingTop:10}}>No links found</div>
                 )}
               </div>
@@ -4616,6 +4679,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
 
       {/* User Profile Preview Modal */}
       <UserProfileModal 
+        activeAcc={activeAccRef.current}
         data={profilePreview} 
         onClose={() => setProfilePreview(null)} 
         token={token} 
