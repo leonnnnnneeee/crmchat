@@ -3488,7 +3488,8 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
   }
 
   async function send(retryText = null){
-    const safeInput = retryText !== null ? retryText : ((input === "null" || input == null) ? "" : input);
+    if (retryText && typeof retryText === 'object') retryText = null;
+    const safeInput = typeof retryText === 'string' ? retryText : ((input === "null" || input == null) ? "" : input);
     const text=safeInput.trim(); 
     if((!text && !pastedFile) || !sel) return
     // Handle edit mode — call Telegram API
