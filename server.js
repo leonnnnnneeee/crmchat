@@ -309,11 +309,34 @@ app.post('/api/tg/verify-otp', requireAuth, async (req,res) => {
       } else throw e
     }
     const newSession = client.session.save()
-    _accounts.set(accountId, { session: newSession, client: client, ready: true })
+    
+    // Deduplicate logic
+    const me = await client.getMe();
+    const telegramUserId = me.id.toString();
+    const userPhone = me.phone || '';
+    
+    let canonicalAccountId = accountId;
+    for (const [id, acc] of _accounts.entries()) {
+      if (id !== accountId && acc.session) {
+         if ((acc.telegramUserId && acc.telegramUserId === telegramUserId) || (acc.phone && userPhone && acc.phone === userPhone)) {
+            canonicalAccountId = id;
+            break;
+         }
+      }
+    }
+    
+    if (canonicalAccountId !== accountId) {
+      log(`[Auth] Duplicate found for ${telegramUserId}, merging session into ${canonicalAccountId}`);
+      _accounts.set(canonicalAccountId, { session: newSession, client: client, ready: true, telegramUserId, phone: userPhone });
+      await saveSessionToDB(newSession, canonicalAccountId);
+    } else {
+      _accounts.set(accountId, { session: newSession, client: client, ready: true, telegramUserId, phone: userPhone });
+      await saveSessionToDB(newSession, accountId);
+    }
+    
     _pendingClients.delete(accountId)
-    await saveSessionToDB(newSession, accountId)
-    log(`✅ TG authenticated, session saved to Supabase for ${accountId}`)
-    res.json({ ok: true })
+    log(`✅ TG authenticated, session saved to Supabase for ${canonicalAccountId}`)
+    res.json({ ok: true, accountId: canonicalAccountId })
   } catch(e) { log('verifyOTP: '+e.message); res.status(500).json({ error: e.message }) }
 })
 
@@ -1957,14 +1980,15 @@ app.get('/api/telegram/messages/around', requireAuth, async (req, res) => {
 })
 // ── MULTI-ACCOUNT ENDPOINTS ──
 app.get('/api/telegram/accounts', async (req, res) => {
-  const result = [];
+  const rawAccounts = [];
   for (const [id, acc] of _accounts.entries()) {
     if (!acc.session) continue;
     try {
       const client = await getClient(id);
       const me = await client.getMe();
-      result.push({
+      rawAccounts.push({
         accountId: id,
+        telegramUserId: me.id.toString(),
         displayName: me.firstName + (me.lastName ? ' ' + me.lastName : ''),
         username: me.username || '',
         phone: me.phone || '',
@@ -1972,15 +1996,43 @@ app.get('/api/telegram/accounts', async (req, res) => {
         sessionStatus: acc.ready ? 'connected' : 'disconnected'
       });
     } catch (e) {
-      result.push({
+      rawAccounts.push({
         accountId: id,
         displayName: `Account ${id}`,
         sessionStatus: 'disconnected',
-        error: e.message
+        error: e.message,
+        isActive: id === req.accountId
       });
     }
   }
-  res.json(result);
+
+  // Deduplicate using telegramUserId > phone > accountId
+  const dedupedMap = new Map();
+  for (const acc of rawAccounts) {
+    if (acc.error) {
+      // If we don't know the ID because it's disconnected/error, just use accountId as key
+      if (!dedupedMap.has(acc.accountId)) dedupedMap.set(acc.accountId, acc);
+      continue;
+    }
+    
+    const key = acc.telegramUserId || acc.phone || acc.accountId;
+    if (dedupedMap.has(key)) {
+      const existing = dedupedMap.get(key);
+      // Merge: prefer connected session, keep isActive if any is active, keep phone/username
+      if (acc.isActive) existing.isActive = true;
+      if (acc.phone && !existing.phone) existing.phone = acc.phone;
+      if (acc.username && !existing.username) existing.username = acc.username;
+      if (acc.sessionStatus === 'connected') existing.sessionStatus = 'connected';
+      // If the new one is active but we are keeping the existing one as canonical, 
+      // the frontend will see existing.isActive = true and migrate to existing.accountId.
+    } else {
+      dedupedMap.set(key, { ...acc });
+    }
+  }
+
+  const finalAccounts = Array.from(dedupedMap.values());
+  log(`[AccountDedup] raw: ${rawAccounts.length}, deduped: ${finalAccounts.length}`);
+  res.json(finalAccounts);
 });
 
 app.post('/api/telegram/accounts/add-session', async (req, res) => {
@@ -1992,12 +2044,31 @@ app.post('/api/telegram/accounts/add-session', async (req, res) => {
     const { StringSession } = require('telegram/sessions');
     const client = new TelegramClient(new StringSession(sessionString), TG_API_ID, TG_API_HASH, { connectionRetries: 1 });
     await client.connect();
-    await client.getMe(); // Verify it works
+    const me = await client.getMe(); // Verify it works
+    const telegramUserId = me.id.toString();
+    const userPhone = me.phone || '';
     
-    _accounts.set(accountId, { session: sessionString, client: client, ready: true });
-    await saveSessionToDB(sessionString, accountId);
-    log(`✅ Imported session for ${accountId}`);
-    res.json({ ok: true, accountId });
+    let canonicalAccountId = accountId;
+    for (const [id, acc] of _accounts.entries()) {
+      if (id !== accountId && acc.session) {
+         if ((acc.telegramUserId && acc.telegramUserId === telegramUserId) || (acc.phone && userPhone && acc.phone === userPhone)) {
+            canonicalAccountId = id;
+            break;
+         }
+      }
+    }
+
+    if (canonicalAccountId !== accountId) {
+      log(`[Auth] Duplicate imported session for ${telegramUserId}, merging into ${canonicalAccountId}`);
+      _accounts.set(canonicalAccountId, { session: sessionString, client: client, ready: true, telegramUserId, phone: userPhone });
+      await saveSessionToDB(sessionString, canonicalAccountId);
+    } else {
+      _accounts.set(accountId, { session: sessionString, client: client, ready: true, telegramUserId, phone: userPhone });
+      await saveSessionToDB(sessionString, accountId);
+    }
+    
+    log(`✅ Imported session for ${canonicalAccountId}`);
+    res.json({ ok: true, accountId: canonicalAccountId });
   } catch (e) {
     log('add-session error: ' + e.message);
     res.status(500).json({ error: 'Invalid session string or connection failed: ' + e.message });

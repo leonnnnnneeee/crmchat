@@ -1855,8 +1855,13 @@ function AccountMenu({ accounts, activeAccountId, onClose, onAddAccount, onSwitc
             <div style={{ width: 32, height: 32, borderRadius: '50%', background: acc.accountId === activeAccountId ? '#7c3aed' : '#3a3a3c', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 13, fontWeight: 600 }}>
               {acc.displayName ? acc.displayName.charAt(0).toUpperCase() : 'A'}
             </div>
-            <div style={{ flex: 1, color: acc.accountId === activeAccountId ? '#fff' : '#e5e5ea', fontSize: 14 }}>
-              {acc.displayName || acc.accountId}
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+              <div style={{ color: acc.accountId === activeAccountId ? '#fff' : '#e5e5ea', fontSize: 14, fontWeight: 500 }}>
+                {acc.displayName || acc.accountId}
+              </div>
+              <div style={{ color: '#8e8e93', fontSize: 12, marginTop: 2 }}>
+                {acc.phone ? `+${acc.phone}` : (acc.username ? `@${acc.username}` : 'Telegram account')}
+              </div>
             </div>
             {acc.accountId === activeAccountId && <div style={{ color: '#7c3aed', fontSize: 16 }}>✓</div>}
           </div>
@@ -1951,7 +1956,7 @@ function AddAccountModal({ onClose, onSuccess }) {
         }
         throw new Error(data.error);
       }
-      if (onSuccess) onSuccess(accountId);
+      if (onSuccess) onSuccess(data.accountId || accountId);
       onClose();
     } catch (e) {
       setError(e.message);
@@ -2083,19 +2088,28 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
           setAccounts(data);
           
           const currActive = localStorage.getItem('crmchat_active_account') || 'default';
-          const exists = data.find(a => a.accountId === currActive);
+          const activeCanonical = data.find(a => a.isActive);
           
-          if (exists) {
-            setActiveAccId(exists.accountId);
-            setActiveAccountId(exists.accountId); // global interceptor
-            console.log('[Multi-Account] Restored active account:', exists.accountId);
+          let targetActiveId = currActive;
+          if (activeCanonical) {
+            targetActiveId = activeCanonical.accountId;
           } else {
-            const first = data.find(a => a.sessionStatus === 'connected') || data[0];
-            setActiveAccId(first.accountId);
-            setActiveAccountId(first.accountId); // global interceptor
-            localStorage.setItem('crmchat_active_account', first.accountId);
-            console.log('[Multi-Account] Restored account invalid. Fallback to:', first.accountId);
+            const exists = data.find(a => a.accountId === currActive);
+            if (!exists) {
+              const first = data.find(a => a.sessionStatus === 'connected') || data[0];
+              targetActiveId = first.accountId;
+            }
           }
+
+          if (targetActiveId !== currActive) {
+            console.log('[Multi-Account] Migrating active account from', currActive, 'to canonical', targetActiveId);
+            localStorage.setItem('crmchat_active_account', targetActiveId);
+          } else {
+            console.log('[Multi-Account] Restored active account:', targetActiveId);
+          }
+          
+          setActiveAccId(targetActiveId);
+          setActiveAccountId(targetActiveId); // global interceptor
         } else {
           setAccounts([{ accountId: 'default', displayName: 'Default Account', sessionStatus: 'connected' }]);
         }
