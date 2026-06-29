@@ -2326,6 +2326,7 @@ app.get('/api/chat/stream', (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream')
   res.setHeader('Cache-Control', 'no-cache')
   res.setHeader('Connection', 'keep-alive')
+  res.setHeader('X-Accel-Buffering', 'no') // Disable Nginx/Railway proxy buffering
   res.flushHeaders()
 
   res.write(`data: ${JSON.stringify({ type: 'connected' })}\n\n`)

@@ -3011,7 +3011,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
 
   // Real-time SSE Connection
   useEffect(() => {
-    if (!token || !activeAccRef.current) return
+    if (!token || !activeAccountId) return
     
     let sse = null
     let retryCount = 0
@@ -3021,13 +3021,13 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
 
     const connectSSE = () => {
       setSseStatus('connecting');
-      sse = new EventSource('/api/chat/stream?token=' + encodeURIComponent(token) + '&accountId=' + activeAccRef.current)
+      sse = new EventSource('/api/chat/stream?token=' + encodeURIComponent(token) + '&accountId=' + activeAccountId)
       
       sse.onopen = () => {
         retryCount = 0
         lastPing = Date.now()
         setSseStatus('connected');
-        console.log('[DEBUG] realtimeConnected', true, 'accountId', activeAccRef.current)
+        console.log('[DEBUG] realtimeConnected', true, 'accountId', activeAccountId)
         fetchChats()
         if (selRef.current) {
            loadMessages(selRef.current)
@@ -3176,7 +3176,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
       clearTimeout(reconnectTimeout)
       if (sse) sse.close()
     }
-  }, [token, activeAccRef.current])
+  }, [token, activeAccountId])
 
   // Fallback Polling (if SSE fails)
   useEffect(() => {
