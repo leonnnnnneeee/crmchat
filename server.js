@@ -1402,6 +1402,25 @@ app.post('/api/chat/send-media', requireAuth, upload.single('file'), async (req,
   }
 })
 
+// ── DELETE MESSAGES ──
+app.post('/api/chat/delete', requireAuth, async (req, res) => {
+  if (!_accounts.get(req.accountId)?.session) return res.json({ok: false, error: 'No session'});
+  try {
+    const { chatId, msgIds, revoke } = req.body;
+    if (!chatId || !msgIds || !msgIds.length) return res.json({ok: false, error: 'Missing parameters'});
+    
+    const client = await getClient(req.accountId);
+    const entity = await resolveEntity(client, chatId);
+    
+    await client.deleteMessages(entity, msgIds, { revoke: revoke !== false });
+    
+    res.json({ ok: true });
+  } catch(e) {
+    log('delete messages error: ' + e.message);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+})
+
 // ── AI VOICE TRANSCRIPTION (Groq Whisper) ──
 app.post('/api/ai/transcribe-voice', requireAuth, async (req,res) => {
   const { chatId, messageId, fileId } = req.body
