@@ -257,31 +257,8 @@ export default function App() {
 
   return (
     <div style={{height:"100vh",display:"flex",flexDirection:"column",background:TG.bg,overflow:"hidden"}}>
-      {/* Top bar */}
-      <div style={{height:56,background:TG.panel,borderBottom:`1px solid ${TG.border}`,display:"flex",alignItems:"center",padding:"0 20px",justifyContent:"space-between",flexShrink:0,zIndex:10}}>
-        <div style={{display:"flex",alignItems:"center",gap:12}}>
-          <img src="https://pbs.twimg.com/profile_images/1902957820418592768/xnPqDY4i_400x400.jpg"
-            alt="Coincu" width={36} height={36}
-            style={{borderRadius:"50%",objectFit:"cover",flexShrink:0}}
-            onError={e=>{e.target.style.display="none"}}/>
-          <div>
-            <div style={{fontWeight:700,fontSize:15,color:TG.text,lineHeight:1.2}}>Coincu CRM</div>
-            <div style={{fontSize:11,color:TG.green}}>● Telegram connected</div>
-          </div>
-        </div>
-        <div style={{display:"flex",gap:8}}>
-          <button onClick={()=>setTgOk(false)}
-            style={{fontSize:12,padding:"6px 14px",background:TG.surface,border:`1px solid ${TG.elevated}`,borderRadius:8,color:TG.textSec,cursor:"pointer"}}>
-            Reconnect TG
-          </button>
-          <button onClick={logout}
-            style={{fontSize:12,padding:"6px 14px",background:TG.surface,border:`1px solid ${TG.elevated}`,borderRadius:8,color:TG.textSec,cursor:"pointer"}}>
-            Sign out
-          </button>
-        </div>
-      </div>
       <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column",minWidth:0,minHeight:0}}>
-        <CRMChat token={token} onAuthFailed={() => setTgOk(false)} onTokenRefresh={login} />
+        <CRMChat token={token} onAuthFailed={() => setTgOk(false)} onTokenRefresh={login} onLogout={logout} />
       </div>
     </div>
   )

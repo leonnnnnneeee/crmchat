@@ -1882,7 +1882,7 @@ function renderMessageText(text, searchStr, entities = []) {
     return <span key={idx} style={{whiteSpace: 'pre-wrap'}}>{renderContent(part.content)}</span>;
   });
 }
-function AccountMenu({ accounts, activeAccountId, onClose, onAddAccount, onSwitchAccount }) {
+function AccountMenu({ accounts, activeAccountId, onClose, onAddAccount, onSwitchAccount, onAuthFailed, onLogout }) {
   const activeAcc = accounts.find(a => a.accountId === activeAccountId) || accounts[0];
   
   return (
@@ -1943,7 +1943,12 @@ function AccountMenu({ accounts, activeAccountId, onClose, onAddAccount, onSwitc
           onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
           <span style={{ fontSize: 18 }}>⚙️</span> Manage Accounts
         </div>
-        <div onClick={() => { alert('Sign out multi-account not connected yet'); onClose(); }} style={{ padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', color: '#ff453a', fontSize: 14 }}
+        <div onClick={() => { if(typeof onAuthFailed === 'function') onAuthFailed(); onClose(); }} style={{ padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', color: '#f2f2f7', fontSize: 14 }}
+          onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
+          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+          <span style={{ fontSize: 18 }}>🔌</span> Reconnect TG
+        </div>
+        <div onClick={() => { if(typeof onLogout === 'function') onLogout(); onClose(); }} style={{ padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', color: '#ff453a', fontSize: 14 }}
           onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,69,58,0.1)'}
           onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
           <span style={{ fontSize: 18 }}>🚪</span> Sign Out
@@ -2130,7 +2135,7 @@ function AddAccountModal({ onClose, onSuccess }) {
 }
 
 
-export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
+export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout }) {
   _authToken = token
   const [theme,setTheme]=useState(()=>localStorage.getItem('crm_theme')||'dark')
   
@@ -2219,7 +2224,10 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
   const chatsCacheRef = useRef({})
   const activeAccRef = useRef(activeAccountId);
   useEffect(() => { activeAccRef.current = activeAccountId; }, [activeAccountId]);
-  const [search,setSearch]=useState(() => localStorage.getItem('crm_search') || '')
+  const [search,setSearch]=useState(() => {
+    const init = localStorage.getItem('crm_search');
+    return (init === 'null' || init == null) ? '' : init;
+  })
   const [globalMatches, setGlobalMatches] = useState([])
   const [isGlobalSearching, setIsGlobalSearching] = useState(false)
   const [hasSearchedGlobal, setHasSearchedGlobal] = useState(true)
@@ -3219,6 +3227,8 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
     }
   }, [token, sel, selTopic, sseStatus]);
 
+  const loadMessageRequestIds = useRef({})
+
   async function loadMessages(chat, topicId=null, append=false, isBackground=false, minId=0) {
     if(!chat) return
     if(!append && loadingRef.current) return
@@ -3255,6 +3265,9 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
       qs += (qs ? '&' : '?') + 'readOutboxMaxId=' + outboxMaxId;
       if (minId > 0) qs += '&minId=' + minId;
 
+      const reqId = Date.now();
+      loadMessageRequestIds.current[cacheKey] = reqId;
+
       if(topicId) {
         url = '/api/chat/topics/'+chat.id+'/'+topicId+'/messages'+qs
       } else {
@@ -3262,57 +3275,89 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
       }
       const r = await fetch(url, {headers:{"x-auth-token":token}})
       const d = await r.json()
+      
+      if (loadMessageRequestIds.current[cacheKey] !== reqId) {
+        console.log('[DEBUG] staleResponseIgnored', true, { 
+          activeAccountId: activeAccRef.current,
+          messageFetchChatId: chat.id,
+          cacheKey
+        });
+        return;
+      }
+
       if(Array.isArray(d)) {
         if(d.length < 40) setHasMore(false)
         else if(!append) setHasMore(true)
 
-        setMsgs(prev => {
-          let nextState;
-          if(append) {
-            const newMsgs = d.filter(m1 => !prev.some(m2 => m2.id === m1.id))
-            nextState = [...newMsgs, ...prev]
-          } else {
-            const idSet = new Set(d.map(m => m.id));
-            const existingOlder = prev.filter(p => !idSet.has(p.id) && p.id > 0);
-            const stillPending = prev.filter(m => m.pending && m.id < 0 && !d.some(s=>s.text===m.text&&s.fromMe));
-            nextState = [...existingOlder, ...d, ...stillPending];
-            nextState.sort((a, b) => a.date - b.date);
-            
-            // Sync fallback polling new messages to sidebar metadata
-            if (d.length > 0) {
-              const latestMsg = d[d.length - 1];
-              setChats(p => {
-                const newChats = [...p];
-                const cIdx = newChats.findIndex(c => c.id === chat.id);
-                if (cIdx > -1) {
-                  const c = newChats[cIdx];
-                  if (latestMsg.date > (c.date || 0)) {
-                    console.log('[DEBUG] sidebarUpdated', {
-                      updateSource: 'polling',
-                      activeAccountId: activeAccRef.current,
-                      chatId: chat.id,
-                      oldLastActivity: c.date,
-                      newLastActivity: latestMsg.date
-                    });
-                    c.date = latestMsg.date;
-                    c.lastMessageAt = latestMsg.date;
-                    c.lastActivity = latestMsg.date;
-                    c.lastMessage = latestMsg.hasMedia ? '[Media]' : latestMsg.text;
-                    c.lastMsg = c.lastMessage;
-                    chatsCacheRef.current[activeAccRef.current] = newChats;
-                  }
+        const prevCached = msgsCacheRef.current[cacheKey] || [];
+        let nextState;
+        
+        if(append) {
+          const newMsgs = d.filter(m1 => !prevCached.some(m2 => m2.id === m1.id))
+          nextState = [...newMsgs, ...prevCached]
+        } else {
+          const idSet = new Set(d.map(m => m.id));
+          const existingOlder = prevCached.filter(p => !idSet.has(p.id) && p.id > 0);
+          const stillPending = prevCached.filter(m => m.pending && m.id < 0 && !d.some(s=>s.text===m.text&&s.fromMe));
+          nextState = [...existingOlder, ...d, ...stillPending];
+          nextState.sort((a, b) => a.date - b.date);
+          
+          // Sync fallback polling new messages to sidebar metadata
+          if (d.length > 0) {
+            const latestMsg = d[d.length - 1];
+            setChats(p => {
+              const newChats = [...p];
+              const cIdx = newChats.findIndex(c => c.id === chat.id);
+              if (cIdx > -1) {
+                const c = newChats[cIdx];
+                if (latestMsg.date > (c.date || 0)) {
+                  console.log('[DEBUG] sidebarUpdated', {
+                    updateSource: 'polling',
+                    activeAccountId: activeAccRef.current,
+                    chatId: chat.id,
+                    oldLastActivity: c.date,
+                    newLastActivity: latestMsg.date
+                  });
+                  c.date = latestMsg.date;
+                  c.lastMessageAt = latestMsg.date;
+                  c.lastActivity = latestMsg.date;
+                  c.lastMessage = latestMsg.hasMedia ? '[Media]' : latestMsg.text;
+                  c.lastMsg = c.lastMessage;
+                  chatsCacheRef.current[activeAccRef.current] = newChats;
                 }
-                return newChats;
-              });
-            }
+              }
+              return newChats;
+            });
           }
-          let finalState = nextState.map(m => ({
-            ...m,
-            reactions: mergeReactions(m.id, m.reactions || [])
-          }))
-          msgsCacheRef.current[activeAccRef.current + '_' + chat.id + (topicId ? '_' + topicId : '')] = finalState;
-          return finalState;
-        })
+        }
+        
+        let finalState = nextState.map(m => ({
+          ...m,
+          reactions: mergeReactions(m.id, m.reactions || [])
+        }))
+        
+        msgsCacheRef.current[cacheKey] = finalState;
+        
+        // Only update UI if this is still the selected chat
+        const currentCacheKey = activeAccRef.current + '_' + selRef.current?.id + (selTopicRef.current ? '_' + selTopicRef.current.id : '');
+        if (currentCacheKey === cacheKey) {
+          console.log('[DEBUG] Rendering messages for matching chat', {
+            activeAccountId: activeAccRef.current,
+            selectedChatId: selRef.current?.id,
+            selectedChatTitle: selRef.current?.title || selRef.current?.firstName,
+            messageFetchChatId: chat.id,
+            cacheKey,
+            renderedMessageChatId: chat.id
+          });
+          setMsgs(finalState);
+        } else {
+          console.log('[DEBUG] Background fetch complete, skipping render (chat mismatch)', {
+            currentCacheKey,
+            cacheKey,
+            messageFetchChatId: chat.id
+          });
+        }
+        
       } else if (d && d.error === 'AUTH_FAILED') {
         if (typeof onAuthFailed === 'function') onAuthFailed()
       } else if (d && d.error) {
@@ -4441,6 +4486,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
       <div className="sidebar">
         <div title="Coincu App" style={{width:36,height:36,background:'#7c3aed',borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:15,marginBottom:10,cursor:"pointer",boxShadow:"0 4px 12px rgba(124,58,237,0.3)"}}>⚡</div>
         <div style={{flex:1}}/>
+
         <div className={`si${showBgSettings ? ' on' : ''}`} title="Background Settings" style={{fontSize:18}} onClick={() => setShowBgSettings(true)}>🖼️</div>
         <div style={{marginTop:6,width:34,height:34,borderRadius:"50%",background:"#7c3aed",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}} title="Account" onClick={() => setShowAccountMenu(p => !p)}>L</div>
       </div>
@@ -4463,6 +4509,8 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
               setChats([]);
               setShowAccountMenu(false);
             }}
+            onAuthFailed={onAuthFailed}
+            onLogout={onLogout}
           />
         </div>
       )}
@@ -4538,7 +4586,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
         </div>
         <div style={{padding:"0 16px 12px",borderBottom:`1px solid #1f2937`}}>
           <input type="text" placeholder="Search" style={{width:"100%",padding:"10px 16px",background:'rgba(255,255,255,0.05)',border:"none",borderRadius:12,color:"#f8fafc",fontSize:14,outline:"none",fontFamily:"inherit"}}
-            value={search === 'null' ? '' : search} onChange={e=>setSearch(e.target.value)} />
+            value={search || ""} onChange={e=>setSearch(e.target.value)} />
           {search.trim() && (
             <div style={{fontSize: 11, color: '#6b4d94', marginTop: 8, textAlign: 'center'}}>
               {isGlobalSearching ? 'Searching all chats...' : null}
