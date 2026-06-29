@@ -2037,6 +2037,15 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
   const [isGlobalSearching, setIsGlobalSearching] = useState(false)
   const [hasSearchedGlobal, setHasSearchedGlobal] = useState(true)
   const [globalSearchTriggered, setGlobalSearchTriggered] = useState(false)
+  const [customOrder, setCustomOrder] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('crm_chat_custom_order') || '[]')
+    } catch {
+      return []
+    }
+  })
+  const [draggedIndex, setDraggedIndex] = useState(null)
+  const [dragOverIndex, setDragOverIndex] = useState(null)
 
   const [activeTranslations, setActiveTranslations] = useState({})
   const [isTranslating, setIsTranslating] = useState(false)
@@ -2140,6 +2149,58 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
        setHasSearchedGlobal(false)
     }
   }, [search])
+
+  const handleResetOrder = () => {
+    setCustomOrder([]);
+    localStorage.removeItem('crm_chat_custom_order');
+  };
+
+  const handleDragStart = (e, index) => {
+    e.dataTransfer.effectAllowed = 'move';
+    setDraggedIndex(index);
+  };
+
+  const handleDragOver = (e, index) => {
+    e.preventDefault();
+    if (draggedIndex === null || draggedIndex === index) return;
+    setDragOverIndex(index);
+  };
+
+  const handleDrop = (e, index) => {
+    e.preventDefault();
+    if (draggedIndex === null || draggedIndex === index) return;
+
+    let newOrder = [...customOrder];
+    const draggedId = filtered[draggedIndex].id;
+    const targetId = filtered[index].id;
+
+    // Ensure all items in preSearchFiltered are in newOrder if they aren't already
+    const existingSet = new Set(newOrder);
+    preSearchFiltered.forEach(c => {
+      if (!existingSet.has(c.id)) {
+        newOrder.push(c.id);
+      }
+    });
+
+    // Move draggedId to targetId's position
+    newOrder = newOrder.filter(id => id !== draggedId);
+    const targetIdx = newOrder.indexOf(targetId);
+    if (targetIdx !== -1) {
+      newOrder.splice(targetIdx, 0, draggedId);
+    } else {
+      newOrder.push(draggedId);
+    }
+
+    setCustomOrder(newOrder);
+    localStorage.setItem('crm_chat_custom_order', JSON.stringify(newOrder));
+    setDraggedIndex(null);
+    setDragOverIndex(null);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedIndex(null);
+    setDragOverIndex(null);
+  };
 
   useEffect(() => {
     if (sel) localStorage.setItem('crm_sel', JSON.stringify(sel))
@@ -3490,6 +3551,13 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
 
   const preSearchFiltered = [...chats]
     .sort((a,b) => {
+      if (customOrder.length > 0) {
+        const idxA = customOrder.indexOf(a.id);
+        const idxB = customOrder.indexOf(b.id);
+        if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+        if (idxA !== -1) return -1;
+        if (idxB !== -1) return 1;
+      }
       const ap = (a.isPinned || pinnedChats.has(a.id)) ? 1 : 0
       const bp = (b.isPinned || pinnedChats.has(b.id)) ? 1 : 0
       if (ap !== bp) return bp - ap
@@ -4087,15 +4155,27 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
             <span style={{fontSize:15,fontWeight:700,color:'#f8fafc'}}>Coincu CRM</span>
             <span style={{fontSize:11,fontWeight:500,color:'#94a3b8'}}>Telegram connected</span>
           </div>
-          <button onClick={fetchChats} disabled={loadChats}
-            style={{background:"none",border:"none",color:'#64748b',
-              cursor:"pointer",fontSize:16,width:32,height:32,
-              display:"flex",alignItems:"center",justifyContent:"center",
-              borderRadius:8,transition:"background .2s, color .2s"}}
-            title="Refresh" onMouseEnter={e=>{e.currentTarget.style.background="rgba(255,255,255,0.05)";e.currentTarget.style.color="#cbd5e1"}}
-            onMouseLeave={e=>{e.currentTarget.style.background="none";e.currentTarget.style.color="#64748b"}}>
-            🔄
-          </button>
+          <div style={{display: 'flex', gap: 8, alignItems: 'center'}}>
+            {customOrder.length > 0 && (
+              <button onClick={handleResetOrder}
+                style={{border:"none",color:'#a78bfa',
+                  cursor:"pointer",fontSize:11,fontWeight:600,padding:"4px 8px",
+                  borderRadius:8,background:'rgba(124,58,237,0.15)',transition:"all .2s"}}
+                title="Reset manual sorting order"
+              >
+                Reset Order
+              </button>
+            )}
+            <button onClick={fetchChats} disabled={loadChats}
+              style={{background:"none",border:"none",color:'#64748b',
+                cursor:"pointer",fontSize:16,width:32,height:32,
+                display:"flex",alignItems:"center",justifyContent:"center",
+                borderRadius:8,transition:"background .2s, color .2s"}}
+              title="Refresh" onMouseEnter={e=>{e.currentTarget.style.background="rgba(255,255,255,0.05)";e.currentTarget.style.color="#cbd5e1"}}
+              onMouseLeave={e=>{e.currentTarget.style.background="none";e.currentTarget.style.color="#64748b"}}>
+              🔄
+            </button>
+          </div>
         </div>
         {/* Folder tabs as pills */}
         <div style={{
@@ -4150,12 +4230,30 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
           }
         }}>
           {loadChats&&<div style={{padding:20,textAlign:"center",color:'#6b4d94',fontSize:13}}>Loading Telegram...</div>}
-          {filtered.map(chat=>{
+          {filtered.map((chat, idx)=>{
             const isSel=sel?.id===chat.id
+            const isDragged = draggedIndex === idx
+            const isDragOver = dragOverIndex === idx
             return(
-              <div key={chat.id} className={`ci${isSel?" sel":""}`} onContextMenu={e=>{e.preventDefault();setChatCtxMenu({x:e.clientX,y:e.clientY,chat})}} onClick={()=>{
-                setSel(chat)
-              }}>
+              <div 
+                key={chat.id} 
+                className={`ci${isSel?" sel":""}`} 
+                draggable
+                onDragStart={(e) => handleDragStart(e, idx)}
+                onDragOver={(e) => handleDragOver(e, idx)}
+                onDrop={(e) => handleDrop(e, idx)}
+                onDragEnd={handleDragEnd}
+                onContextMenu={e=>{e.preventDefault();setChatCtxMenu({x:e.clientX,y:e.clientY,chat})}} 
+                onClick={()=>{
+                  setSel(chat)
+                }}
+                style={{
+                  opacity: isDragged ? 0.4 : 1,
+                  borderTop: isDragOver ? '2px solid #7c3aed' : 'none',
+                  transition: 'opacity 0.2s, border-top 0.1s',
+                  cursor: 'grab'
+                }}
+              >
                 <div style={{position:"relative",flexShrink:0}}>
                   <Avatar name={chat.name} chatId={chat.id} username={chat.username} accessHash={chat.accessHash} size={52}/>
                 </div>
