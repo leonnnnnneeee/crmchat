@@ -2216,6 +2216,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
   const [topicCtxMenu,setTopicCtxMenu]=useState(null)
   const [msgs,setMsgs]=useState([])
   const msgsCacheRef = useRef({})
+  const chatsCacheRef = useRef({})
   const activeAccRef = useRef(activeAccountId);
   useEffect(() => { activeAccRef.current = activeAccountId; }, [activeAccountId]);
   const [search,setSearch]=useState(() => localStorage.getItem('crm_search') || '')
@@ -2712,13 +2713,16 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
           }
           
           // Override unread with localReadState if applicable
-          return updatedData.map(c => {
+          const result = updatedData.map(c => {
              const readTime = localReadState[c.id];
              if (readTime && (!c.lastMessageAt || c.lastMessageAt * 1000 <= readTime)) {
                 return { ...c, unread: 0 }
              }
              return c;
           })
+          
+          chatsCacheRef.current[activeAccRef.current] = result;
+          return result;
         })
         
         setSel(prevSel => {
@@ -2738,7 +2742,14 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
     loadingChatsRef.current = false
   }, [token])
 
-  useEffect(()=>{ fetchChats() }, [fetchChats, activeAccountId])
+  useEffect(()=>{ 
+    if (chatsCacheRef.current[activeAccountId]) {
+      setChats(chatsCacheRef.current[activeAccountId])
+    } else {
+      setChats([])
+    }
+    fetchChats() 
+  }, [fetchChats, activeAccountId])
 
   // Load messages when chat selected
   const prevSelId = useRef(sel?.id || null)
@@ -3064,19 +3075,22 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
                   c.unread = (c.unread || 0) + 1
                 }
                 c.lastMessage = msg.hasMedia ? '[Media]' : msg.text
+                c.lastMessageText = msg.text
                 c.lastMessageAt = msg.date
+                c.lastActivity = msg.date
                 c.date = msg.date
                 
-                const updatedChat = newChats.splice(idx, 1)[0]
-                const lastPinnedIdx = newChats.map(x=>x.pinned).lastIndexOf(true)
-                if (updatedChat.pinned) {
-                   const insertIdx = newChats.findIndex((x, i) => i <= lastPinnedIdx && x.date < msg.date)
-                   newChats.splice(insertIdx === -1 ? lastPinnedIdx + 1 : insertIdx, 0, updatedChat)
-                } else {
-                   const insertIdx = newChats.findIndex((x, i) => i > lastPinnedIdx && x.date < msg.date)
-                   newChats.splice(insertIdx === -1 ? newChats.length : insertIdx, 0, updatedChat)
-                }
-                console.log('[DEBUG] sidebarUpdated', true)
+                chatsCacheRef.current[activeAccRef.current] = newChats;
+                
+                console.log('[DEBUG] sidebarUpdated', {
+                  updateSource: 'realtime',
+                  activeAccountId: activeAccRef.current,
+                  chatId: msg.chatId,
+                  newLastActivity: msg.date,
+                  pinned: c.isPinned
+                })
+                
+                return newChats
               } else {
                 setTimeout(() => fetchChats(false), 1000)
               }
@@ -3263,6 +3277,34 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
             const stillPending = prev.filter(m => m.pending && m.id < 0 && !d.some(s=>s.text===m.text&&s.fromMe));
             nextState = [...existingOlder, ...d, ...stillPending];
             nextState.sort((a, b) => a.date - b.date);
+            
+            // Sync fallback polling new messages to sidebar metadata
+            if (d.length > 0) {
+              const latestMsg = d[d.length - 1];
+              setChats(p => {
+                const newChats = [...p];
+                const cIdx = newChats.findIndex(c => c.id === chat.id);
+                if (cIdx > -1) {
+                  const c = newChats[cIdx];
+                  if (latestMsg.date > (c.date || 0)) {
+                    console.log('[DEBUG] sidebarUpdated', {
+                      updateSource: 'polling',
+                      activeAccountId: activeAccRef.current,
+                      chatId: chat.id,
+                      oldLastActivity: c.date,
+                      newLastActivity: latestMsg.date
+                    });
+                    c.date = latestMsg.date;
+                    c.lastMessageAt = latestMsg.date;
+                    c.lastActivity = latestMsg.date;
+                    c.lastMessage = latestMsg.hasMedia ? '[Media]' : latestMsg.text;
+                    c.lastMsg = c.lastMessage;
+                    chatsCacheRef.current[activeAccRef.current] = newChats;
+                  }
+                }
+                return newChats;
+              });
+            }
           }
           let finalState = nextState.map(m => ({
             ...m,
@@ -3498,9 +3540,18 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
     setChats(prev => {
       const idx = prev.findIndex(c => c.id === sel.id)
       if (idx > -1) {
-        prevChatState = { date: prev[idx].date, lastMsg: prev[idx].lastMsg }
+        prevChatState = { date: prev[idx].date, lastMsg: prev[idx].lastMsg, lastMessageAt: prev[idx].lastMessageAt, lastActivity: prev[idx].lastActivity }
         const newChats = [...prev]
-        newChats[idx] = { ...newChats[idx], date: sentDate, lastMsg: text }
+        newChats[idx] = { ...newChats[idx], date: sentDate, lastMessageAt: sentDate, lastActivity: sentDate, lastMessage: text, lastMsg: text }
+        
+        console.log('[DEBUG] sidebarUpdated', {
+          updateSource: 'send',
+          activeAccountId: activeAccRef.current,
+          chatId: sel.id,
+          newLastActivity: sentDate
+        })
+        
+        chatsCacheRef.current[activeAccRef.current] = newChats;
         return newChats
       }
       return prev
@@ -3804,17 +3855,21 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
 
   const preSearchFiltered = [...chats]
     .sort((a,b) => {
-      if (customOrder.length > 0) {
+      const ap = (a.isPinned || pinnedChats.has(a.id)) ? 1 : 0
+      const bp = (b.isPinned || pinnedChats.has(b.id)) ? 1 : 0
+      if (ap !== bp) return bp - ap
+      
+      if (ap && bp && customOrder.length > 0) {
         const idxA = customOrder.indexOf(a.id);
         const idxB = customOrder.indexOf(b.id);
         if (idxA !== -1 && idxB !== -1) return idxA - idxB;
         if (idxA !== -1) return -1;
         if (idxB !== -1) return 1;
       }
-      const ap = (a.isPinned || pinnedChats.has(a.id)) ? 1 : 0
-      const bp = (b.isPinned || pinnedChats.has(b.id)) ? 1 : 0
-      if (ap !== bp) return bp - ap
-      return (b.date || 0) - (a.date || 0)
+      
+      const dateA = a.lastMessageAt || a.date || a.lastActivity || 0;
+      const dateB = b.lastMessageAt || b.date || b.lastActivity || 0;
+      return dateB - dateA;
     })
     .filter(c => {
       if(!c.name) return false
