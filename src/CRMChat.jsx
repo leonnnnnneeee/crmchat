@@ -1885,8 +1885,21 @@ function AccountMenu({ accounts, activeAccountId, onClose, onAddAccount, onSwitc
   );
 }
 
-function AddAccountModal({ onClose }) {
-  const [activeTab, setActiveTab] = useState('qr');
+function AddAccountModal({ onClose, onSuccess }) {
+  const [activeTab, setActiveTab] = useState('phone');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  // Phone Login State
+  const [phone, setPhone] = useState('');
+  const [phoneCodeHash, setPhoneCodeHash] = useState(null);
+  const [code, setCode] = useState('');
+  const [password, setPassword] = useState('');
+  const [needsPassword, setNeedsPassword] = useState(false);
+  const [accountId, setAccountId] = useState(''); // E.g., short name for the account
+
+  // Session String State
+  const [sessionStr, setSessionStr] = useState('');
 
   const tabStyle = (id) => ({
     flex: 1, textAlign: 'center', padding: '10px 0', cursor: 'pointer',
@@ -1895,6 +1908,79 @@ function AddAccountModal({ onClose }) {
     fontWeight: activeTab === id ? 600 : 500,
     fontSize: 14, transition: 'all 0.2s'
   });
+
+  const generateAccountId = (prefix = 'acc') => prefix + '_' + Math.random().toString(36).substr(2, 6);
+
+  const handleSendCode = async () => {
+    if (!phone) return setError('Phone is required');
+    setError('');
+    setLoading(true);
+    const newId = generateAccountId(phone.replace(/[^0-9]/g, ''));
+    setAccountId(newId);
+    try {
+      const res = await fetch('/api/tg/send-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-auth-token': _authToken },
+        body: JSON.stringify({ phone, accountId: newId })
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error);
+      setPhoneCodeHash(data.phoneCodeHash);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerifyCode = async () => {
+    if (!code) return setError('Code is required');
+    setError('');
+    setLoading(true);
+    try {
+      const res = await fetch('/api/tg/verify-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-auth-token': _authToken },
+        body: JSON.stringify({ phone, code, phoneCodeHash, password, accountId })
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        if (data.error && data.error.includes('SESSION_PASSWORD_NEEDED')) {
+          setNeedsPassword(true);
+          return;
+        }
+        throw new Error(data.error);
+      }
+      if (onSuccess) onSuccess(accountId);
+      onClose();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleImportSession = async () => {
+    if (!sessionStr) return setError('Session string is required');
+    setError('');
+    setLoading(true);
+    const newId = generateAccountId('import');
+    try {
+      const res = await fetch('/api/telegram/accounts/add-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-auth-token': _authToken },
+        body: JSON.stringify({ sessionString: sessionStr.trim(), accountId: newId })
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error);
+      if (onSuccess) onSuccess(data.accountId);
+      onClose();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div style={{
@@ -1912,46 +1998,49 @@ function AddAccountModal({ onClose }) {
           <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: '#8e8e93', fontSize: 20, cursor: 'pointer' }}>×</button>
         </div>
 
-        {/* Warning Alert */}
-        <div style={{ margin: '20px 20px 0', padding: '12px 16px', background: 'rgba(255,69,58,0.1)', border: '1px solid rgba(255,69,58,0.2)', borderRadius: 8, display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-          <span style={{ color: '#ff453a', fontSize: 16 }}>⚠️</span>
-          <div style={{ color: '#ff453a', fontSize: 13, lineHeight: '1.4' }}>
-            <strong>Multi-account backend not connected yet.</strong><br/>
-            Adding new accounts is disabled. Your existing Telegram connection will continue to work normally as the default account.
+        {error && (
+          <div style={{ margin: '20px 20px 0', padding: '10px 14px', background: 'rgba(255,69,58,0.1)', color: '#ff453a', borderRadius: 8, fontSize: 13, border: '1px solid rgba(255,69,58,0.2)' }}>
+            {error}
           </div>
-        </div>
+        )}
 
         {/* Tabs */}
-        <div style={{ display: 'flex', padding: '0 20px', marginTop: 20, borderBottom: '1px solid #2c2c2e' }}>
-          <div style={tabStyle('qr')} onClick={() => setActiveTab('qr')}>QR Login</div>
-          <div style={tabStyle('phone')} onClick={() => setActiveTab('phone')}>Phone Number</div>
-          <div style={tabStyle('session')} onClick={() => setActiveTab('session')}>Session String</div>
+        <div style={{ display: 'flex', padding: '0 20px', marginTop: 10, borderBottom: '1px solid #2c2c2e' }}>
+          <div style={tabStyle('phone')} onClick={() => { setActiveTab('phone'); setError(''); }}>Phone Number</div>
+          <div style={tabStyle('session')} onClick={() => { setActiveTab('session'); setError(''); }}>Session String</div>
         </div>
 
         {/* Content */}
         <div style={{ padding: '30px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', minHeight: 200 }}>
-          {activeTab === 'qr' && (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, width: '100%' }}>
-              <div style={{ width: 160, height: 160, background: '#2c2c2e', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8e8e93' }}>
-                [ QR Code Placeholder ]
-              </div>
-              <div style={{ color: '#8e8e93', fontSize: 14, textAlign: 'center', lineHeight: '1.5' }}>
-                Open Telegram on your phone<br/>
-                Go to <strong>Settings {'>'} Devices {'>'} Link Desktop Device</strong><br/>
-                Point your phone at this screen to confirm login
-              </div>
-            </div>
-          )}
-
           {activeTab === 'phone' && (
             <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <div>
-                <div style={{ color: '#8e8e93', fontSize: 13, marginBottom: 8 }}>Phone Number</div>
-                <input type="text" placeholder="+1 234 567 8900" disabled style={{ width: '100%', padding: '12px 16px', background: '#2c2c2e', border: '1px solid #3a3a3c', borderRadius: 8, color: '#fff', fontSize: 15, outline: 'none', cursor: 'not-allowed', opacity: 0.7 }} />
-              </div>
-              <button disabled style={{ width: '100%', padding: '12px', background: '#7c3aed', border: 'none', borderRadius: 8, color: '#fff', fontSize: 15, fontWeight: 600, cursor: 'not-allowed', opacity: 0.5 }}>
-                Send Code
-              </button>
+              {!phoneCodeHash ? (
+                <>
+                  <div>
+                    <div style={{ color: '#8e8e93', fontSize: 13, marginBottom: 8 }}>Phone Number (with country code)</div>
+                    <input type="text" placeholder="+1 234 567 8900" value={phone} onChange={e => setPhone(e.target.value)} disabled={loading} style={{ width: '100%', padding: '12px 16px', background: '#2c2c2e', border: '1px solid #3a3a3c', borderRadius: 8, color: '#fff', fontSize: 15, outline: 'none' }} />
+                  </div>
+                  <button onClick={handleSendCode} disabled={loading} style={{ width: '100%', padding: '12px', background: '#7c3aed', border: 'none', borderRadius: 8, color: '#fff', fontSize: 15, fontWeight: 600, cursor: 'pointer', opacity: loading ? 0.7 : 1 }}>
+                    {loading ? 'Sending...' : 'Send Code'}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <div style={{ color: '#8e8e93', fontSize: 13, marginBottom: 8 }}>Login Code</div>
+                    <input type="text" placeholder="12345" value={code} onChange={e => setCode(e.target.value)} disabled={loading} style={{ width: '100%', padding: '12px 16px', background: '#2c2c2e', border: '1px solid #3a3a3c', borderRadius: 8, color: '#fff', fontSize: 15, outline: 'none' }} />
+                  </div>
+                  {needsPassword && (
+                    <div>
+                      <div style={{ color: '#8e8e93', fontSize: 13, marginBottom: 8 }}>2FA Password</div>
+                      <input type="password" placeholder="Enter your 2FA password" value={password} onChange={e => setPassword(e.target.value)} disabled={loading} style={{ width: '100%', padding: '12px 16px', background: '#2c2c2e', border: '1px solid #3a3a3c', borderRadius: 8, color: '#fff', fontSize: 15, outline: 'none' }} />
+                    </div>
+                  )}
+                  <button onClick={handleVerifyCode} disabled={loading} style={{ width: '100%', padding: '12px', background: '#7c3aed', border: 'none', borderRadius: 8, color: '#fff', fontSize: 15, fontWeight: 600, cursor: 'pointer', opacity: loading ? 0.7 : 1 }}>
+                    {loading ? 'Verifying...' : 'Verify Login'}
+                  </button>
+                </>
+              )}
             </div>
           )}
 
@@ -1959,10 +2048,10 @@ function AddAccountModal({ onClose }) {
             <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 16 }}>
               <div>
                 <div style={{ color: '#8e8e93', fontSize: 13, marginBottom: 8 }}>StringSession</div>
-                <textarea placeholder="Paste your generated StringSession here..." disabled style={{ width: '100%', height: 100, padding: '12px 16px', background: '#2c2c2e', border: '1px solid #3a3a3c', borderRadius: 8, color: '#fff', fontSize: 14, outline: 'none', cursor: 'not-allowed', opacity: 0.7, resize: 'none' }} />
+                <textarea placeholder="Paste your generated StringSession here..." value={sessionStr} onChange={e => setSessionStr(e.target.value)} disabled={loading} style={{ width: '100%', height: 100, padding: '12px 16px', background: '#2c2c2e', border: '1px solid #3a3a3c', borderRadius: 8, color: '#fff', fontSize: 14, outline: 'none', resize: 'none' }} />
               </div>
-              <button disabled style={{ width: '100%', padding: '12px', background: '#7c3aed', border: 'none', borderRadius: 8, color: '#fff', fontSize: 15, fontWeight: 600, cursor: 'not-allowed', opacity: 0.5 }}>
-                Import Session
+              <button onClick={handleImportSession} disabled={loading} style={{ width: '100%', padding: '12px', background: '#7c3aed', border: 'none', borderRadius: 8, color: '#fff', fontSize: 15, fontWeight: 600, cursor: 'pointer', opacity: loading ? 0.7 : 1 }}>
+                {loading ? 'Importing...' : 'Import Session'}
               </button>
             </div>
           )}
@@ -1986,8 +2075,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
   // Sync activeAccountId with global interceptor var
   useEffect(() => { setActiveAccountId(activeAccountId); }, [activeAccountId]);
 
-  // Load Accounts on Mount
-  useEffect(() => {
+  const fetchAccounts = useCallback(() => {
     fetch('/api/telegram/accounts', { headers: { 'x-auth-token': token } })
       .then(r => r.json())
       .then(data => {
@@ -2001,6 +2089,11 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
         setAccounts([{ accountId: 'default', displayName: 'Default Account', sessionStatus: 'connected' }]);
       });
   }, [token]);
+
+  // Load Accounts on Mount
+  useEffect(() => {
+    fetchAccounts();
+  }, [fetchAccounts]);
 
   useEffect(()=>{
     document.body.style.background=theme==='light'?'#fff':''
@@ -4144,7 +4237,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
         </div>
       )}
       
-      {showAddAccount && <AddAccountModal onClose={() => setShowAddAccount(false)} />}
+      {showAddAccount && <AddAccountModal onClose={() => setShowAddAccount(false)} onSuccess={fetchAccounts} />}
 
       {/* LEFT COL */}
       <div className="lc">

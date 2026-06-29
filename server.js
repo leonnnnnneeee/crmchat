@@ -22,6 +22,11 @@ if (!fs.existsSync(MEDIA_CACHE_DIR)) {
 }
 
 app.use(express.json())
+
+app.use((req, res, next) => {
+  req.accountId = req.headers['x-account-id'] || 'default'
+  next()
+})
 // static files served after API routes (see bottom)
 
 const bcrypt = require('bcryptjs')
@@ -101,37 +106,47 @@ app.post('/api/auth/refresh', (req, res) => {
 });
 
 // ── TELEGRAM SESSION (in-memory + env fallback) ──
-let _session = process.env.TG_SESSION || ''
+const _accounts = new Map() // accountId -> { session: string, client: TelegramClient, ready: boolean }
+const DEFAULT_ACCOUNT_ID = 'default'
 let _pendingClient = null
+
+// Fallback env session logic
+if (process.env.TG_SESSION) {
+  _accounts.set(DEFAULT_ACCOUNT_ID, { session: process.env.TG_SESSION, client: null, ready: false })
+}
 
 // ── LOAD SESSION FROM SUPABASE ON STARTUP ──
 async function loadSessionFromDB() {
-  if (_session && _session.length > 10) return
   try {
-    const r = await axios.get(SB_URL + '/rest/v1/sessions?key=eq.crmchat_tg_session', { headers: SBH })
-    if (r.data && r.data[0] && r.data[0].value && r.data[0].value.length > 10) {
-      _session = r.data[0].value
-      log('✅ Session loaded from Supabase')
-    warmupClient()
+    const r = await axios.get(SB_URL + '/rest/v1/sessions?key=like.crmchat_tg_session%', { headers: SBH })
+    if (r.data && r.data.length > 0) {
+      let loaded = 0
+      for (const row of r.data) {
+        if (row.value && row.value.length > 10) {
+          const accId = row.key === 'crmchat_tg_session' ? DEFAULT_ACCOUNT_ID : row.key.replace('crmchat_tg_session_', '')
+          _accounts.set(accId, { session: row.value, client: null, ready: false })
+          loaded++
+        }
+      }
+      log(`✅ Loaded ${loaded} sessions from Supabase`)
+      warmupClients()
     }
   } catch(e) { log('loadSession: ' + e.message) }
 }
 
-async function saveSessionToDB(s) {
+async function saveSessionToDB(s, accountId = DEFAULT_ACCOUNT_ID) {
   try {
     const h = { ...SBH, Prefer: 'resolution=merge-duplicates' }
+    const key = accountId === DEFAULT_ACCOUNT_ID ? 'crmchat_tg_session' : `crmchat_tg_session_${accountId}`
     await axios.post(SB_URL + '/rest/v1/sessions',
-      { key: 'crmchat_tg_session', value: s, updated_at: new Date().toISOString() },
+      { key, value: s, updated_at: new Date().toISOString() },
       { headers: h }
     )
-    log('✅ Session saved to Supabase')
+    log(`✅ Session saved to Supabase (${accountId})`)
   } catch(e) { log('saveSession: ' + e.message) }
 }
 
 loadSessionFromDB()
-
-// Persistent client — reconnect only when needed
-let _client = null
 
 // Timeout wrapper — prevents any TG op from hanging forever
 function withTimeout(promise, ms=15000, name='op') {
@@ -141,25 +156,26 @@ function withTimeout(promise, ms=15000, name='op') {
   ])
 }
 
-let _clientReady = false
-
-async function getClient() {
+async function getClient(accountId = DEFAULT_ACCOUNT_ID) {
   const { TelegramClient } = require('telegram')
   const { StringSession } = require('telegram/sessions')
 
-  if (_client && _clientReady) {
+  const acc = _accounts.get(accountId)
+  if (!acc || !acc.session) throw new Error(`Account ${accountId} not logged in`)
+
+  if (acc.client && acc.ready) {
     try {
       // Quick ping to verify connection is alive
-      await withTimeout(_client.getMe(), 3000, 'ping')
-      return _client
+      await withTimeout(acc.client.getMe(), 3000, 'ping')
+      return acc.client
     } catch {
-      _clientReady = false
-      _client = null
+      acc.ready = false
+      acc.client = null
     }
   }
 
-  if (!_client) {
-    _client = new TelegramClient(new StringSession(_session), TG_API_ID, TG_API_HASH, {
+  if (!acc.client) {
+    acc.client = new TelegramClient(new StringSession(acc.session), TG_API_ID, TG_API_HASH, {
       connectionRetries: 3,
       retryDelay: 1000,
       autoReconnect: true,
@@ -167,28 +183,31 @@ async function getClient() {
     })
   }
 
-  await withTimeout(_client.connect(), 10000, 'connect')
-  _clientReady = true
-  log('TG client (re)connected')
-  return _client
+  await withTimeout(acc.client.connect(), 10000, 'connect')
+  acc.ready = true
+  log(`TG client (re)connected for account ${accountId}`)
+  return acc.client
 }
 
-// Keep client alive with periodic ping every 2 minutes
+// Keep clients alive with periodic ping every 2 minutes
 setInterval(async () => {
-  if (!_client || !_clientReady) return
-  try {
-    await withTimeout(_client.getMe(), 5000, 'keepalive')
-  } catch {
-    _clientReady = false
-    log('TG client keepalive failed — will reconnect on next request')
+  for (const [id, acc] of _accounts.entries()) {
+    if (!acc.client || !acc.ready) continue
+    try {
+      await withTimeout(acc.client.getMe(), 5000, 'keepalive')
+    } catch {
+      acc.ready = false
+      log(`TG client keepalive failed for ${id} — will reconnect on next request`)
+    }
   }
 }, 120000)
 
-// Warm up client on session load (so first request is fast)
-async function warmupClient() {
-  if (!_session || _session.length < 10) return
-  try { await getClient(); log('✅ TG client warmed up') }
-  catch(e) { log('warmup: ' + e.message) }
+// Warm up clients on session load (so first request is fast)
+async function warmupClients() {
+  for (const [id, acc] of _accounts.entries()) {
+    try { await getClient(id); log(`✅ TG client warmed up for ${id}`) }
+    catch(e) { log(`warmup (${id}): ` + e.message) }
+  }
 }
 
 // Entity cache to avoid repeated TG lookups
@@ -228,14 +247,14 @@ async function resolveEntity(client, idStr, username) {
 
 // ── AUTH: check status ──
 app.get('/api/tg/status', requireAuth, async (req,res) => {
-  if (!_session || _session.length <= 10) return res.json({ connected: false })
+  if (!_accounts.get(req.accountId)?.session || _accounts.get(req.accountId).session.length <= 10) return res.json({ connected: false })
   try {
-    const client = await getClient()
+    const client = await getClient(req.accountId)
     await withTimeout(client.getMe(), 5000, 'ping')
     res.json({ connected: true })
   } catch(e) {
     if (e.message.includes('AUTH_KEY') || e.message.includes('SESSION')) {
-      _session = ''
+      const acc = _accounts.get(req.accountId); if(acc) { acc.session = ''; acc.client = null; acc.ready = false; }
       res.json({ connected: false, error: 'Session expired' })
     } else {
       res.json({ connected: true, warning: e.message })
@@ -243,9 +262,11 @@ app.get('/api/tg/status', requireAuth, async (req,res) => {
   }
 })
 
+let _pendingClients = new Map()
+
 // ── AUTH: send OTP ──
 app.post('/api/tg/send-otp', requireAuth, async (req,res) => {
-  const { phone } = req.body
+  const { phone, accountId = 'default' } = req.body
   if (!phone) return res.status(400).json({ error: 'Phone required' })
   try {
     const { TelegramClient } = require('telegram')
@@ -253,18 +274,19 @@ app.post('/api/tg/send-otp', requireAuth, async (req,res) => {
     const client = new TelegramClient(new StringSession(''), TG_API_ID, TG_API_HASH, { connectionRetries: 3 })
     await client.connect()
     const result = await client.sendCode({ apiId: TG_API_ID, apiHash: TG_API_HASH }, phone)
-    _pendingClient = { client, phoneCodeHash: result.phoneCodeHash, phone }
-    log('OTP sent to ' + phone)
+    _pendingClients.set(accountId, { client, phoneCodeHash: result.phoneCodeHash, phone })
+    log('OTP sent to ' + phone + ' for account ' + accountId)
     res.json({ ok: true, phoneCodeHash: result.phoneCodeHash })
   } catch(e) { log('sendOTP: '+e.message); res.status(500).json({ error: e.message }) }
 })
 
 // ── AUTH: verify OTP ──
 app.post('/api/tg/verify-otp', requireAuth, async (req,res) => {
-  const { phone, code, phoneCodeHash, password } = req.body
-  if (!_pendingClient) return res.status(400).json({ error: 'No pending session. Send OTP first.' })
+  const { phone, code, phoneCodeHash, password, accountId = 'default' } = req.body
+  const pending = _pendingClients.get(accountId)
+  if (!pending) return res.status(400).json({ error: 'No pending session. Send OTP first.' })
   try {
-    const { client, phoneCodeHash: storedHash } = _pendingClient
+    const { client, phoneCodeHash: storedHash } = pending
     try {
       await client.invoke(new (require('telegram/tl').Api.auth.SignIn)({
         phoneNumber: phone,
@@ -279,19 +301,20 @@ app.post('/api/tg/verify-otp', requireAuth, async (req,res) => {
         await client.invoke(new (require('telegram/tl').Api.auth.CheckPassword)({ password: check }))
       } else throw e
     }
-    _session = client.session.save()
-    _pendingClient = null
-    await saveSessionToDB(_session)
-    log('✅ TG authenticated, session saved to Supabase')
+    const newSession = client.session.save()
+    _accounts.set(accountId, { session: newSession, client: client, ready: true })
+    _pendingClients.delete(accountId)
+    await saveSessionToDB(newSession, accountId)
+    log(`✅ TG authenticated, session saved to Supabase for ${accountId}`)
     res.json({ ok: true })
   } catch(e) { log('verifyOTP: '+e.message); res.status(500).json({ error: e.message }) }
 })
 
 // ── CHAT STATUS ──
 app.get('/api/chat/status/:id', requireAuth, async (req,res) => {
-  if (!_session) return res.json({ status: '' })
+  if (!_accounts.get(req.accountId)?.session) return res.json({ status: '' })
   try {
-    const client = await getClient()
+    const client = await getClient(req.accountId)
     const peer = await resolveEntity(client, req.params.id)
     if (!peer) return res.json({ status: '' })
     
@@ -338,9 +361,9 @@ app.get('/api/chat/status/:id', requireAuth, async (req,res) => {
 
 // ── CHAT LIST ──
 app.get('/api/chat/list', requireAuth, async (req,res) => {
-  if (!_session) return res.json([])
+  if (!_accounts.get(req.accountId)?.session) return res.json([])
   try {
-    const client = await getClient()
+    const client = await getClient(req.accountId)
     const limit = parseInt(req.query.limit) || 40
     const offsetDate = parseInt(req.query.offsetDate) || 0
     const offsetId = parseInt(req.query.offsetId) || 0
@@ -374,7 +397,7 @@ app.get('/api/chat/list', requireAuth, async (req,res) => {
   } catch(e) { 
     log('chatList: '+e.message); 
     if (e.message.includes('AUTH_KEY') || e.message.includes('SESSION')) {
-      _session = ''
+      const acc = _accounts.get(req.accountId); if(acc) { acc.session = ''; acc.client = null; acc.ready = false; }
       return res.status(401).json({ error: 'AUTH_FAILED' })
     }
     res.json([]) 
@@ -401,11 +424,11 @@ function formatStatus(status) {
 
 // ── GLOBAL SEARCH ──
 app.get('/api/telegram/search', requireAuth, async (req, res) => {
-  if (!_session) return res.json([])
+  if (!_accounts.get(req.accountId)?.session) return res.json([])
   const q = req.query.q
   if (!q) return res.json([])
   try {
-    const client = await getClient()
+    const client = await getClient(req.accountId)
     const { Api } = require('telegram/tl')
     
     let resultContacts = { chats: [], users: [] }
@@ -479,9 +502,9 @@ app.get('/api/telegram/search', requireAuth, async (req, res) => {
 
 // ── CHAT MEMBERS ──
 app.get('/api/chat/members/:id', requireAuth, async (req, res) => {
-  if (!_session) return res.json({ok: false, error: 'TG_SESSION_EXPIRED'})
+  if (!_accounts.get(req.accountId)?.session) return res.json({ok: false, error: 'TG_SESSION_EXPIRED'})
   try {
-    const client = await getClient()
+    const client = await getClient(req.accountId)
     const entity = await resolveEntity(client, req.params.id)
     
     // Some channels throw CHAT_ADMIN_REQUIRED if you request participants.
@@ -500,7 +523,7 @@ app.get('/api/chat/members/:id', requireAuth, async (req, res) => {
     res.json({ ok: true, members })
   } catch(e) {
     if (e.message.includes('AUTH_KEY') || e.message.includes('SESSION')) {
-      _session = ''
+      const acc = _accounts.get(req.accountId); if(acc) { acc.session = ''; acc.client = null; acc.ready = false; }
       return res.json({ok: false, error: 'TG_SESSION_EXPIRED'})
     }
     if (e.message.includes('CHAT_ADMIN_REQUIRED')) {
@@ -513,9 +536,9 @@ app.get('/api/chat/members/:id', requireAuth, async (req, res) => {
 
 // ── RESOLVE ENTITY ──
 app.get('/api/telegram/entities/resolve', requireAuth, async (req, res) => {
-  if (!_session) return res.json({ok: false, error: 'No session'});
+  if (!_accounts.get(req.accountId)?.session) return res.json({ok: false, error: 'No session'});
   try {
-    const client = await getClient();
+    const client = await getClient(req.accountId);
     const query = req.query.username || req.query.peerId;
     if (!query) return res.status(400).json({ok: false, error: 'Missing username or peerId'});
 
@@ -546,9 +569,9 @@ app.get('/api/telegram/entities/resolve', requireAuth, async (req, res) => {
 
 // ── FULL PROFILE ──
 app.get('/api/chat/profile/:id', requireAuth, async (req, res) => {
-  if (!_session) return res.json({error: 'No session'})
+  if (!_accounts.get(req.accountId)?.session) return res.json({error: 'No session'})
   try {
-    const client = await getClient()
+    const client = await getClient(req.accountId)
     const { Api } = require('telegram/tl')
     const entity = await resolveEntity(client, req.params.id)
     
@@ -580,12 +603,12 @@ app.get('/api/chat/profile/:id', requireAuth, async (req, res) => {
 
 // ── ALLOWED REACTIONS ──
 app.get('/api/telegram/available-reactions', requireAuth, async (req, res) => {
-  if (!_session) return res.status(401).json({ ok: false, error: 'Not connected' });
+  if (!_accounts.get(req.accountId)?.session) return res.status(401).json({ ok: false, error: 'Not connected' });
   const { chatId } = req.query;
   if (!chatId) return res.status(400).json({ ok: false, error: 'Missing chatId' });
   
   try {
-    const client = await getClient();
+    const client = await getClient(req.accountId);
     const { Api } = require('telegram/tl');
     
     // Resolve input peer explicitly to know exact type (User, Chat, Channel)
@@ -693,9 +716,9 @@ if (!global.mediaMessageCache) {
 }
 
 const sharedMediaHandler = async (req, res) => {
-  if (!_session) return res.json({error: 'No session'})
+  if (!_accounts.get(req.accountId)?.session) return res.json({error: 'No session'})
   try {
-    const client = await getClient()
+    const client = await getClient(req.accountId)
     const { Api } = require('telegram/tl')
     
     const chatIdStr = req.params.id || req.query.chatId;
@@ -783,7 +806,7 @@ const sharedMediaHandler = async (req, res) => {
         const topicId = topicIdStr ? parseInt(topicIdStr) : null;
         
         // Use the outer client variable
-        const client = await getClient();
+        const client = await getClient(req.accountId);
         const entity = await resolveEntity(client, req.params.id || req.query.chatId);
         
         while (matched.length < limit && attempts < 5) {
@@ -837,9 +860,9 @@ app.get('/api/telegram/shared-media', requireAuth, sharedMediaHandler);
 
 // ── PROFILE PHOTO DOWNLOAD ──
 app.get('/api/chat/photo/:id', requireAuth, async (req, res) => {
-  if (!_session) return res.status(500).json({error: 'Media backend not connected'})
+  if (!_accounts.get(req.accountId)?.session) return res.status(500).json({error: 'Media backend not connected'})
   try {
-    const client = await getClient()
+    const client = await getClient(req.accountId)
     const { Api } = require('telegram/tl')
     
     const userIdStr = req.params.id;
@@ -879,7 +902,7 @@ app.get('/api/chat/photo/:id', requireAuth, async (req, res) => {
 
 // ── MEDIA DOWNLOAD ──
 app.get(['/api/chat/media/:chatId/:msgId', '/api/telegram/media/audio'], requireAuth, async (req, res) => {
-  if (!_session) return res.status(500).json({error: 'Media backend not connected'})
+  if (!_accounts.get(req.accountId)?.session) return res.status(500).json({error: 'Media backend not connected'})
   try {
     const msgId = parseInt(req.query.messageId || req.params.msgId)
     const chatId = req.query.chatId || req.params.chatId
@@ -901,7 +924,7 @@ app.get(['/api/chat/media/:chatId/:msgId', '/api/telegram/media/audio'], require
       return res.sendFile(cachePath)
     }
 
-    const client = await getClient()
+    const client = await getClient(req.accountId)
     const entity = await resolveEntity(client, chatId)
 
     let message = global.mediaMessageCache ? global.mediaMessageCache.get(`${chatId}_${msgId}`) : null;
@@ -1098,7 +1121,7 @@ async function resolveFwdInfo(client, fwdFrom) {
 
 // ── MESSAGES ──
 app.get('/api/chat/messages/:id', requireAuth, async (req,res) => {
-  if (!_session) return res.json([])
+  if (!_accounts.get(req.accountId)?.session) return res.json([])
   const t0 = Date.now()
   try {
     const client = await withTimeout(getClient(), 10000, 'getClient')
@@ -1180,7 +1203,7 @@ app.get('/api/chat/messages/:id', requireAuth, async (req,res) => {
   } catch(e) { 
     log('messages error: '+e.message+' ('+(Date.now()-t0)+'ms)'); 
     if (e.message.includes('AUTH_KEY') || e.message.includes('SESSION')) {
-      _session = ''
+      const acc = _accounts.get(req.accountId); if(acc) { acc.session = ''; acc.client = null; acc.ready = false; }
       return res.status(401).json({ error: 'AUTH_FAILED' })
     }
     res.status(500).json({ error: e.message }) 
@@ -1190,9 +1213,9 @@ app.get('/api/chat/messages/:id', requireAuth, async (req,res) => {
 // ── SEND MESSAGE ──
 app.post('/api/chat/send', requireAuth, async (req,res) => {
   const { chatId, text } = req.body
-  if (!_session) return res.status(401).json({ error: 'Not connected' })
+  if (!_accounts.get(req.accountId)?.session) return res.status(401).json({ error: 'Not connected' })
   try {
-    const client = await getClient()
+    const client = await getClient(req.accountId)
     const entity = await withTimeout(resolveEntity(client, chatId, req.body.username), 8000, 'resolveEntity')
     await withTimeout(client.sendMessage(entity, { message: text }), 10000, 'sendMessage')
     log('Sent to '+chatId+': '+text.slice(0,40))
@@ -1203,10 +1226,10 @@ app.post('/api/chat/send', requireAuth, async (req,res) => {
 // ── GET READ RECEIPTS ──
 app.get('/api/chat/messages/:chatId/:msgId/read-receipts', requireAuth, async (req, res) => {
   const { chatId, msgId } = req.params;
-  if (!_session) return res.status(401).json({ error: 'Not connected' });
+  if (!_accounts.get(req.accountId)?.session) return res.status(401).json({ error: 'Not connected' });
   
   try {
-    const client = await getClient();
+    const client = await getClient(req.accountId);
     const entity = await withTimeout(resolveEntity(client, chatId), 8000, 'resolveEntity');
     const inputPeer = await client.getInputEntity(entity || chatId);
     
@@ -1261,9 +1284,9 @@ app.get('/api/chat/messages/:chatId/:msgId/read-receipts', requireAuth, async (r
 app.post('/api/chat/topics/:chatId/:topicId/send', requireAuth, async (req,res) => {
   const { chatId, topicId } = req.params
   const { text, username } = req.body
-  if (!_session) return res.status(401).json({ error: 'Not connected' })
+  if (!_accounts.get(req.accountId)?.session) return res.status(401).json({ error: 'Not connected' })
   try {
-    const client = await getClient()
+    const client = await getClient(req.accountId)
     const entity = await withTimeout(resolveEntity(client, chatId, username), 8000, 'resolveEntity')
     await withTimeout(client.sendMessage(entity, { message: text, replyTo: parseInt(topicId) }), 10000, 'sendMessage')
     log('Sent to topic '+chatId+'/'+topicId+': '+text.slice(0,40))
@@ -1274,11 +1297,11 @@ app.post('/api/chat/topics/:chatId/:topicId/send', requireAuth, async (req,res) 
 // ── SEND MEDIA ──
 app.post('/api/chat/send-media', requireAuth, upload.single('file'), async (req, res) => {
   const { chatId, topicId, caption, username } = req.body
-  if (!_session) return res.status(401).json({ error: 'Not connected' })
+  if (!_accounts.get(req.accountId)?.session) return res.status(401).json({ error: 'Not connected' })
   if (!req.file) return res.status(400).json({ error: 'No file provided' })
   
   try {
-    const client = await getClient()
+    const client = await getClient(req.accountId)
     const entity = await withTimeout(resolveEntity(client, chatId, username), 8000, 'resolveEntity')
     
     // GramJS can upload from file path
@@ -1313,7 +1336,7 @@ app.post('/api/ai/transcribe-voice', requireAuth, async (req,res) => {
     if (fs.existsSync(cachePath)) {
       buffer = fs.readFileSync(cachePath)
     } else {
-      const client = await getClient()
+      const client = await getClient(req.accountId)
       const entity = await resolveEntity(client, chatId)
       const messages = await client.getMessages(entity, { ids: [parseInt(messageId)] })
       if (!messages || messages.length === 0 || !messages[0]) {
@@ -1805,7 +1828,7 @@ ${JSON.stringify(textsToTranslate)}`
 
 // ── EDIT MESSAGE ──
 app.post('/api/chat/edit', requireAuth, async (req,res) => {
-  if(!_session) return res.status(401).json({error:'Not connected'})
+  if (!_accounts.get(req.accountId)?.session) return res.status(401).json({error:'Not connected'})
   const {chatId, msgId, text, username} = req.body
   if(!chatId||!msgId||!text) return res.status(400).json({error:'Missing fields'})
   try {
@@ -1831,7 +1854,7 @@ app.post('/api/chat/edit', requireAuth, async (req,res) => {
 
 // ── GET MESSAGES AROUND TARGET ──
 app.get('/api/telegram/messages/around', requireAuth, async (req, res) => {
-  if (!_session) return res.status(401).json({ error: 'Not connected' })
+  if (!_accounts.get(req.accountId)?.session) return res.status(401).json({ error: 'Not connected' })
   const { chatId, messageId, username, topicId } = req.query
   if (!chatId || !messageId) return res.status(400).json({ error: 'Missing params' })
   
@@ -1925,50 +1948,88 @@ app.get('/api/telegram/messages/around', requireAuth, async (req, res) => {
     res.status(500).json({ error: e.message })
   }
 })
-// ── MULTI-ACCOUNT SHELL ENDPOINTS ──
-app.get('/api/telegram/accounts', (req, res) => {
-  if (!_session) return res.json([]);
-  res.json([{
-    accountId: 'default',
-    displayName: 'Default Account',
-    username: '',
-    phone: '',
-    isActive: true,
-    sessionStatus: 'connected'
-  }]);
+// ── MULTI-ACCOUNT ENDPOINTS ──
+app.get('/api/telegram/accounts', async (req, res) => {
+  const result = [];
+  for (const [id, acc] of _accounts.entries()) {
+    if (!acc.session) continue;
+    try {
+      const client = await getClient(id);
+      const me = await client.getMe();
+      result.push({
+        accountId: id,
+        displayName: me.firstName + (me.lastName ? ' ' + me.lastName : ''),
+        username: me.username || '',
+        phone: me.phone || '',
+        isActive: id === req.accountId,
+        sessionStatus: acc.ready ? 'connected' : 'disconnected'
+      });
+    } catch (e) {
+      result.push({
+        accountId: id,
+        displayName: `Account ${id}`,
+        sessionStatus: 'disconnected',
+        error: e.message
+      });
+    }
+  }
+  res.json(result);
 });
 
-app.post('/api/telegram/accounts/add', (req, res) => {
-  res.status(501).json({ error: 'Multi-account backend not connected yet' });
+app.post('/api/telegram/accounts/add-session', async (req, res) => {
+  const { sessionString, accountId } = req.body;
+  if (!sessionString || !accountId) return res.status(400).json({ error: 'Session string and accountId required' });
+  
+  try {
+    const { TelegramClient } = require('telegram');
+    const { StringSession } = require('telegram/sessions');
+    const client = new TelegramClient(new StringSession(sessionString), TG_API_ID, TG_API_HASH, { connectionRetries: 1 });
+    await client.connect();
+    await client.getMe(); // Verify it works
+    
+    _accounts.set(accountId, { session: sessionString, client: client, ready: true });
+    await saveSessionToDB(sessionString, accountId);
+    log(`✅ Imported session for ${accountId}`);
+    res.json({ ok: true, accountId });
+  } catch (e) {
+    log('add-session error: ' + e.message);
+    res.status(500).json({ error: 'Invalid session string or connection failed: ' + e.message });
+  }
 });
 
 app.post('/api/telegram/accounts/switch', (req, res) => {
-  res.json({ ok: true, message: 'Switched to ' + req.body.accountId });
+  const { accountId } = req.body;
+  if (!_accounts.has(accountId)) return res.status(404).json({ error: 'Account not found' });
+  res.json({ ok: true, message: 'Switched to ' + accountId });
 });
 
-app.post('/api/telegram/accounts/logout', (req, res) => {
-  res.status(501).json({ error: 'Multi-account backend not connected yet' });
+app.post('/api/telegram/accounts/logout', async (req, res) => {
+  const { accountId } = req.body;
+  const acc = _accounts.get(accountId);
+  if (acc) {
+    acc.session = '';
+    acc.ready = false;
+    if (acc.client) {
+      try { await acc.client.disconnect(); } catch (e) {}
+    }
+    _accounts.delete(accountId);
+    // In Supabase we should theoretically delete the row, but replacing with empty is fine for now
+    await saveSessionToDB('', accountId);
+  }
+  res.json({ ok: true });
 });
 
 app.get('/api/telegram/accounts/:accountId/status', (req, res) => {
-  res.json({ status: req.params.accountId === 'default' && _session ? 'connected' : 'disconnected' });
+  const acc = _accounts.get(req.params.accountId);
+  res.json({ status: acc && acc.session && acc.ready ? 'connected' : 'disconnected' });
 });
 
-app.post('/api/telegram/accounts/qr/start', (req, res) => {
-  res.status(501).json({ error: 'Multi-account backend not connected yet' });
-});
-
-app.get('/api/telegram/accounts/qr/status', (req, res) => {
-  res.status(501).json({ error: 'Multi-account backend not connected yet' });
-});
-
-
-app.get('/api/health', (req,res) => res.json({ ok: true, tgConnected: _session.length > 10 }))
+app.get('/api/health', (req,res) => res.json({ ok: true, tgConnected: _accounts.has('default') && _accounts.get('default').session.length > 10 }))
 app.get('/api/logs', requireAuth, (req,res) => res.json(logs))
 
 // ── SEND REACTION ──
 app.post(['/api/chat/react', '/api/telegram/messages/react'], requireAuth, async (req,res) => {
-  if(!_session) return res.status(401).json({error:'Not connected'})
+  if (!_accounts.get(req.accountId)?.session) return res.status(401).json({error:'Not connected'})
   const {chatId, messageId, emoji, username, topicId} = req.body
   
   const missing = [];
@@ -2036,7 +2097,7 @@ app.post(['/api/chat/react', '/api/telegram/messages/react'], requireAuth, async
 
 // ── GET PINNED MESSAGE ──
 app.get('/api/telegram/messages/pinned', requireAuth, async (req,res) => {
-  if(!_session) return res.status(401).json({error:'Not connected'})
+  if (!_accounts.get(req.accountId)?.session) return res.status(401).json({error:'Not connected'})
   const {chatId, username, topicId} = req.query
   if(!chatId) return res.status(400).json({error:'Missing chatId'})
   try {
@@ -2092,7 +2153,7 @@ app.get('/api/telegram/messages/pinned', requireAuth, async (req,res) => {
 
 // ── MARK CHAT AS READ ──
 app.post('/api/chat/read', requireAuth, async (req,res) => {
-  if(!_session) return res.status(401).json({error:'Not connected'})
+  if (!_accounts.get(req.accountId)?.session) return res.status(401).json({error:'Not connected'})
   const { chatId, username, maxId } = req.body
   if(!chatId) return res.status(400).json({error:'Missing chatId'})
   try {
@@ -2278,9 +2339,9 @@ setTimeout(startTGListener, 3000)
 
 // ── COMMON GROUPS ──
 app.get('/api/chat/common_groups/:id', requireAuth, async (req, res) => {
-  if (!_session) return res.json({error: 'No session'})
+  if (!_accounts.get(req.accountId)?.session) return res.json({error: 'No session'})
   try {
-    const client = await getClient()
+    const client = await getClient(req.accountId)
     const { Api } = require('telegram/tl')
     
     const userIdStr = req.params.id;
@@ -2354,11 +2415,11 @@ app.listen(PORT, () => log('Listening on port ' + PORT))
 
 // ── CUSTOM EMOJI MEDIA ──
 app.get('/api/telegram/custom-emoji/:documentId', requireAuth, async (req, res) => {
-  if (!_session) return res.status(401).json({ error: 'Not connected' });
+  if (!_accounts.get(req.accountId)?.session) return res.status(401).json({ error: 'Not connected' });
   const { documentId } = req.params;
   
   try {
-    const client = await getClient();
+    const client = await getClient(req.accountId);
     const { Api } = require('telegram/tl');
     const { Buffer } = require('buffer');
 
