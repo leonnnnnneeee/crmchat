@@ -3480,6 +3480,13 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
     const tempMsg = {id: -Date.now(), accountId: activeAccRef.current, chatId: sel.id, topicId: selTopic?.id || null, text, fromMe:true, date:sentDate, pending:true}
     console.log('[DEBUG] sendClicked', { activeAccountId: activeAccRef.current, chatId: sel.id, topicId: selTopic?.id || null, text })
     console.log('[DEBUG] optimisticTempId', tempMsg.id)
+    
+    // Force scroll to bottom immediately
+    isNearBottom.current = true;
+    setTimeout(() => {
+      endRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }, 10)
+
     setMsgs(p => {
        const nextState = [...p, tempMsg];
        msgsCacheRef.current[activeAccRef.current + '_' + sel.id + (selTopic ? '_' + selTopic.id : '')] = nextState;
