@@ -2036,6 +2036,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
   const [globalMatches, setGlobalMatches] = useState([])
   const [isGlobalSearching, setIsGlobalSearching] = useState(false)
   const [hasSearchedGlobal, setHasSearchedGlobal] = useState(true)
+  const [globalSearchTriggered, setGlobalSearchTriggered] = useState(false)
 
   const [activeTranslations, setActiveTranslations] = useState({})
   const [isTranslating, setIsTranslating] = useState(false)
@@ -2105,32 +2106,40 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
     }
   };
 
+  const handleGlobalSearch = async () => {
+    if (!search.trim()) return;
+    setGlobalSearchTriggered(true);
+    setIsGlobalSearching(true);
+    try {
+      const url = `/api/telegram/search?q=${encodeURIComponent(search.trim())}`
+      const res = await fetch(url, { headers: { 'x-auth-token': token } })
+      if (res.ok) {
+        const data = await res.json()
+        const query = search.trim().toLowerCase()
+        const strictMatches = (data || []).filter(c => {
+          const name = (c.name || '').toLowerCase()
+          const username = (c.username || '').toLowerCase()
+          return name.includes(query) || username.includes(query)
+        }).slice(0, 20)
+        setGlobalMatches(strictMatches)
+      }
+    } catch (e) {
+      console.error('Global search error', e)
+    } finally {
+      setIsGlobalSearching(false)
+      setHasSearchedGlobal(true)
+    }
+  };
+
   useEffect(() => {
     setGlobalMatches([])
+    setGlobalSearchTriggered(false)
     if (!search.trim()) {
        setHasSearchedGlobal(true)
-       return
+    } else {
+       setHasSearchedGlobal(false)
     }
-    setHasSearchedGlobal(false)
-
-    const delay = setTimeout(async () => {
-      setIsGlobalSearching(true)
-      try {
-        const url = `/api/telegram/search?q=${encodeURIComponent(search.trim())}`
-        const res = await fetch(url, { headers: { 'x-auth-token': token } })
-        if (res.ok) {
-          const data = await res.json()
-          setGlobalMatches(data)
-        }
-      } catch (e) {
-        console.error('Global search error', e)
-      } finally {
-        setIsGlobalSearching(false)
-        setHasSearchedGlobal(true)
-      }
-    }, 600)
-    return () => clearTimeout(delay)
-  }, [search, token])
+  }, [search])
 
   useEffect(() => {
     if (sel) localStorage.setItem('crm_sel', JSON.stringify(sel))
@@ -3509,11 +3518,8 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
   }, [preSearchFiltered, deferredSearchLower]);
 
   const filtered = useMemo(() => {
-    if (!deferredSearchLower) return localFiltered;
-    const localIds = new Set(localFiltered.map(c => c.id));
-    const uniqueGlobals = globalMatches.filter(g => !localIds.has(g.id));
-    return [...localFiltered, ...uniqueGlobals];
-  }, [localFiltered, globalMatches, deferredSearchLower]);
+    return localFiltered;
+  }, [localFiltered]);
 
   useEffect(() => {
     // 2. Log exactly what was requested
@@ -4185,15 +4191,13 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
               </div>
             )
           })}
-          {search.trim() && !hasSearchedGlobal && (
-             <div style={{padding:20,textAlign:"center",color:'#6b4d94',fontSize:13}}>Waiting for global search...</div>
-          )}
-          {!loadChats&&filtered.length===0&&!isGlobalSearching&&hasSearchedGlobal&&(
+
+          {!loadChats && filtered.length === 0 && !globalSearchTriggered && (
             <div style={{padding:32,textAlign:"center",color:'#6b4d94',fontSize:13}}>
               {search.trim() ? (
                 <>
-                  <div style={{marginBottom: 8}}>No matches for "{search.trim()}"</div>
-                  <button onClick={() => setSearch('')} style={{background: 'none', border: '1px solid #3d1f6a', padding: '6px 12px', borderRadius: 16, color: '#a78bfa', cursor: 'pointer'}}>Clear Search</button>
+                  <div style={{marginBottom: 8}}>No local matches for "{search.trim()}"</div>
+                  <button onClick={() => setSearch('')} style={{background: 'none', border: '1px solid #3d1f6a', padding: '6px 12px', borderRadius: 16, color: '#a78bfa', cursor: 'pointer', marginBottom: 12}}>Clear Search</button>
                 </>
               ) : folder !== 'all' ? (
                 <>
@@ -4206,6 +4210,69 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
                   <button onClick={() => fetchChats()} style={{background: 'none', border: '1px solid #3d1f6a', padding: '6px 12px', borderRadius: 16, color: '#a78bfa', cursor: 'pointer'}}>Retry Loading</button>
                 </>
               )}
+            </div>
+          )}
+
+          {search.trim() && !globalSearchTriggered && (
+             <div style={{padding: '16px', textAlign: 'center'}}>
+               <button onClick={handleGlobalSearch} style={{
+                 background: 'rgba(124,58,237,0.1)', border: '1px solid #7c3aed', 
+                 padding: '10px 16px', borderRadius: 8, color: '#a78bfa', cursor: 'pointer',
+                 fontSize: 13, fontWeight: 600, width: '100%', transition: 'background 0.2s'
+               }}
+               onMouseEnter={e => e.currentTarget.style.background = 'rgba(124,58,237,0.2)'}
+               onMouseLeave={e => e.currentTarget.style.background = 'rgba(124,58,237,0.1)'}>
+                 Search Telegram globally
+               </button>
+             </div>
+          )}
+
+          {globalSearchTriggered && (
+            <div style={{ marginTop: 8 }}>
+              <div style={{
+                padding: '8px 16px', fontSize: 12, fontWeight: 700, color: '#94a3b8', 
+                textTransform: 'uppercase', letterSpacing: '0.5px', background: 'rgba(0,0,0,0.2)',
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #1f2937'
+              }}>
+                Global Telegram results
+                <button onClick={() => { setGlobalSearchTriggered(false); setGlobalMatches([]); }} style={{
+                  background: 'none', border: 'none', color: '#7c3aed', fontSize: 12, cursor: 'pointer', fontWeight: 600
+                }}>
+                  Back to my chats
+                </button>
+              </div>
+              
+              {isGlobalSearching && <div style={{padding:20,textAlign:"center",color:'#6b4d94',fontSize:13}}>Searching globally...</div>}
+              
+              {!isGlobalSearching && globalMatches.length === 0 && (
+                <div style={{padding:20,textAlign:"center",color:'#ef4444',fontSize:13}}>No global results found</div>
+              )}
+
+              {globalMatches.map(chat=>{
+                const isSel=sel?.id===chat.id
+                return(
+                  <div key={chat.id} className={`ci${isSel?" sel":""}`} onClick={()=>{
+                    setSel(chat)
+                  }}>
+                    <div style={{position:"relative",flexShrink:0}}>
+                      <Avatar name={chat.name} chatId={chat.id} username={chat.username} accessHash={chat.accessHash} size={52}/>
+                    </div>
+                    <div style={{flex:1,minWidth:0,display:"flex",flexDirection:"column",justifyContent:"center",gap:4}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                        <div style={{fontWeight:600,fontSize:15,color:isSel?"#fff":'#f8fafc',overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,minWidth:0}}>
+                          {chat.isGroup ? <span style={{fontSize:13,marginRight:4}}>👥</span> : chat.isChannel ? <span style={{fontSize:13,marginRight:4}}>📢</span> : null}
+                          {chat.name}
+                        </div>
+                      </div>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                        <div className="ci-preview" style={{fontSize:13,color:'#a78bfa',overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,minWidth:0}}>
+                          {chat.username ? `@${chat.username}` : 'Global result'}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           )}
         </div>
