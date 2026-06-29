@@ -3080,7 +3080,6 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
                   // Replace pending message with the real one
                   updated = [...prev];
                   updated[pendingIdx] = msg;
-                  console.log('[DEBUG] realtimeDuplicateSkipped', true, 'replaced pending message with SSE message');
                 } else {
                   updated = [...prev, msg];
                 }
@@ -3413,8 +3412,8 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
     }
   }
 
-  async function send(){
-    const safeInput = (input === "null" || input == null) ? "" : input;
+  async function send(retryText = null){
+    const safeInput = retryText !== null ? retryText : ((input === "null" || input == null) ? "" : input);
     const text=safeInput.trim(); 
     if((!text && !pastedFile) || !sel) return
     // Handle edit mode — call Telegram API
@@ -3438,33 +3437,20 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
       return
     }
     if(sendingRef.current) return
-    if (editingMsg) {
-      setEditedMsgs(p=>({...p, [editingMsg.id]: text}))
-      setInput("")
-      setEditingMsg(null)
-      try {
-        // TODO: Call backend edit API when ready
-        // await fetch('/api/chat/edit', { method:"POST", body:JSON.stringify({chatId:sel.id, messageId:editingMsg.id, text}) })
-      } catch(e) {}
-      return
-    }
-
+    
     // Clear input immediately so user sees it's been captured
     setInput("")
     sendingRef.current = true
     setSending(true); setReplyTo(null)
     // Show message instantly (optimistic)
     const sentDate = Math.floor(Date.now()/1000)
-    console.log('[DEBUG] sendClicked', { activeAccountId: activeAccRef.current, chatId: sel.id, topicId: selTopic?.id || null, text });
     const tempMsg = {id: -Date.now(), accountId: activeAccRef.current, chatId: sel.id, topicId: selTopic?.id || null, text, fromMe:true, date:sentDate, pending:true}
-    console.log('[DEBUG] tempId', tempMsg.id);
     setMsgs(p => {
-      const nextState = [...p, tempMsg];
-      msgsCacheRef.current[activeAccRef.current + '_' + sel.id + (selTopic?.id ? '_' + selTopic.id : '')] = nextState;
-      console.log('[DEBUG] optimisticMessageAdded', true);
-      return nextState;
-    })
-    
+       const nextState = [...p, tempMsg];
+       msgsCacheRef.current[activeAccRef.current + '_' + sel.id + (selTopic ? '_' + selTopic.id : '')] = nextState;
+       return nextState;
+    });
+
     // Optimistic chat list update
     let prevChatState = null;
     setChats(prev => {
@@ -3473,7 +3459,6 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
         prevChatState = { date: prev[idx].date, lastMsg: prev[idx].lastMsg }
         const newChats = [...prev]
         newChats[idx] = { ...newChats[idx], date: sentDate, lastMsg: text }
-        console.log('[DEBUG] sidebarUpdated', true);
         return newChats
       }
       return prev
@@ -3510,16 +3495,13 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
         if (d.ok && d.messageId) { realMsgId = d.messageId; realDate = d.date; }
       } else {
         const payload = {chatId:sel.id, text, username: sel.username || undefined};
-        console.log('[DEBUG] sendApiRequest payload', payload);
         const r = await fetch('/api/chat/send', {
           method:"POST", headers:{"Content-Type":"application/json","x-auth-token":token},
           body:JSON.stringify(payload)
         })
         const d = await r.json()
-        console.log('[DEBUG] sendApiResponse', d);
         if (d.ok && d.messageId) { realMsgId = d.messageId; realDate = d.date; }
       }
-      console.log('[DEBUG] realMessageId', realMsgId);
       
       // Update message status to remove pending and replace with real ID
       setMsgs(p => {
@@ -3530,14 +3512,14 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
       
       loadingRef.current = false
     } catch(e) {
-      console.error('Send failed:', e);
+      // Mark as failed instead of deleting
+      console.error('Send message failed:', e);
       setMsgs(p => {
          const nextState = p.map(m => m.id === tempMsg.id ? {...m, pending:false, failed:true} : m);
-         msgsCacheRef.current[activeAccRef.current + '_' + sel.id + (selTopic?.id ? '_' + selTopic.id : '')] = nextState;
+         msgsCacheRef.current[activeAccRef.current + '_' + selRef.current.id + (selTopicRef.current ? '_' + selTopicRef.current.id : '')] = nextState;
          return nextState;
       });
-      // Do not clear input so user can try again if they want, or they can use the retry button
-      // setInput(text)
+      setInput(text)
       if (prevChatState) {
         setChats(prev => {
           const idx = prev.findIndex(c => c.id === sel.id)
@@ -3612,21 +3594,10 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
     const attemptId = Math.random().toString(36).substring(2, 8);
     activeAiRequest.current = attemptId;
 
-    console.log("[AI Suggest Generate Click]", {
-      generateAttemptId: attemptId,
-      rawCommand: aiInstruction,
-      normalizedCommand: cmd,
-      isGenerating: aiLoading,
-      selectedChatId: sel.id,
-      messagesCount: allMsgs.length
-    });
-
     if (cmd.length > 0 && cmd.length < 3) {
       setAiError("Please enter a clearer instruction.");
-      console.log("[AI Suggest Validation]", { status: "failed", errorMessage: "Instruction too short", commandInput: aiInstruction });
       return;
     }
-    console.log("[AI Suggest Validation]", { status: "passed", commandInput: aiInstruction });
 
     setAiText(""); setAiSuggestions([]); setAiLoading(true); setAiError(null)
 
@@ -3659,21 +3630,6 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
       topicId: selTopic?.id || null
     };
 
-    console.log("[AI Suggest Request Payload]", {
-      selectedChatId: aiPayload.chatId,
-      selectedTopicId: aiPayload.topicId,
-      messagesSentCount: aiPayload.messages.length,
-      latestCustomerMessage: aiPayload.lastMessage,
-      userCommand: aiPayload.instruction
-    });
-
-    console.log("[AI Suggest Request Started]", {
-      endpoint: "/api/ai/suggest",
-      aiReplyRequestStarted: true,
-      tokenExists: !!token,
-      attemptId
-    });
-
     try {
       const r = await fetch("/api/ai/suggest", {
         method: "POST",
@@ -3682,32 +3638,19 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
       })
       const d = await r.json()
       
-      console.log(`[AI Suggest API Response - ${attemptId}]`, {
-        responseStatus: r.status,
-        errorCode: d.code || null,
-        tokenRefreshAttempted: false
-      });
-
       // Ignore if a newer request was started
-      if (activeAiRequest.current !== attemptId) {
-        console.log(`[AI Suggest API Response - ${attemptId}] Ignored (stale request)`);
-        return;
-      }
+      if (activeAiRequest.current !== attemptId) return;
       
       if (r.status === 401 && d.code === 'TOKEN_EXPIRED') {
-        console.log("[AI Suggest] Token expired, attempting refresh...", { tokenExists: !!token });
-        
         try {
           const refR = await fetch('/api/auth/refresh', {
             method: 'POST',
             headers: { 'x-auth-token': token }
           });
           const refD = await refR.json();
-          console.log("[AI Suggest] Token refresh attempted", { success: refD.ok, refreshSuccess: refD.ok });
           
           if (refD.ok && refD.token) {
             if (typeof onTokenRefresh === 'function') onTokenRefresh(refD.token);
-            console.log("[AI Suggest] Token refresh successful, retrying...", { retryAfterRefresh: true });
             
             const retryR = await fetch("/api/ai/suggest", {
               method: "POST",
@@ -3718,12 +3661,6 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
             
             if (activeAiRequest.current !== attemptId) return;
             
-            console.log(`[AI Suggest API Retry Response]`, {
-              responseSource: retryD.source || "unknown",
-              finalResponseSource: "retry",
-              errorMessage: retryD.error || null
-            });
-            
             if (retryD.ok === false || retryD.error) {
               setAiError(retryD.code === 'TOKEN_EXPIRED' ? 'TOKEN_EXPIRED' : (retryD.error || "Failed to generate custom reply."));
             } else if (retryD.suggestions) {
@@ -3732,24 +3669,13 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
               setAiText(retryD.suggestion)
             }
           } else {
-            console.log("[AI Suggest] Token refresh failed", { failReason: refD.error });
             setAiError('TOKEN_EXPIRED'); 
           }
         } catch (refErr) {
-          console.log("[AI Suggest] Token refresh network error", { err: refErr });
           setAiError('TOKEN_EXPIRED');
         }
         return;
       }
-
-      console.log(`[AI Suggest API Response Data]`, {
-        responseSource: d.source || "unknown",
-        finalResponseSource: "initial",
-        normalizedIntent: d.normalizedIntent,
-        finalPromptPreview: d.finalPromptPreview,
-        suggestionsCount: d.suggestions?.length || 0,
-        errorMessage: d.error || null
-      });
 
       if (d.ok === false || d.error) {
         setAiError(d.code === 'AI_PROVIDER_AUTH_ERROR' ? "AI Service Provider is unavailable. Please check backend configuration." : (d.error || "Failed to generate custom reply."));
@@ -3759,7 +3685,6 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
         setAiText(d.suggestion)
       }
     } catch(e) { 
-      console.error("AI:", e) 
       setAiError("Network error connecting to AI service.")
     } finally {
       if (activeAiRequest.current === attemptId) setAiLoading(false)
@@ -4309,11 +4234,12 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
   const resendMessage = (failedMsg) => {
     // Basic resend for text. Files not supported in this simple resend.
     if (!failedMsg.text) return;
-    setInput(failedMsg.text);
-    setMsgs(p => p.filter(m => m.id !== failedMsg.id));
-    setTimeout(() => {
-      send(failedMsg.text);
-    }, 50);
+    setMsgs(p => {
+      const next = p.filter(m => m.id !== failedMsg.id);
+      msgsCacheRef.current[activeAccRef.current + '_' + selRef.current.id + (selTopicRef.current ? '_' + selTopicRef.current.id : '')] = next;
+      return next;
+    });
+    send(failedMsg.text);
   };
 
   const chatProps = {

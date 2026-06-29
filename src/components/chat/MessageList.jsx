@@ -42,7 +42,8 @@ const MessageList = React.memo(function MessageList(props) {
     AISuggestPanel, aiText, setAiText, aiSuggestions, setAiSuggestions, aiAnalysis, setAiAnalysis,
     aiAlt, setAiAlt, setAiLoading, tmplCats, setTmplCat,
     tmplCat, TEMPLATES, setMsgs, setSelectMode, lightbox, StageBadge, gifOpen, setGifOpen,
-    gifQuery, setGifQuery, searchGifs, gifs, loadingRef, showScrollBtn, aiError, onAuthFailed, activeTranslations, messageFetchError
+    gifQuery, setGifQuery, searchGifs, gifs, loadingRef, showScrollBtn, aiError, highlightedMsgId, onAuthFailed,
+    activeTranslations, handleTranslate, resendMessage
   } = props;
 
   const [seenTooltip, setSeenTooltip] = React.useState(null);
@@ -343,14 +344,14 @@ const MessageList = React.memo(function MessageList(props) {
                                     <polyline points="12 6 12 12 16 14"></polyline>
                                   </svg>
                                 ) : msg.failed ? (
-                                  <div onClick={() => resendMessage && resendMessage(msg)} style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', gap: 4 }} title="Click to retry">
-                                    <span style={{ fontSize: 10, fontWeight: 500, opacity: 0.8 }}>Retry</span>
+                                  <span onClick={() => typeof resendMessage === 'function' && resendMessage(msg)} style={{cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4}}>
+                                    <span>Retry</span>
                                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                       <circle cx="12" cy="12" r="10"></circle>
                                       <line x1="12" y1="8" x2="12" y2="12"></line>
                                       <line x1="12" y1="16" x2="12.01" y2="16"></line>
                                     </svg>
-                                  </div>
+                                  </span>
                                 ) : isRead ? (
                                   <svg width="16" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{transform:'translateY(1px)'}}>
                                     <polyline points="18 6 7 17 2 12" />
