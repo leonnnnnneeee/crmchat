@@ -25,6 +25,9 @@ app.use(express.json())
 
 app.use((req, res, next) => {
   req.accountId = req.headers['x-account-id'] || 'default'
+  if (req.url.startsWith('/api/') && !req.url.includes('/api/chat/stream')) {
+    log(`[API Request] ${req.method} ${req.url.split('?')[0]} - Account: ${req.accountId}`);
+  }
   next()
 })
 // static files served after API routes (see bottom)
@@ -161,7 +164,11 @@ async function getClient(accountId = DEFAULT_ACCOUNT_ID) {
   const { StringSession } = require('telegram/sessions')
 
   const acc = _accounts.get(accountId)
-  if (!acc || !acc.session) throw new Error(`Account ${accountId} not logged in`)
+  if (!acc || !acc.session) {
+    const err = new Error(`Account ${accountId} not logged in`)
+    err.code = 'ACCOUNT_SESSION_EXPIRED'
+    throw err
+  }
 
   if (acc.client && acc.ready) {
     try {
@@ -1124,7 +1131,7 @@ app.get('/api/chat/messages/:id', requireAuth, async (req,res) => {
   if (!_accounts.get(req.accountId)?.session) return res.json([])
   const t0 = Date.now()
   try {
-    const client = await withTimeout(getClient(), 10000, 'getClient')
+    const client = await withTimeout(getClient(req.accountId), 10000, 'getClient')
     const entity = await withTimeout(resolveEntity(client, req.params.id, req.query.username), 8000, 'resolveEntity')
     const maxId = parseInt(req.query.maxId) || 0
     const opts = { limit: 40 }
@@ -1832,7 +1839,7 @@ app.post('/api/chat/edit', requireAuth, async (req,res) => {
   const {chatId, msgId, text, username} = req.body
   if(!chatId||!msgId||!text) return res.status(400).json({error:'Missing fields'})
   try {
-    const client = await withTimeout(getClient(), 10000, 'getClient')
+    const client = await withTimeout(getClient(req.accountId), 10000, 'getClient')
     const entity = await withTimeout(resolveEntity(client, chatId, username), 8000, 'resolve')
     const {Api} = require('telegram/tl')
     await withTimeout(
@@ -1859,7 +1866,7 @@ app.get('/api/telegram/messages/around', requireAuth, async (req, res) => {
   if (!chatId || !messageId) return res.status(400).json({ error: 'Missing params' })
   
   try {
-    const client = await withTimeout(getClient(), 10000, 'getClient')
+    const client = await withTimeout(getClient(req.accountId), 10000, 'getClient')
     const entity = await withTimeout(resolveEntity(client, chatId, username), 8000, 'resolveEntity')
     
     // limitBefore = 30, limitAfter = 30 -> total 60
@@ -2046,7 +2053,7 @@ app.post(['/api/chat/react', '/api/telegram/messages/react'], requireAuth, async
 
   
   try {
-    const client = await withTimeout(getClient(), 10000, 'getClient')
+    const client = await withTimeout(getClient(req.accountId), 10000, 'getClient')
     const entity = await withTimeout(resolveEntity(client, chatId, username), 8000, 'resolve')
     const {Api} = require('telegram/tl')
     
@@ -2101,7 +2108,7 @@ app.get('/api/telegram/messages/pinned', requireAuth, async (req,res) => {
   const {chatId, username, topicId} = req.query
   if(!chatId) return res.status(400).json({error:'Missing chatId'})
   try {
-    const client = await withTimeout(getClient(), 10000, 'getClient')
+    const client = await withTimeout(getClient(req.accountId), 10000, 'getClient')
     const entity = await withTimeout(resolveEntity(client, chatId, username), 8000, 'resolve')
     const {Api} = require('telegram/tl')
     
@@ -2157,7 +2164,7 @@ app.post('/api/chat/read', requireAuth, async (req,res) => {
   const { chatId, username, maxId } = req.body
   if(!chatId) return res.status(400).json({error:'Missing chatId'})
   try {
-    const client = await withTimeout(getClient(), 10000, 'getClient')
+    const client = await withTimeout(getClient(req.accountId), 10000, 'getClient')
     const entity = await withTimeout(resolveEntity(client, chatId, username), 8000, 'resolve')
     
     // Telegram markAsRead logic

@@ -42,7 +42,7 @@ const MessageList = React.memo(function MessageList(props) {
     AISuggestPanel, aiText, setAiText, aiSuggestions, setAiSuggestions, aiAnalysis, setAiAnalysis,
     aiAlt, setAiAlt, setAiLoading, tmplCats, setTmplCat,
     tmplCat, TEMPLATES, setMsgs, setSelectMode, lightbox, StageBadge, gifOpen, setGifOpen,
-    gifQuery, setGifQuery, searchGifs, gifs, loadingRef, showScrollBtn, aiError, onAuthFailed, activeTranslations
+    gifQuery, setGifQuery, searchGifs, gifs, loadingRef, showScrollBtn, aiError, onAuthFailed, activeTranslations, messageFetchError
   } = props;
 
   const [seenTooltip, setSeenTooltip] = React.useState(null);
@@ -83,7 +83,21 @@ const MessageList = React.memo(function MessageList(props) {
               </div>
             )}
             {loadMsgs&&<div style={{textAlign:"center",color:TG.textMuted,fontSize:13,marginTop:40}}>Loading messages...</div>}
-            {!loadMsgs&&messagesLoaded&&msgs.length===0&&(
+            
+            {messageFetchError && !loadMsgs && (
+              <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:12,color:TG.textSec,marginTop:60}}>
+                <div style={{fontSize:40}}>⚠️</div>
+                <div style={{fontSize:14, textAlign:'center', maxWidth:300, lineHeight:'1.5', color: '#ff453a', fontWeight:600}}>{messageFetchError}</div>
+                <button 
+                  onClick={() => loadMessages(sel, selTopic?.id || null)}
+                  style={{padding:'8px 16px', background:'#7c3aed', color:'#fff', border:'none', borderRadius:6, cursor:'pointer', fontWeight:600}}
+                >
+                  Retry
+                </button>
+              </div>
+            )}
+
+            {!loadMsgs&&!messageFetchError&&messagesLoaded&&msgs.length===0&&(
               <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8,color:TG.textSec,marginTop:60}}>
                 <div style={{fontSize:36}}>👋</div>
                 <div style={{fontSize:14}}>No messages yet</div>
@@ -578,6 +592,7 @@ const MessageList = React.memo(function MessageList(props) {
   if (prev.msgInfoOpen !== next.msgInfoOpen) return false;
   if (prev.highlightedMsgId !== next.highlightedMsgId) return false;
   if (prev.seenTooltip !== next.seenTooltip) return false;
+  if (prev.messageFetchError !== next.messageFetchError) return false;
   // If we reach here, it means only input, editingMsg, pastedFile, or stable functions changed.
   // We can safely skip the massive re-render!
   return true;

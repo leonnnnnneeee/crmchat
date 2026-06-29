@@ -2068,7 +2068,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
   
   // ── MULTI-ACCOUNT STATE ──
   const [accounts, setAccounts] = useState([]);
-  const [activeAccountId, setActiveAccId] = useState('default');
+  const [activeAccountId, setActiveAccId] = useState(() => localStorage.getItem('crmchat_active_account') || 'default');
   const [showAccountMenu, setShowAccountMenu] = useState(false);
   const [showAddAccount, setShowAddAccount] = useState(false);
 
@@ -2081,6 +2081,21 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
       .then(data => {
         if (Array.isArray(data) && data.length > 0) {
           setAccounts(data);
+          
+          const currActive = localStorage.getItem('crmchat_active_account') || 'default';
+          const exists = data.find(a => a.accountId === currActive);
+          
+          if (exists) {
+            setActiveAccId(exists.accountId);
+            setActiveAccountId(exists.accountId); // global interceptor
+            console.log('[Multi-Account] Restored active account:', exists.accountId);
+          } else {
+            const first = data.find(a => a.sessionStatus === 'connected') || data[0];
+            setActiveAccId(first.accountId);
+            setActiveAccountId(first.accountId); // global interceptor
+            localStorage.setItem('crmchat_active_account', first.accountId);
+            console.log('[Multi-Account] Restored account invalid. Fallback to:', first.accountId);
+          }
         } else {
           setAccounts([{ accountId: 'default', displayName: 'Default Account', sessionStatus: 'connected' }]);
         }
@@ -2322,6 +2337,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
   const [sending,setSending]=useState(false)
   const [loadChats,setLoadChats]=useState(true)
   const [loadMsgs,setLoadMsgs]=useState(false)
+  const [messageFetchError, setMessageFetchError] = useState(null)
   const [messagesLoaded,setMessagesLoaded]=useState(false)
   const [loadingMore,setLoadingMore]=useState(false)
   const [hasMoreChats,setHasMoreChats]=useState(true)
@@ -2736,6 +2752,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
        prevSelTopicId.current = null
        setForceNormalView(false)
        setTopicError(false)
+       setMessageFetchError(null)
        setPinnedMessage(null) // reset pin on chat change
        setDismissedTranslate(localStorage.getItem(`dismissed_translate_${sel.id}_main`) === 'true')
        setDismissedPin(localStorage.getItem(`dismissed_pin_${sel.id}_main`) === 'true')
@@ -3031,6 +3048,8 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
     if(!append && loadingRef.current) return
     if(append && loadingMoreRef.current) return
     
+    if(!append) setMessageFetchError(null)
+    
     if(append) {
       loadingMoreRef.current = true
       setLoadingMore(true)
@@ -3083,8 +3102,14 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
         })
       } else if (d && d.error === 'AUTH_FAILED') {
         if (typeof onAuthFailed === 'function') onAuthFailed()
+      } else if (d && d.error) {
+        if (d.error === 'ACCOUNT_SESSION_EXPIRED') {
+          setMessageFetchError('This Telegram account session expired. Reconnect this account.');
+        } else {
+          setMessageFetchError(d.error);
+        }
       }
-    } catch(e) { console.error("loadMsgs:",e) }
+    } catch(e) { console.error("loadMsgs:",e); setMessageFetchError(e.message); }
     console.timeEnd('loadMessages')
     
     if(append) {
@@ -4117,7 +4142,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
   const chatProps = {
     sel, selTopic, setSelTopic, TG: {}, setProfilePreview, setShowMembers, onlineStatus, setChatSearchOpen, showProfile, setShowProfile,
     topics, loadingTopics, topicSearch, setTopicSearch, topicError, setTopicCtxMenu, topicCtxMenu, setSel,
-    loadMsgs, messagesLoaded, msgs, hasMore, loadMessages, handleScroll, handleCtx, selectMode, setSelectedMsgs, selectedMsgs,
+    loadMsgs, messagesLoaded, msgs, hasMore, loadMessages, messageFetchError, handleScroll, handleCtx, selectMode, setSelectedMsgs, selectedMsgs,
     fmtDateSep, isPhotoMsg, isVideoMsg, isDocMsg, setLightbox, token, reactions, setReactions, toggleReaction, editedMsgs, fmtMsgTime,
     editingMsg, setEditingMsg, input, setInput, replyTo, setReplyTo, forwardMsg, setForwardMsg, inputRef, handleKeyDown, send, aiLoading, getAI,
     emojiOpen, setEmojiOpen, showTmpl, setShowTmpl, recording, recordSecs, fileInputRef, handleFileChange, mediaRecRef, recordTimerRef, setRecording, setRecordSecs,
@@ -4227,6 +4252,8 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
             onSwitchAccount={(id) => {
               console.log('[MultiAccount] Switching to account:', id);
               setActiveAccId(id);
+              setActiveAccountId(id);
+              localStorage.setItem('crmchat_active_account', id);
               setSel(null);
               setSelTopic(null);
               setMsgs([]);
