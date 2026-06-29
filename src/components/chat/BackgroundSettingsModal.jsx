@@ -31,6 +31,7 @@ export function BackgroundSettingsModal({
   const [activeTab, setActiveTab] = React.useState('Presets');
   const fileInputRef = useRef(null);
   const [errorMsg, setErrorMsg] = React.useState('');
+  const [isDragging, setIsDragging] = React.useState(false);
 
   const GALLERY_OPTIONS = [
     { name: 'Bernabeu', image: 'url("/backgrounds/bernabeu.jpg") center/cover' },
@@ -42,8 +43,7 @@ export function BackgroundSettingsModal({
     { name: 'Real Squad', image: 'url("/backgrounds/squad.jpg") center/cover' },
   ];
 
-  const handleFileUpload = (e) => {
-    const file = e.target.files?.[0];
+  const processFile = (file) => {
     if (!file) return;
     if (file.size > 5 * 1024 * 1024) {
       setErrorMsg('File too large. Maximum size is 5MB.');
@@ -59,6 +59,10 @@ export function BackgroundSettingsModal({
       localStorage.setItem('crm_bg_option', 'Custom');
     };
     reader.readAsDataURL(file);
+  };
+
+  const handleFileUpload = (e) => {
+    processFile(e.target.files?.[0]);
   };
 
   const handleSelectOption = (optName) => {
@@ -216,17 +220,25 @@ export function BackgroundSettingsModal({
             />
             <div 
               style={{
-                width: '100%', height: 160, border: '2px dashed #3a3a3c', borderRadius: 12,
+                width: '100%', height: 160, border: isDragging ? '2px dashed #7c3aed' : '2px dashed #3a3a3c', borderRadius: 12,
                 display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                cursor: 'pointer', background: 'rgba(255,255,255,0.02)', color: '#94a3b8', gap: 12,
-                transition: 'border 0.2s, color 0.2s'
+                cursor: 'pointer', background: isDragging ? 'rgba(124,58,237,0.05)' : 'rgba(255,255,255,0.02)', color: isDragging ? '#fff' : '#94a3b8', gap: 12,
+                transition: 'all 0.2s'
               }}
-              onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#7c3aed'; e.currentTarget.style.color = '#fff'; }}
-              onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#3a3a3c'; e.currentTarget.style.color = '#94a3b8'; }}
+              onMouseEnter={(e) => { if(!isDragging) { e.currentTarget.style.borderColor = '#7c3aed'; e.currentTarget.style.color = '#fff'; } }}
+              onMouseLeave={(e) => { if(!isDragging) { e.currentTarget.style.borderColor = '#3a3a3c'; e.currentTarget.style.color = '#94a3b8'; } }}
               onClick={() => fileInputRef.current?.click()}
+              onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); }}
+              onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(false); }}
+              onDrop={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setIsDragging(false);
+                processFile(e.dataTransfer.files?.[0]);
+              }}
             >
               <div style={{ fontSize: 32 }}>☁️</div>
-              <div style={{ fontSize: 14, fontWeight: 500 }}>Click to browse image</div>
+              <div style={{ fontSize: 14, fontWeight: 500 }}>{isDragging ? 'Drop image here' : 'Click or drag image here'}</div>
               <div style={{ fontSize: 12, opacity: 0.7 }}>Max file size: 5MB</div>
             </div>
 
