@@ -669,7 +669,10 @@ function AISuggestPanel({text,suggestions,analysis,alternative,messages,loading,
   const [editIdx,setEditIdx] = useState(null)
   const [edited,setEdited]   = useState({})
 
-  if(!text && !loading && (!suggestions || suggestions.length === 0) && !aiError && !aiInstruction && !projectResearch) return null
+  const isResearchActive = projectResearch && !projectResearch.dismissed;
+  const safeAiInstruction = (aiInstruction === "null" || aiInstruction == null) ? "" : aiInstruction;
+
+  if(!text && !loading && (!suggestions || suggestions.length === 0) && !aiError && !safeAiInstruction && !isResearchActive) return null
 
   // Support both new suggestions array and old text/alternative format
   let msgs = []
@@ -690,7 +693,7 @@ function AISuggestPanel({text,suggestions,analysis,alternative,messages,loading,
       {/* Header */}
       
       {/* Project Research Card */}
-      {projectResearch && projectResearch.status === 'ready' && projectResearch.data && (
+      {isResearchActive && projectResearch.status === 'ready' && projectResearch.data && (
         <div style={{margin: "12px 16px", padding: 12, background: "rgba(255,255,255,0.03)", borderRadius: 8, border: "1px solid rgba(255,255,255,0.05)"}}>
           <div style={{display: "flex", justifyContent: "space-between", alignItems: "flex-start"}}>
             <div>
@@ -745,7 +748,7 @@ function AISuggestPanel({text,suggestions,analysis,alternative,messages,loading,
           <input 
             type="text" 
             placeholder="Tell AI what you want to reply, e.g. offer commission, ask budget, mention CMC..."
-            value={aiInstruction||""}
+            value={safeAiInstruction}
             onChange={(e)=>{setAiInstruction&&setAiInstruction(e.target.value);}}
             onPaste={handlePaste}
             onKeyDown={(e)=>{allowShortcuts(e); if(e.key==='Enter'&&!loading) onRegenerate()}}
@@ -4931,7 +4934,17 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
               onUse={(txt)=>{setInput(txt);setAiText("");setAiSuggestions([]);setAiAnalysis("");setAiAlt("")}}
               onUseAlt={()=>{setInput(aiAlt);setAiText("");setAiSuggestions([]);setAiAnalysis("");setAiAlt("")}}
               onRegenerate={()=>getAI(false)}
-              onClose={()=>{setAiText("");setAiSuggestions([]);setAiAnalysis("");setAiAlt("");setAiLoading(false);setAiInstruction("")}}
+              onClose={()=>{
+                 setAiText("");
+                 setAiSuggestions([]);
+                 setAiAnalysis("");
+                 setAiAlt("");
+                 setAiLoading(false);
+                 setAiInstruction("");
+                 if (projectResearch) {
+                   setProjectResearch(prev => prev ? { ...prev, dismissed: true } : null);
+                 }
+              }}
               aiInstruction={aiInstruction}
               setAiInstruction={setAiInstruction}
               onReconnect={onAuthFailed}
