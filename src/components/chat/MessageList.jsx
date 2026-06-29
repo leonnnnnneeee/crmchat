@@ -43,7 +43,7 @@ const MessageList = React.memo(function MessageList(props) {
     aiAlt, setAiAlt, setAiLoading, tmplCats, setTmplCat,
     tmplCat, TEMPLATES, setMsgs, setSelectMode, lightbox, StageBadge, gifOpen, setGifOpen,
     gifQuery, setGifQuery, searchGifs, gifs, loadingRef, showScrollBtn, aiError, highlightedMsgId, onAuthFailed,
-    activeTranslations, handleTranslate, resendMessage
+    activeTranslations, handleTranslate, resendMessage, messageFetchError
   } = props;
 
   const [seenTooltip, setSeenTooltip] = React.useState(null);
