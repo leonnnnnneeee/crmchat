@@ -4518,6 +4518,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
     globalSearchOpen, setGlobalSearchOpen, globalSearch, setGlobalSearch,
     chats, sending, setForceNormalView, loadingMore, readChats,
     firstUnreadRef, renderMessageText, chatSearch, endRef, aiInstruction, setAiInstruction,
+    chatMembersCache, fetchMembers,
     AISuggestPanel, aiText, setAiText, aiSuggestions, setAiSuggestions, aiAnalysis, setAiAnalysis,
     aiAlt, setAiAlt, setAiLoading, tmplCats, setTmplCat,
     tmplCat, TEMPLATES: [], setMsgs, setSelectMode, lightbox, StageBadge, gifOpen, setGifOpen,

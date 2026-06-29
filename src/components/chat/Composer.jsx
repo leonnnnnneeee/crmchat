@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { allowShortcuts, handlePaste } from '../../CRMChat';
 
 export default function Composer(props) {
@@ -23,8 +23,93 @@ export default function Composer(props) {
     aiAlt, setAiAlt, setAiLoading, tmplCats, setTmplCat,
     tmplCat, TEMPLATES, setMsgs, setSelectMode, lightbox, StageBadge, gifOpen, setGifOpen,
     gifQuery, setGifQuery, searchGifs, gifs, loadingRef, showScrollBtn,
-    pastedFile, setPastedFile, filePreview, setFilePreview, handleComposerPaste
+    pastedFile, setPastedFile, filePreview, setFilePreview, handleComposerPaste,
+    chatMembersCache, fetchMembers
   } = props;
+
+  // --- MENTIONS ---
+  const [mentionQuery, setMentionQuery] = useState(null);
+  const [mentionIndex, setMentionIndex] = useState(0);
+  const [mentionStartPos, setMentionStartPos] = useState(null);
+
+  const members = (sel && chatMembersCache?.[sel.id]) || [];
+  
+  const filteredMembers = mentionQuery !== null ? members.filter(m => {
+    const q = mentionQuery.toLowerCase();
+    const nameMatch = m.name?.toLowerCase().includes(q);
+    const userMatch = m.username?.toLowerCase().includes(q);
+    return nameMatch || userMatch;
+  }).slice(0, 10) : [];
+
+  const handleMentionSelect = (member) => {
+    if (mentionStartPos === null) return;
+    const val = safeInputValue;
+    const before = val.substring(0, mentionStartPos);
+    const after = val.substring(inputRef.current.selectionEnd);
+    const mentionText = member.username ? `@${member.username} ` : `${member.name} `;
+    
+    setInput(before + mentionText + after);
+    setMentionQuery(null);
+    setMentionStartPos(null);
+    
+    // Focus back and set cursor
+    setTimeout(() => {
+      if (inputRef.current) {
+        inputRef.current.focus();
+        inputRef.current.selectionStart = inputRef.current.selectionEnd = before.length + mentionText.length;
+      }
+    }, 0);
+  };
+
+  const handleInputChange = (e) => {
+    const val = e.target.value;
+    setInput(val);
+    
+    const cursorPos = e.target.selectionStart;
+    const textBeforeCursor = val.substring(0, cursorPos);
+    const match = textBeforeCursor.match(/(?:^|\s)@([a-zA-Z0-9_]*)$/);
+    
+    if (match && (sel?.isGroup || sel?.isChannel)) {
+      setMentionQuery(match[1]);
+      setMentionStartPos(cursorPos - match[1].length - 1);
+      setMentionIndex(0);
+      if (members.length === 0 && fetchMembers) {
+        fetchMembers();
+      }
+    } else {
+      setMentionQuery(null);
+      setMentionStartPos(null);
+    }
+  };
+
+  const composerKeyDown = (e) => {
+    if (mentionQuery !== null && filteredMembers.length > 0) {
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setMentionIndex(prev => (prev > 0 ? prev - 1 : filteredMembers.length - 1));
+        return;
+      }
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setMentionIndex(prev => (prev < filteredMembers.length - 1 ? prev + 1 : 0));
+        return;
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault();
+        handleMentionSelect(filteredMembers[mentionIndex]);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setMentionQuery(null);
+        setMentionStartPos(null);
+        return;
+      }
+    }
+    
+    allowShortcuts(e);
+    handleKeyDown(e);
+  };
 
   const safeInputValue = (input === "null" || input == null) ? "" : input;
   console.log('[Debug] Composer raw input value before render:', input);
@@ -98,8 +183,34 @@ export default function Composer(props) {
                 </button>
               </div>
             )}
+            {/* Mention Dropdown */}
+            {mentionQuery !== null && filteredMembers.length > 0 && (
+              <div style={{
+                position: 'absolute', bottom: '100%', left: 16, right: 16, marginBottom: 8,
+                background: '#1c1c1e', border: '1px solid #3a3a3c', borderRadius: 8, 
+                maxHeight: 200, overflowY: 'auto', zIndex: 100, boxShadow: '0 -4px 12px rgba(0,0,0,0.5)'
+              }}>
+                {filteredMembers.map((m, idx) => (
+                  <div key={m.id} onClick={() => handleMentionSelect(m)}
+                    style={{
+                      padding: '8px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10,
+                      background: mentionIndex === idx ? 'rgba(124,58,237,0.3)' : 'transparent',
+                      borderBottom: '1px solid #2c2c2e'
+                    }}>
+                    <div style={{width: 28, height: 28, borderRadius: '50%', background: '#7c3aed', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 12, fontWeight: 'bold'}}>
+                      {m.name.charAt(0)}
+                    </div>
+                    <div>
+                      <div style={{fontSize: 13, color: '#f0e6ff', fontWeight: 600}}>{m.name}</div>
+                      {m.username && <div style={{fontSize: 11, color: '#a78bfa'}}>@{m.username}</div>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
             {/* Input row */}
-            <div className="ir">
+            <div className="ir" style={{ position: 'relative' }}>
               <button className="ib" onClick={()=>setEmojiOpen(p=>!p)} title="Emoji"
                 style={{background:emojiOpen?"#2d1155":"transparent",fontSize:17}}>😊</button>
               <button className="ib g" title="Attach file"
@@ -107,14 +218,9 @@ export default function Composer(props) {
               <input type="file" ref={fileInputRef} style={{display:'none'}} onChange={handleFileChange} />
               <textarea className="message-input" placeholder="Message"
                 ref={inputRef} value={safeInputValue} rows={1}
-                onChange={e=>{
-                  setInput(e.target.value)
-                }}
+                onChange={handleInputChange}
                 onPaste={handleComposerPaste}
-                onKeyDown={(e) => {
-                  allowShortcuts(e);
-                  handleKeyDown(e);
-                }}
+                onKeyDown={composerKeyDown}
                 style={{height:"auto"}}/>
               <button className={`ib g${showTmpl?" on":""}`} onClick={()=>setShowTmpl(v=>!v)} title="Templates" style={{fontSize:17}}>
                 📋
