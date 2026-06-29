@@ -426,19 +426,6 @@ const MessageList = React.memo(function MessageList(props) {
             <div ref={endRef}/>
           </div>
 
-          {/* AI Suggest panel */}
-          <AISuggestPanel
-            text={aiText} suggestions={aiSuggestions} analysis={aiAnalysis} alternative={aiAlt} loading={aiLoading}
-            aiError={aiError}
-            onUse={(txt)=>{setInput(txt);setAiText("");setAiSuggestions([]);setAiAnalysis("");setAiAlt("")}}
-            onUseAlt={()=>{setInput(aiAlt);setAiText("");setAiSuggestions([]);setAiAnalysis("");setAiAlt("")}}
-            onRegenerate={()=>getAI(false)}
-            onClose={()=>{setAiText("");setAiSuggestions([]);setAiAnalysis("");setAiAlt("");setAiLoading(false);setAiInstruction("")}}
-            aiInstruction={aiInstruction}
-            setAiInstruction={setAiInstruction}
-            onReconnect={onAuthFailed}
-          />
-
           {/* Reply bar */}
           {replyTo&&(
             <div className="rpl-bar" style={{margin:"0 16px 6px",flexShrink:0}}>

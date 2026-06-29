@@ -4762,7 +4762,18 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
           <div style={{ zIndex: 1, display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
             <MessageList {...chatProps} />
           </div>
-          <div style={{ zIndex: 1 }}>
+          <div style={{ zIndex: 1, display: 'flex', flexDirection: 'column' }}>
+            <AISuggestPanel
+              text={aiText} suggestions={aiSuggestions} analysis={aiAnalysis} alternative={aiAlt} loading={aiLoading}
+              aiError={aiError}
+              onUse={(txt)=>{setInput(txt);setAiText("");setAiSuggestions([]);setAiAnalysis("");setAiAlt("")}}
+              onUseAlt={()=>{setInput(aiAlt);setAiText("");setAiSuggestions([]);setAiAnalysis("");setAiAlt("")}}
+              onRegenerate={()=>getAI(false)}
+              onClose={()=>{setAiText("");setAiSuggestions([]);setAiAnalysis("");setAiAlt("");setAiLoading(false);setAiInstruction("")}}
+              aiInstruction={aiInstruction}
+              setAiInstruction={setAiInstruction}
+              onReconnect={onAuthFailed}
+            />
             <Composer {...chatProps} />
           </div>
         </>}
