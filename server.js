@@ -121,13 +121,28 @@ if (process.env.TG_SESSION) {
 // ── LOAD SESSION FROM SUPABASE ON STARTUP ──
 async function loadSessionFromDB() {
   try {
-    const r = await axios.get(SB_URL + '/rest/v1/sessions?key=like.crmchat_tg_session%', { headers: SBH })
+    const r = await axios.get(SB_URL + '/rest/v1/sessions?key=ilike.crmchat_tg_session*', { headers: SBH })
     if (r.data && r.data.length > 0) {
       let loaded = 0
       for (const row of r.data) {
         if (row.value && row.value.length > 10) {
           const accId = row.key === 'crmchat_tg_session' ? DEFAULT_ACCOUNT_ID : row.key.replace('crmchat_tg_session_', '')
-          _accounts.set(accId, { session: row.value, client: null, ready: false })
+          try {
+            const data = JSON.parse(row.value);
+            _accounts.set(accId, {
+              session: data.sessionString,
+              client: null,
+              ready: false,
+              sessionStatus: 'disconnected',
+              telegramUserId: data.telegramUserId,
+              phone: data.phone,
+              username: data.username,
+              displayName: data.displayName
+            })
+          } catch(e) {
+            // Fallback for old plain-string sessions
+            _accounts.set(accId, { session: row.value, client: null, ready: false, sessionStatus: 'disconnected' })
+          }
           loaded++
         }
       }
@@ -139,10 +154,18 @@ async function loadSessionFromDB() {
 
 async function saveSessionToDB(s, accountId = DEFAULT_ACCOUNT_ID) {
   try {
+    const acc = _accounts.get(accountId) || { session: s };
     const h = { ...SBH, Prefer: 'resolution=merge-duplicates' }
     const key = accountId === DEFAULT_ACCOUNT_ID ? 'crmchat_tg_session' : `crmchat_tg_session_${accountId}`
+    const payload = JSON.stringify({
+      sessionString: s,
+      telegramUserId: acc.telegramUserId,
+      phone: acc.phone,
+      username: acc.username,
+      displayName: acc.displayName
+    })
     await axios.post(SB_URL + '/rest/v1/sessions',
-      { key, value: s, updated_at: new Date().toISOString() },
+      { key, value: payload, updated_at: new Date().toISOString() },
       { headers: h }
     )
     log(`✅ Session saved to Supabase (${accountId})`)
@@ -178,6 +201,7 @@ async function getClient(accountId = DEFAULT_ACCOUNT_ID) {
     } catch {
       acc.ready = false
       acc.client = null
+      acc.sessionStatus = 'disconnected'
     }
   }
 
@@ -190,10 +214,22 @@ async function getClient(accountId = DEFAULT_ACCOUNT_ID) {
     })
   }
 
-  await withTimeout(acc.client.connect(), 10000, 'connect')
-  acc.ready = true
-  log(`TG client (re)connected for account ${accountId}`)
-  return acc.client
+  try {
+    await withTimeout(acc.client.connect(), 10000, 'connect')
+    acc.ready = true
+    acc.sessionStatus = 'connected'
+    log(`TG client (re)connected for account ${accountId}`)
+    return acc.client
+  } catch (e) {
+    if (e.message.includes('AUTH_KEY_UNREGISTERED') || e.message.includes('SESSION_REVOKED') || e.message.includes('expired')) {
+      acc.sessionStatus = 'expired'
+      acc.ready = false
+      const err = new Error(`Account ${accountId} session expired`)
+      err.code = 'ACCOUNT_SESSION_EXPIRED'
+      throw err
+    }
+    throw e;
+  }
 }
 
 // Keep clients alive with periodic ping every 2 minutes
@@ -212,8 +248,16 @@ setInterval(async () => {
 // Warm up clients on session load (so first request is fast)
 async function warmupClients() {
   for (const [id, acc] of _accounts.entries()) {
-    try { await getClient(id); log(`✅ TG client warmed up for ${id}`) }
-    catch(e) { log(`warmup (${id}): ` + e.message) }
+    try { 
+      await getClient(id); 
+      log(`✅ TG client warmed up for ${id}`) 
+    }
+    catch(e) { 
+      log(`warmup (${id}): ` + e.message)
+      if (e.message.includes('AUTH_KEY_UNREGISTERED') || e.message.includes('SESSION_REVOKED') || e.message.includes('expired')) {
+         acc.sessionStatus = 'expired'
+      }
+    }
   }
 }
 
@@ -1983,38 +2027,48 @@ app.get('/api/telegram/accounts', async (req, res) => {
   const rawAccounts = [];
   for (const [id, acc] of _accounts.entries()) {
     if (!acc.session) continue;
-    try {
-      const client = await getClient(id);
-      const me = await client.getMe();
-      rawAccounts.push({
-        accountId: id,
-        telegramUserId: me.id.toString(),
-        displayName: me.firstName + (me.lastName ? ' ' + me.lastName : ''),
-        username: me.username || '',
-        phone: me.phone || '',
-        isActive: id === req.accountId,
-        sessionStatus: acc.ready ? 'connected' : 'disconnected'
-      });
-    } catch (e) {
-      rawAccounts.push({
-        accountId: id,
-        displayName: `Account ${id}`,
-        sessionStatus: 'disconnected',
-        error: e.message,
-        isActive: id === req.accountId
-      });
+    
+    let meData = {
+      telegramUserId: acc.telegramUserId,
+      displayName: acc.displayName || `Account ${id}`,
+      username: acc.username || '',
+      phone: acc.phone || ''
+    };
+
+    if (!acc.telegramUserId && acc.sessionStatus !== 'expired') {
+      try {
+        const client = await getClient(id);
+        const me = await client.getMe();
+        meData.telegramUserId = me.id.toString();
+        meData.displayName = me.firstName + (me.lastName ? ' ' + me.lastName : '');
+        meData.username = me.username || '';
+        meData.phone = me.phone || '';
+        
+        acc.telegramUserId = meData.telegramUserId;
+        acc.displayName = meData.displayName;
+        acc.username = meData.username;
+        acc.phone = meData.phone;
+        // Optionally save to DB to persist the newly fetched metadata
+        saveSessionToDB(acc.session, id);
+      } catch (e) {
+        log(`Failed to fetch getMe for ${id} in GET /accounts: ${e.message}`);
+      }
     }
+
+    rawAccounts.push({
+      accountId: id,
+      telegramUserId: meData.telegramUserId,
+      displayName: meData.displayName,
+      username: meData.username,
+      phone: meData.phone,
+      isActive: id === req.accountId,
+      sessionStatus: acc.sessionStatus || 'disconnected'
+    });
   }
 
   // Deduplicate using telegramUserId > phone > accountId
   const dedupedMap = new Map();
   for (const acc of rawAccounts) {
-    if (acc.error) {
-      // If we don't know the ID because it's disconnected/error, just use accountId as key
-      if (!dedupedMap.has(acc.accountId)) dedupedMap.set(acc.accountId, acc);
-      continue;
-    }
-    
     const key = acc.telegramUserId || acc.phone || acc.accountId;
     if (dedupedMap.has(key)) {
       const existing = dedupedMap.get(key);
