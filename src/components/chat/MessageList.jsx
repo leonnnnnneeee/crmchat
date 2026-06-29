@@ -146,7 +146,7 @@ const MessageList = React.memo(function MessageList(props) {
                 unreadCount > 0 &&
                 i === Math.max(0, msgs.length - unreadCount)
               return(
-                <div key={msg.id || `pending_${i}`} ref={isFirstUnread?firstUnreadRef:null}>
+                <div key={msg.id || `pending_${i}`} ref={isFirstUnread?firstUnreadRef:null} data-msg-id={msg.id}>
                   {isFirstUnread&&(
                     <div ref={firstUnreadRef} style={{
                       display:"flex",alignItems:"center",gap:10,

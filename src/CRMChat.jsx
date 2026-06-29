@@ -2725,11 +2725,26 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
   }, [token])
 
   const handleScroll = (e) => {
-    const { scrollTop, scrollHeight, clientHeight } = e.target
+    const msgsContainer = e.target
+    const { scrollTop, scrollHeight, clientHeight } = msgsContainer
     isNearBottom.current = scrollHeight - scrollTop - clientHeight < 150
     if (sel?.id) {
-      const scrollKey = sel.id + (selTopic ? '_' + selTopic.id : '')
-      scrollPositions.current[scrollKey] = scrollTop
+      const scrollKey = activeAccRef.current + '_' + sel.id + (selTopic ? '_' + selTopic.id : '')
+      
+      const msgElements = Array.from(msgsContainer.querySelectorAll('[data-msg-id]'))
+      let anchorId = null
+      let offset = 0
+      const containerRect = msgsContainer.getBoundingClientRect()
+      for (const el of msgElements) {
+         const rect = el.getBoundingClientRect()
+         if (rect.bottom > containerRect.top) {
+            anchorId = el.getAttribute('data-msg-id')
+            offset = rect.top - containerRect.top
+            break
+         }
+      }
+
+      scrollPositions.current[scrollKey] = { anchorId, offset, scrollTop }
       clearTimeout(saveScrollTimeout.current)
       saveScrollTimeout.current = setTimeout(() => {
         localStorage.setItem('crm_scroll_positions', JSON.stringify(scrollPositions.current))
@@ -2876,11 +2891,23 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
            }
         }, 100)
       } else {
-        const scrollKey = sel?.id + (selTopic ? '_' + selTopic.id : '')
-        const savedScroll = scrollPositions.current[scrollKey]
-        if (savedScroll !== undefined) {
-          const container = document.querySelector('.msgs')
-          if (container) container.scrollTop = savedScroll
+        const scrollKey = activeAccRef.current + '_' + sel?.id + (selTopic ? '_' + selTopic.id : '')
+        const savedState = scrollPositions.current[scrollKey]
+        const container = document.querySelector('.msgs')
+        
+        if (savedState && container) {
+          if (savedState.anchorId) {
+            const anchorEl = container.querySelector(`[data-msg-id="${savedState.anchorId}"]`)
+            if (anchorEl) {
+               container.scrollTop = anchorEl.offsetTop - (savedState.offset || 0)
+            } else {
+               container.scrollTop = savedState.scrollTop || 0
+            }
+          } else if (typeof savedState === 'number') { // legacy fallback
+            container.scrollTop = savedState
+          } else {
+            container.scrollTop = savedState.scrollTop || 0
+          }
         } else {
           endRef.current?.scrollIntoView({behavior:"auto"})
         }
@@ -3064,12 +3091,15 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
     
     if(!append) setMessageFetchError(null)
     
+    const cacheKey = activeAccRef.current + '_' + chat.id + (topicId ? '_' + topicId : '')
+    const hasCached = Array.isArray(msgsCacheRef.current[cacheKey]) && msgsCacheRef.current[cacheKey].length > 0
+    
     if(append) {
       loadingMoreRef.current = true
       setLoadingMore(true)
     } else {
       loadingRef.current = true
-      if (msgsRef.current.length === 0) setLoadMsgs(true)
+      if (!hasCached && msgsRef.current.length === 0) setLoadMsgs(true)
       setHasMore(true)
     }
     console.time('loadMessages')
@@ -3104,8 +3134,11 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
             const newMsgs = d.filter(m1 => !prev.some(m2 => m2.id === m1.id))
             nextState = [...newMsgs, ...prev]
           } else {
-            const stillPending = prev.filter(m => m.pending && m.id < 0 && !d.some(s=>s.text===m.text&&s.fromMe))
-            nextState = [...d, ...stillPending]
+            const idSet = new Set(d.map(m => m.id));
+            const existingOlder = prev.filter(p => !idSet.has(p.id) && p.id > 0);
+            const stillPending = prev.filter(m => m.pending && m.id < 0 && !d.some(s=>s.text===m.text&&s.fromMe));
+            nextState = [...existingOlder, ...d, ...stillPending];
+            nextState.sort((a, b) => a.id - b.id);
           }
           let finalState = nextState.map(m => ({
             ...m,
