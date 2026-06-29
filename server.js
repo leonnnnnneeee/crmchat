@@ -1202,8 +1202,10 @@ app.get('/api/chat/messages/:id', requireAuth, async (req,res) => {
     const client = await withTimeout(getClient(req.accountId), 10000, 'getClient')
     const entity = await withTimeout(resolveEntity(client, req.params.id, req.query.username), 8000, 'resolveEntity')
     const maxId = parseInt(req.query.maxId) || 0
+    const minId = parseInt(req.query.minId) || 0
     const opts = { limit: 40 }
     if (maxId > 0) opts.offsetId = maxId
+    if (minId > 0) opts.minId = minId
     
     let freshOutboxMaxId = parseInt(req.query.readOutboxMaxId) || 0;
     
@@ -2331,7 +2333,12 @@ app.get('/api/chat/stream', (req, res) => {
   if (!sseClients.has(accountId)) sseClients.set(accountId, new Set())
   sseClients.get(accountId).add(res)
 
+  const pingInterval = setInterval(() => {
+    res.write(`data: ${JSON.stringify({ type: 'ping' })}\n\n`)
+  }, 15000);
+
   req.on('close', () => {
+    clearInterval(pingInterval);
     const clients = sseClients.get(accountId)
     if (clients) clients.delete(res)
   })
@@ -2364,9 +2371,16 @@ function attachTGListener(client, accountId) {
         if (ev.message) {
           const m = ev.message
           
+          let finalChatId = m.chatId ? m.chatId.toString() : null;
+          if (m.peerId) {
+            if (m.peerId.className === 'PeerChannel') finalChatId = '-100' + m.peerId.channelId.toString();
+            else if (m.peerId.className === 'PeerChat') finalChatId = m.peerId.chatId.toString();
+            else if (m.peerId.className === 'PeerUser') finalChatId = m.peerId.userId.toString();
+          }
+          
           const msgObj = {
             id: m.id,
-            chatId: m.chatId ? m.chatId.toString() : null,
+            chatId: finalChatId,
             text: m.message || '',
             date: m.date,
             fromMe: m.out,

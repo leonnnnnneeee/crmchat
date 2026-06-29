@@ -3016,6 +3016,8 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
     let sse = null
     let retryCount = 0
     let reconnectTimeout = null
+    let watchdogInterval = null
+    let lastPing = Date.now()
 
     const connectSSE = () => {
       setSseStatus('connecting');
@@ -3023,76 +3025,94 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
       
       sse.onopen = () => {
         retryCount = 0
+        lastPing = Date.now()
         setSseStatus('connected');
-        // When reconnecting, fetch chats again to catch up
+        console.log('[DEBUG] realtimeConnected', true, 'accountId', activeAccRef.current)
         fetchChats()
         if (selRef.current) {
            loadMessages(selRef.current)
         }
+        
+        watchdogInterval = setInterval(() => {
+          if (Date.now() - lastPing > 20000) {
+            console.log('[DEBUG] SSE Watchdog timeout, reconnecting...')
+            if (sse) sse.close()
+            setSseStatus('error')
+            connectSSE()
+          }
+        }, 5000)
       }
 
       sse.onmessage = (e) => {
         try {
           const data = JSON.parse(e.data)
+          if (data.type === 'ping' || data.type === 'connected') {
+            lastPing = Date.now()
+            return
+          }
           if (data.type === 'new_message') {
             const msg = data.message
+            console.log('[DEBUG] updateReceived', true, 'updateType', data.type, 'accountId', data.accountId, 'chatId', msg.chatId, 'messageId', msg.id)
             
             // 1. Update chats list and unread count
             setChats(prev => {
               const newChats = [...prev]
-              const idx = newChats.findIndex(c => c.id === msg.chatId)
+              const idx = newChats.findIndex(c => c.id?.toString() === msg.chatId?.toString())
               if (idx > -1) {
                 const c = newChats[idx]
-                // Only increment unread if not currently in that chat
-                if (selRef.current?.id !== msg.chatId && !msg.fromMe) {
+                if (selRef.current?.id?.toString() !== msg.chatId?.toString() && !msg.fromMe) {
                   c.unread = (c.unread || 0) + 1
                 }
                 c.lastMessage = msg.hasMedia ? '[Media]' : msg.text
                 c.lastMessageAt = msg.date
                 c.date = msg.date
                 
-                // Move chat to top (below pinned chats)
                 const updatedChat = newChats.splice(idx, 1)[0]
                 const lastPinnedIdx = newChats.map(x=>x.pinned).lastIndexOf(true)
                 if (updatedChat.pinned) {
-                   // Keep it sorted by date inside pinned
                    const insertIdx = newChats.findIndex((x, i) => i <= lastPinnedIdx && x.date < msg.date)
                    newChats.splice(insertIdx === -1 ? lastPinnedIdx + 1 : insertIdx, 0, updatedChat)
                 } else {
                    const insertIdx = newChats.findIndex((x, i) => i > lastPinnedIdx && x.date < msg.date)
                    newChats.splice(insertIdx === -1 ? newChats.length : insertIdx, 0, updatedChat)
                 }
+                console.log('[DEBUG] sidebarUpdated', true)
+              } else {
+                setTimeout(() => fetchChats(false), 1000)
               }
               return newChats
             })
 
             // 2. Append to msgs if in active chat
-            const isSameChat = selRef.current?.id === msg.chatId;
+            const isSameChat = selRef.current?.id?.toString() === msg.chatId?.toString();
             const isSameTopic = !selRef.current?.isForum || (msg.topicId && selTopicRef.current?.id === msg.topicId) || (!msg.topicId && !selTopicRef.current);
+            console.log('[DEBUG] active chatId/topicId', selRef.current?.id, selTopicRef.current?.id)
             
             if (isSameChat && isSameTopic) {
               setMsgs(prev => {
-                if (prev.some(m => m.id === msg.id)) return prev;
+                if (prev.some(m => m.id === msg.id)) {
+                  console.log('[DEBUG] duplicateSkipped', true)
+                  return prev;
+                }
                 msg.reactions = mergeReactions(msg.id, msg.reactions || []);
                 const pendingIdx = prev.findIndex(m => m.pending && m.text === msg.text && m.fromMe);
                 let updated;
                 if (pendingIdx > -1) {
-                  // Replace pending message with the real one
                   updated = [...prev];
                   updated[pendingIdx] = msg;
+                  console.log('[DEBUG] tempMessageReplaced', true)
                 } else {
                   updated = [...prev, msg];
                 }
+                console.log('[DEBUG] messageMerged', true)
                 const nextState = updated.sort((a,b) => a.date - b.date)
                 msgsCacheRef.current[activeAccRef.current + '_' + selRef.current.id + (selTopicRef.current ? '_' + selTopicRef.current.id : '')] = nextState
                 return nextState
               })
               
-              // Regenerate AI Reply if we are in the chat
               setAiSuggestions([])
               setAiText('')
 
-              // Mark as read immediately if window has focus and message is incoming
               if (!msg.fromMe && document.hasFocus()) {
                 markChatAsRead(msg.chatId, msg.topicId, msg.id)
               }
@@ -3100,7 +3120,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
           }
           else if (data.type === 'delete_messages') {
              const { ids, chatId } = data
-             if (selRef.current?.id === chatId) {
+             if (selRef.current?.id?.toString() === chatId?.toString()) {
                 setMsgs(prev => {
                   const nextState = prev.filter(m => !ids.includes(m.id))
                   msgsCacheRef.current[activeAccRef.current + '_' + selRef.current.id + (selTopicRef.current ? '_' + selTopicRef.current.id : '')] = nextState
@@ -3110,14 +3130,14 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
           }
           else if (data.type === 'read_outbox') {
              const { chatId, maxId } = data;
-             setChats(prev => prev.map(c => c.id === chatId ? { ...c, readOutboxMaxId: Math.max(c.readOutboxMaxId || 0, maxId) } : c));
-             if (selRef.current?.id === chatId) {
+             setChats(prev => prev.map(c => c.id?.toString() === chatId?.toString() ? { ...c, readOutboxMaxId: Math.max(c.readOutboxMaxId || 0, maxId) } : c));
+             if (selRef.current?.id?.toString() === chatId?.toString()) {
                  setSel(prev => prev ? { ...prev, readOutboxMaxId: Math.max(prev.readOutboxMaxId || 0, maxId) } : prev);
              }
           }
           else if (data.type === 'update_reactions') {
             const { chatId, msgId, topicId, reactions, recentReactions } = data;
-            const isSameChat = selRef.current?.id === chatId;
+            const isSameChat = selRef.current?.id?.toString() === chatId?.toString();
             const isSameTopic = !selRef.current?.isForum || (topicId && selTopicRef.current?.id === topicId) || (!topicId && !selTopicRef.current);
             
             if (isSameChat && isSameTopic) {
@@ -3125,7 +3145,6 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
                 const idx = prev.findIndex(m => m.id === msgId);
                 if (idx === -1) return prev;
                 
-                // Only update if the reaction stringified content actually changed (optional optimization)
                 const updatedMsgs = [...prev];
                 updatedMsgs[idx] = { 
                   ...updatedMsgs[idx], 
@@ -3145,7 +3164,6 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
       sse.onerror = () => {
         setSseStatus('error');
         sse.close()
-        // Exponential backoff reconnect
         const delay = Math.min(10000, 1000 * Math.pow(2, retryCount++))
         reconnectTimeout = setTimeout(connectSSE, delay)
       }
@@ -3154,6 +3172,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
     connectSSE()
 
     return () => {
+      clearInterval(watchdogInterval)
       clearTimeout(reconnectTimeout)
       if (sse) sse.close()
     }
@@ -3161,19 +3180,32 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
 
   // Fallback Polling (if SSE fails)
   useEffect(() => {
-    if (!token || !sel?.id) return;
+    if (!token) return;
     let pollInterval;
+    let sidebarPollInterval;
     if (sseStatus !== 'connected') {
+      console.log('[DEBUG] pollingFallbackActive', true)
+      
+      // Lightweight sidebar polling every 15s
+      sidebarPollInterval = setInterval(() => {
+        fetchChats(false)
+      }, 15000)
+
+      // Active chat polling every 5s
       pollInterval = setInterval(() => {
-        if (!sendingRef.current) {
-          loadMessages(sel, selTopic?.id, false, true);
+        if (!sendingRef.current && sel?.id) {
+          const minId = msgsRef.current.length > 0 ? Math.max(...msgsRef.current.map(m=>m.id)) : 0;
+          loadMessages(sel, selTopic?.id, false, true, minId);
         }
       }, 5000);
     }
-    return () => clearInterval(pollInterval);
+    return () => {
+       clearInterval(pollInterval);
+       clearInterval(sidebarPollInterval);
+    }
   }, [token, sel, selTopic, sseStatus]);
 
-  async function loadMessages(chat, topicId=null, append=false, isBackground=false) {
+  async function loadMessages(chat, topicId=null, append=false, isBackground=false, minId=0) {
     if(!chat) return
     if(!append && loadingRef.current) return
     if(append && loadingMoreRef.current) return
@@ -3207,6 +3239,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
       
       const outboxMaxId = chat.readOutboxMaxId || 0;
       qs += (qs ? '&' : '?') + 'readOutboxMaxId=' + outboxMaxId;
+      if (minId > 0) qs += '&minId=' + minId;
 
       if(topicId) {
         url = '/api/chat/topics/'+chat.id+'/'+topicId+'/messages'+qs
@@ -3445,6 +3478,8 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
     // Show message instantly (optimistic)
     const sentDate = Math.floor(Date.now()/1000)
     const tempMsg = {id: -Date.now(), accountId: activeAccRef.current, chatId: sel.id, topicId: selTopic?.id || null, text, fromMe:true, date:sentDate, pending:true}
+    console.log('[DEBUG] sendClicked', { activeAccountId: activeAccRef.current, chatId: sel.id, topicId: selTopic?.id || null, text })
+    console.log('[DEBUG] optimisticTempId', tempMsg.id)
     setMsgs(p => {
        const nextState = [...p, tempMsg];
        msgsCacheRef.current[activeAccRef.current + '_' + sel.id + (selTopic ? '_' + selTopic.id : '')] = nextState;
@@ -3501,6 +3536,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
         })
         const d = await r.json()
         if (d.ok && d.messageId) { realMsgId = d.messageId; realDate = d.date; }
+        console.log('[DEBUG] sendApiResponse', d)
       }
       
       // Update message status to remove pending and replace with real ID
