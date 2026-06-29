@@ -10,6 +10,7 @@ import CRMRightPanel from './components/chat/CRMRightPanel';
 import PinnedMessageBar from './components/chat/PinnedMessageBar';
 import TranslateBar from './components/chat/TranslateBar';
 import { BackgroundSettingsModal, BACKGROUND_OPTIONS } from './components/chat/BackgroundSettingsModal';
+import TelegramSettings from './components/chat/TelegramSettings';
 
 const translationCache = new Map();
 
@@ -1924,7 +1925,7 @@ function renderMessageText(text, searchStr, entities = []) {
     return <span key={idx} style={{whiteSpace: 'pre-wrap'}}>{renderContent(part.content)}</span>;
   });
 }
-function AccountMenu({ accounts, activeAccountId, onClose, onAddAccount, onSwitchAccount, onAuthFailed, onLogout }) {
+function AccountMenu({ accounts, activeAccountId, onClose, onAddAccount, onSwitchAccount, onAuthFailed, onLogout, onOpenSettings }) {
   const activeAcc = accounts.find(a => a.accountId === activeAccountId) || accounts[0];
   
   return (
@@ -1977,6 +1978,11 @@ function AccountMenu({ accounts, activeAccountId, onClose, onAddAccount, onSwitc
 
       {/* Actions */}
       <div style={{ padding: '8px 0', borderTop: '1px solid #2c2c2e' }}>
+        <div onClick={() => { if(typeof onOpenSettings === 'function') onOpenSettings(); onClose(); }} style={{ padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', color: '#f2f2f7', fontSize: 14 }}
+          onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
+          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+          <span style={{ fontSize: 18 }}>⚙️</span> Settings
+        </div>
         <div onClick={() => { onAddAccount(); onClose(); }} style={{ padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', color: '#f2f2f7', fontSize: 14 }}
           onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
           onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
@@ -2188,6 +2194,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
   const [activeAccountId, setActiveAccId] = useState(() => localStorage.getItem('crmchat_active_account') || 'default');
   const [sseStatus, setSseStatus] = useState('connecting');
   const [showAccountMenu, setShowAccountMenu] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [showAddAccount, setShowAddAccount] = useState(false);
 
   // Sync activeAccountId with global interceptor var
@@ -4612,7 +4619,8 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
         <div style={{position: 'fixed', top:0, left:0, right:0, bottom:0, zIndex: 99998}} onClick={() => setShowAccountMenu(false)}>
           <AccountMenu 
             accounts={accounts} 
-            activeAccountId={activeAccountId} 
+            activeAccountId={activeAccRef.current} 
+            onOpenSettings={() => setShowSettings(true)}
             onClose={() => setShowAccountMenu(false)} 
             onAddAccount={() => setShowAddAccount(true)}
             onSwitchAccount={(id) => {
@@ -4636,7 +4644,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
 
       {/* LEFT COL */}
       <div className="lc">
-        <div style={{height:60,minHeight:60,flexShrink:0,padding:"0 16px",
+        <div style={{height:60,minHeight:60,padding:"0 16px",
           display:"flex",alignItems:"center",justifyContent:"space-between",
           borderBottom:"1px solid #1f2937"}}>
           <div style={{display:'flex', flexDirection:'column'}}>
@@ -4962,7 +4970,15 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
         </>}
       </div>
 
-      {/* RIGHT COL (Removed duplicate Background Settings panel) */}
+      {/* Settings Overlay */}
+      {showSettings && (
+        <TelegramSettings 
+          onClose={() => setShowSettings(false)}
+          activeAccountId={activeAccRef.current}
+          accounts={accounts}
+          token={token}
+        />
+      )}
 
       {/* User Profile Preview Modal */}
       <UserProfileModal 
