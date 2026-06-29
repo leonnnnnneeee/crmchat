@@ -2471,7 +2471,7 @@ function attachTGListener(client, accountId) {
           let finalChatId = m.chatId ? m.chatId.toString() : null;
           if (m.peerId) {
             if (m.peerId.className === 'PeerChannel') finalChatId = '-100' + m.peerId.channelId.toString();
-            else if (m.peerId.className === 'PeerChat') finalChatId = m.peerId.chatId.toString();
+            else if (m.peerId.className === 'PeerChat') finalChatId = '-' + m.peerId.chatId.toString();
             else if (m.peerId.className === 'PeerUser') finalChatId = m.peerId.userId.toString();
           }
           
