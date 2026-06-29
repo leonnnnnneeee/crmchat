@@ -217,6 +217,7 @@ async function getClient(accountId = DEFAULT_ACCOUNT_ID) {
   try {
     await withTimeout(acc.client.connect(), 10000, 'connect')
     acc.ready = true
+    attachTGListener(acc.client, accountId)
     acc.sessionStatus = 'connected'
     log(`TG client (re)connected for account ${accountId}`)
     return acc.client
@@ -1291,9 +1292,9 @@ app.post('/api/chat/send', requireAuth, async (req,res) => {
   try {
     const client = await getClient(req.accountId)
     const entity = await withTimeout(resolveEntity(client, chatId, req.body.username), 8000, 'resolveEntity')
-    await withTimeout(client.sendMessage(entity, { message: text }), 10000, 'sendMessage')
+    const sent = await withTimeout(client.sendMessage(entity, { message: text }), 10000, 'sendMessage')
     log('Sent to '+chatId+': '+text.slice(0,40))
-    res.json({ ok: true })
+    res.json({ ok: true, messageId: sent.id, date: sent.date })
   } catch(e) { log('send: '+e.message); res.status(500).json({ error: e.message }) }
 })
 
@@ -1385,13 +1386,13 @@ app.post('/api/chat/send-media', requireAuth, upload.single('file'), async (req,
     }
     if (topicId) fileParams.replyTo = parseInt(topicId)
     
-    await withTimeout(client.sendFile(entity, fileParams), 30000, 'sendFile')
+    const sent = await withTimeout(client.sendFile(entity, fileParams), 30000, 'sendFile')
     
     // Cleanup temp file
     fs.unlinkSync(req.file.path)
     
     log(`Sent media to ${chatId}${topicId ? '/'+topicId : ''}`)
-    res.json({ ok: true })
+    res.json({ ok: true, messageId: sent.id, date: sent.date })
   } catch(e) { 
     log('send-media: '+e.message); 
     if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
@@ -2307,11 +2308,11 @@ app.post('/api/chat/read', requireAuth, async (req,res) => {
 
 
 // ── SSE REALTIME STREAM ──
-let sseClients = []
+let sseClients = new Map() // accountId -> Set(res)
 
 app.get('/api/chat/stream', (req, res) => {
-  // Use token from query because EventSource doesn't support custom headers easily
   const token = req.query.token
+  const accountId = req.query.accountId || DEFAULT_ACCOUNT_ID
   if (!token) return res.status(401).end()
   try {
     const jwt = require('jsonwebtoken')
@@ -2323,46 +2324,46 @@ app.get('/api/chat/stream', (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream')
   res.setHeader('Cache-Control', 'no-cache')
   res.setHeader('Connection', 'keep-alive')
-  res.flushHeaders() // flush the headers to establish SSE
+  res.flushHeaders()
 
-  // Send initial connected event
   res.write(`data: ${JSON.stringify({ type: 'connected' })}\n\n`)
 
-  sseClients.push(res)
+  if (!sseClients.has(accountId)) sseClients.set(accountId, new Set())
+  sseClients.get(accountId).add(res)
 
   req.on('close', () => {
-    sseClients = sseClients.filter(client => client !== res)
+    const clients = sseClients.get(accountId)
+    if (clients) clients.delete(res)
   })
 })
 
-function broadcastSSE(data) {
+function broadcastSSE(accountId, data) {
   const payload = `data: ${JSON.stringify(data)}\n\n`
-  sseClients.forEach(client => client.write(payload))
+  const clients = sseClients.get(accountId)
+  if (clients) clients.forEach(client => client.write(payload))
 }
 
-// Start Telegram event listener for incoming messages
-async function startTGListener() {
+function attachTGListener(client, accountId) {
+  if (client._listenerAttached) return;
+  client._listenerAttached = true;
+  log(`Attaching TG listener for account ${accountId}`);
+
   let NewMessage
   try { NewMessage = require('telegram/events/NewMessage').NewMessage } catch {}
   if (!NewMessage) { try { NewMessage = require('telegram/events').NewMessage } catch {} }
-  if (!NewMessage) { log('TG listener: NewMessage not found, skipping'); return }
-  try {
-    const { TelegramClient } = require('telegram')
-    const { StringSession } = require('telegram/sessions')
-    const lc = new TelegramClient(new StringSession(_session), TG_API_ID, TG_API_HASH, { connectionRetries: 2 })
-    await lc.connect()
-    
-    // Also listen for deleted messages
-    let DeletedMessage
-    try { DeletedMessage = require('telegram/events/DeletedMessage').DeletedMessage } catch {}
 
-    lc.addEventHandler(async (ev) => {
+  let DeletedMessage
+  try { DeletedMessage = require('telegram/events/DeletedMessage').DeletedMessage } catch {}
+
+  let Raw;
+  try { Raw = require('telegram/events/Raw').Raw; } catch {}
+
+  if (NewMessage) {
+    client.addEventHandler(async (ev) => {
       try { 
         if (ev.message) {
           const m = ev.message
-          log('📨 ' + m.chatId)
           
-          // Format message to match client.getMessages structure
           const msgObj = {
             id: m.id,
             chatId: m.chatId ? m.chatId.toString() : null,
@@ -2372,102 +2373,84 @@ async function startTGListener() {
             isReply: !!m.replyTo,
             replyToMsgId: m.replyTo?.replyToMsgId,
             action: m.action ? true : false,
-            // Try to resolve sender info if possible
             senderId: m.senderId ? m.senderId.toString() : null,
-            fwdFrom: await resolveFwdInfo(lc, m.fwdFrom),
             topicId: (m.replyTo?.forumTopic ? m.replyTo.replyToMsgId : m.replyTo?.replyToTopId) || null,
             messageId: m.id,
             isOutgoing: m.out,
             sentAt: m.date,
-            readAt: null,
-            seenAt: null,
-            seenTimeAvailable: false,
-            seenTimeUnavailableReason: 'Telegram API did not provide exact read timestamp',
             normalizedStatus: m.out ? 'sent' : null
           }
-          
           if (m.media) {
             msgObj.hasMedia = true
             msgObj.mediaType = m.media.className
           }
-
-          broadcastSSE({ type: 'new_message', message: msgObj })
+          broadcastSSE(accountId, { type: 'new_message', accountId, message: msgObj })
         }
       } catch(err) {
         log('SSE broadcast error: ' + err.message)
       }
     }, new NewMessage({}))
-    
-    if (DeletedMessage) {
-      lc.addEventHandler(async (ev) => {
-        try {
-          if (ev.deletedIds && ev.deletedIds.length > 0) {
-             broadcastSSE({ type: 'delete_messages', ids: ev.deletedIds, chatId: ev.chatId ? ev.chatId.toString() : null })
-          }
-        } catch(e) {}
-      }, new DeletedMessage({}))
-    }
-    
-    // Listen for raw reaction updates
-    let Raw;
-    try { Raw = require('telegram/events/Raw').Raw; } catch {}
-    if (Raw) {
-      lc.addEventHandler(async (ev) => {
-        try {
-          if (ev.className === 'UpdateMessageReactions') {
-            const peer = ev.peer;
-            let chatId = null;
-            if (peer.className === 'PeerUser') chatId = peer.userId.toString();
-            else if (peer.className === 'PeerChat') chatId = peer.chatId.toString();
-            else if (peer.className === 'PeerChannel') chatId = '-100' + peer.channelId.toString();
-            
-            const msgId = ev.msgId;
-            const topMsgId = ev.topMsgId; // this is essentially the topicId
-            const reactionsObj = ev.reactions;
-            
-            if (chatId && msgId && reactionsObj) {
-               const parsedReactions = parseReactions(reactionsObj.results);
-               const parsedRecent = parseRecentReactions(reactionsObj.recentReactions);
-               
-               broadcastSSE({ 
-                 type: 'update_reactions', 
-                 chatId, 
-                 msgId, 
-                 topicId: topMsgId || null,
-                 reactions: parsedReactions,
-                 recentReactions: parsedRecent
-               });
-            }
-          } else if (ev.className === 'UpdateReadHistoryOutbox' || ev.className === 'UpdateReadChannelOutbox') {
-            const peer = ev.peer || ev;
-            let chatId = null;
-            if (ev.className === 'UpdateReadChannelOutbox') {
-               chatId = '-100' + ev.channelId.toString();
-            } else if (peer) {
-               if (peer.className === 'PeerUser') chatId = peer.userId.toString();
-               else if (peer.className === 'PeerChat') chatId = peer.chatId.toString();
-               else if (peer.className === 'PeerChannel') chatId = '-100' + peer.channelId.toString();
-            }
-            if (chatId) {
-               broadcastSSE({
-                 type: 'read_outbox',
-                 chatId,
-                 maxId: ev.maxId
-               });
-            }
-          }
-        } catch(e) {
-          log('Reaction SSE broadcast error: ' + e.message);
+  }
+
+  if (DeletedMessage) {
+    client.addEventHandler(async (ev) => {
+      try {
+        if (ev.deletedIds && ev.deletedIds.length > 0) {
+           broadcastSSE(accountId, { type: 'delete_messages', accountId, ids: ev.deletedIds, chatId: ev.chatId ? ev.chatId.toString() : null })
         }
-      }, new Raw({}));
-    }
+      } catch(e) {}
+    }, new DeletedMessage({}))
+  }
 
-    log('✅ TG listener active with SSE')
-  } catch(e) { log('TG listener: ' + e.message) }
+  if (Raw) {
+    client.addEventHandler(async (ev) => {
+      try {
+        if (ev.className === 'UpdateMessageReactions') {
+          const peer = ev.peer;
+          let chatId = null;
+          if (peer.className === 'PeerUser') chatId = peer.userId.toString();
+          else if (peer.className === 'PeerChat') chatId = peer.chatId.toString();
+          else if (peer.className === 'PeerChannel') chatId = '-100' + peer.channelId.toString();
+          
+          const msgId = ev.msgId;
+          const topMsgId = ev.topMsgId;
+          
+          if (chatId && msgId && ev.reactions) {
+             const parsedReactions = parseReactions(ev.reactions.results);
+             const parsedRecent = parseRecentReactions(ev.reactions.recentReactions);
+             broadcastSSE(accountId, { 
+               type: 'update_reactions', 
+               accountId,
+               chatId, 
+               msgId, 
+               topicId: topMsgId || null,
+               reactions: parsedReactions,
+               recentReactions: parsedRecent
+             });
+          }
+        } else if (ev.className === 'UpdateReadHistoryOutbox' || ev.className === 'UpdateReadChannelOutbox') {
+          const peer = ev.peer || ev;
+          let chatId = null;
+          if (ev.className === 'UpdateReadChannelOutbox') {
+             chatId = '-100' + ev.channelId.toString();
+          } else if (peer) {
+             if (peer.className === 'PeerUser') chatId = peer.userId.toString();
+             else if (peer.className === 'PeerChat') chatId = peer.chatId.toString();
+             else if (peer.className === 'PeerChannel') chatId = '-100' + peer.channelId.toString();
+          }
+          if (chatId) {
+             broadcastSSE(accountId, {
+               type: 'read_outbox',
+               accountId,
+               chatId,
+               maxId: ev.maxId
+             });
+          }
+        }
+      } catch(e) {}
+    }, new Raw({}));
+  }
 }
-
-// Start listener after session is loaded
-setTimeout(startTGListener, 3000)
 
 // ── COMMON GROUPS ──
 app.get('/api/chat/common_groups/:id', requireAuth, async (req, res) => {

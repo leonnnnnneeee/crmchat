@@ -2137,6 +2137,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
   // ── MULTI-ACCOUNT STATE ──
   const [accounts, setAccounts] = useState([]);
   const [activeAccountId, setActiveAccId] = useState(() => localStorage.getItem('crmchat_active_account') || 'default');
+  const [sseStatus, setSseStatus] = useState('connecting');
   const [showAccountMenu, setShowAccountMenu] = useState(false);
   const [showAddAccount, setShowAddAccount] = useState(false);
 
@@ -3010,17 +3011,19 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
 
   // Real-time SSE Connection
   useEffect(() => {
-    if (!token) return
+    if (!token || !activeAccRef.current) return
     
     let sse = null
     let retryCount = 0
     let reconnectTimeout = null
 
     const connectSSE = () => {
-      sse = new EventSource('/api/chat/stream?token=' + encodeURIComponent(token))
+      setSseStatus('connecting');
+      sse = new EventSource('/api/chat/stream?token=' + encodeURIComponent(token) + '&accountId=' + activeAccRef.current)
       
       sse.onopen = () => {
         retryCount = 0
+        setSseStatus('connected');
         // When reconnecting, fetch chats again to catch up
         fetchChats()
         if (selRef.current) {
@@ -3132,6 +3135,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
       }
 
       sse.onerror = () => {
+        setSseStatus('error');
         sse.close()
         // Exponential backoff reconnect
         const delay = Math.min(10000, 1000 * Math.pow(2, retryCount++))
@@ -3145,9 +3149,23 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
       clearTimeout(reconnectTimeout)
       if (sse) sse.close()
     }
-  }, [token])
+  }, [token, activeAccRef.current])
 
-  async function loadMessages(chat, topicId=null, append=false) {
+  // Fallback Polling (if SSE fails)
+  useEffect(() => {
+    if (!token || !sel?.id) return;
+    let pollInterval;
+    if (sseStatus !== 'connected') {
+      pollInterval = setInterval(() => {
+        if (!sendingRef.current) {
+          loadMessages(sel, selTopic?.id, false, true);
+        }
+      }, 5000);
+    }
+    return () => clearInterval(pollInterval);
+  }, [token, sel, selTopic, sseStatus]);
+
+  async function loadMessages(chat, topicId=null, append=false, isBackground=false) {
     if(!chat) return
     if(!append && loadingRef.current) return
     if(append && loadingMoreRef.current) return
@@ -3158,11 +3176,13 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
     const hasCached = Array.isArray(msgsCacheRef.current[cacheKey]) && msgsCacheRef.current[cacheKey].length > 0
     
     if(append) {
-      loadingMoreRef.current = true
-      setLoadingMore(true)
+      if(!isBackground) {
+         loadingMoreRef.current = true
+         setLoadingMore(true)
+      }
     } else {
-      loadingRef.current = true
-      if (!hasCached && msgsRef.current.length === 0) setLoadMsgs(true)
+      if(!isBackground) loadingRef.current = true
+      if (!hasCached && msgsRef.current.length === 0 && !isBackground) setLoadMsgs(true)
       setHasMore(true)
     }
     console.time('loadMessages')
@@ -3443,6 +3463,9 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
     })
 
     try {
+      let realMsgId = null;
+      let realDate = sentDate;
+
       if (pastedFile) {
         const formData = new FormData()
         formData.append('chatId', sel.id)
@@ -3451,32 +3474,40 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
         if (text) formData.append('caption', text)
         formData.append('file', pastedFile)
 
-        await fetch('/api/chat/send-media', {
+        const r = await fetch('/api/chat/send-media', {
           method: 'POST',
           headers: { "x-auth-token": token },
           body: formData
         })
+        const d = await r.json()
+        if (d.ok && d.messageId) { realMsgId = d.messageId; realDate = d.date; }
+        
         setPastedFile(null)
         setFilePreview(null)
       } else if(selTopic) {
-        await fetch('/api/chat/topics/'+sel.id+'/'+selTopic.id+'/send', {
+        const r = await fetch('/api/chat/topics/'+sel.id+'/'+selTopic.id+'/send', {
           method:"POST", headers:{"Content-Type":"application/json","x-auth-token":token},
           body:JSON.stringify({text, username: sel.username || undefined})
         })
+        const d = await r.json()
+        if (d.ok && d.messageId) { realMsgId = d.messageId; realDate = d.date; }
       } else {
-        await fetch('/api/chat/send', {
+        const r = await fetch('/api/chat/send', {
           method:"POST", headers:{"Content-Type":"application/json","x-auth-token":token},
           body:JSON.stringify({chatId:sel.id, text, username: sel.username || undefined})
         })
+        const d = await r.json()
+        if (d.ok && d.messageId) { realMsgId = d.messageId; realDate = d.date; }
       }
       
-      // Update message status to remove pending
-      setMsgs(p=>p.map(m=>m.id===tempMsg.id ? {...m, pending:false} : m))
+      // Update message status to remove pending and replace with real ID
+      setMsgs(p => {
+         const nextState = p.map(m => m.id === tempMsg.id ? {...m, pending:false, id: realMsgId || m.id, date: realDate || m.date} : m);
+         msgsCacheRef.current[activeAccRef.current + '_' + selRef.current.id + (selTopicRef.current ? '_' + selTopicRef.current.id : '')] = nextState;
+         return nextState;
+      });
       
-      setTimeout(async()=>{
-        loadingRef.current = false
-        await loadMessages(sel, selTopic?.id || null)
-      }, 200)
+      loadingRef.current = false
     } catch(e) {
       // Rollback
       setMsgs(p=>p.filter(m=>m.id!==tempMsg.id))
