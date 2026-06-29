@@ -3072,9 +3072,18 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
             
             if (isSameChat && isSameTopic) {
               setMsgs(prev => {
-                if (prev.some(m => m.id === msg.id)) return prev
-                msg.reactions = mergeReactions(msg.id, msg.reactions || [])
-                const updated = [...prev, msg]
+                if (prev.some(m => m.id === msg.id)) return prev;
+                msg.reactions = mergeReactions(msg.id, msg.reactions || []);
+                const pendingIdx = prev.findIndex(m => m.pending && m.text === msg.text && m.fromMe);
+                let updated;
+                if (pendingIdx > -1) {
+                  // Replace pending message with the real one
+                  updated = [...prev];
+                  updated[pendingIdx] = msg;
+                  console.log('[DEBUG] realtimeDuplicateSkipped', true, 'replaced pending message with SSE message');
+                } else {
+                  updated = [...prev, msg];
+                }
                 const nextState = updated.sort((a,b) => a.date - b.date)
                 msgsCacheRef.current[activeAccRef.current + '_' + selRef.current.id + (selTopicRef.current ? '_' + selTopicRef.current.id : '')] = nextState
                 return nextState
@@ -3221,7 +3230,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
             const existingOlder = prev.filter(p => !idSet.has(p.id) && p.id > 0);
             const stillPending = prev.filter(m => m.pending && m.id < 0 && !d.some(s=>s.text===m.text&&s.fromMe));
             nextState = [...existingOlder, ...d, ...stillPending];
-            nextState.sort((a, b) => a.id - b.id);
+            nextState.sort((a, b) => a.date - b.date);
           }
           let finalState = nextState.map(m => ({
             ...m,
@@ -3446,8 +3455,15 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
     setSending(true); setReplyTo(null)
     // Show message instantly (optimistic)
     const sentDate = Math.floor(Date.now()/1000)
-    const tempMsg = {id: -Date.now(), text, fromMe:true, date:sentDate, pending:true}
-    setMsgs(p=>[...p, tempMsg])
+    console.log('[DEBUG] sendClicked', { activeAccountId: activeAccRef.current, chatId: sel.id, topicId: selTopic?.id || null, text });
+    const tempMsg = {id: -Date.now(), accountId: activeAccRef.current, chatId: sel.id, topicId: selTopic?.id || null, text, fromMe:true, date:sentDate, pending:true}
+    console.log('[DEBUG] tempId', tempMsg.id);
+    setMsgs(p => {
+      const nextState = [...p, tempMsg];
+      msgsCacheRef.current[activeAccRef.current + '_' + sel.id + (selTopic?.id ? '_' + selTopic.id : '')] = nextState;
+      console.log('[DEBUG] optimisticMessageAdded', true);
+      return nextState;
+    })
     
     // Optimistic chat list update
     let prevChatState = null;
@@ -3457,6 +3473,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
         prevChatState = { date: prev[idx].date, lastMsg: prev[idx].lastMsg }
         const newChats = [...prev]
         newChats[idx] = { ...newChats[idx], date: sentDate, lastMsg: text }
+        console.log('[DEBUG] sidebarUpdated', true);
         return newChats
       }
       return prev
@@ -3492,13 +3509,17 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
         const d = await r.json()
         if (d.ok && d.messageId) { realMsgId = d.messageId; realDate = d.date; }
       } else {
+        const payload = {chatId:sel.id, text, username: sel.username || undefined};
+        console.log('[DEBUG] sendApiRequest payload', payload);
         const r = await fetch('/api/chat/send', {
           method:"POST", headers:{"Content-Type":"application/json","x-auth-token":token},
-          body:JSON.stringify({chatId:sel.id, text, username: sel.username || undefined})
+          body:JSON.stringify(payload)
         })
         const d = await r.json()
+        console.log('[DEBUG] sendApiResponse', d);
         if (d.ok && d.messageId) { realMsgId = d.messageId; realDate = d.date; }
       }
+      console.log('[DEBUG] realMessageId', realMsgId);
       
       // Update message status to remove pending and replace with real ID
       setMsgs(p => {
@@ -3509,9 +3530,14 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
       
       loadingRef.current = false
     } catch(e) {
-      // Rollback
-      setMsgs(p=>p.filter(m=>m.id!==tempMsg.id))
-      setInput(text)
+      console.error('Send failed:', e);
+      setMsgs(p => {
+         const nextState = p.map(m => m.id === tempMsg.id ? {...m, pending:false, failed:true} : m);
+         msgsCacheRef.current[activeAccRef.current + '_' + sel.id + (selTopic?.id ? '_' + selTopic.id : '')] = nextState;
+         return nextState;
+      });
+      // Do not clear input so user can try again if they want, or they can use the retry button
+      // setInput(text)
       if (prevChatState) {
         setChats(prev => {
           const idx = prev.findIndex(c => c.id === sel.id)
@@ -4280,7 +4306,18 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh }) {
     }
   }, [])
 
+  const resendMessage = (failedMsg) => {
+    // Basic resend for text. Files not supported in this simple resend.
+    if (!failedMsg.text) return;
+    setInput(failedMsg.text);
+    setMsgs(p => p.filter(m => m.id !== failedMsg.id));
+    setTimeout(() => {
+      send(failedMsg.text);
+    }, 50);
+  };
+
   const chatProps = {
+    resendMessage,
     sel, selTopic, setSelTopic, TG: {}, setProfilePreview, setShowMembers, onlineStatus, setChatSearchOpen, showProfile, setShowProfile,
     topics, loadingTopics, topicSearch, setTopicSearch, topicError, setTopicCtxMenu, topicCtxMenu, setSel,
     loadMsgs, messagesLoaded, msgs, hasMore, loadMessages, messageFetchError, handleScroll, handleCtx, selectMode, setSelectedMsgs, selectedMsgs,
