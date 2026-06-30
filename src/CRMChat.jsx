@@ -69,6 +69,11 @@ let sharedMediaCache = {}
 let _authToken = ''
 export let _activeAccountId = 'default'
 
+export const isChatActuallyForum = (chat) => {
+  if (!chat) return false;
+  return Boolean(chat.isForum || chat.forum || chat.hasTopics || chat.topics || chat.forumTopics || chat.threads || chat.topicCount > 0);
+};
+
 export function setActiveAccountId(id) {
   _activeAccountId = id;
 }
@@ -3021,6 +3026,19 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
     if (chatOrTopicChanged) {
       hasRestoredScroll.current = false
       const cacheKey = activeAccRef.current + '_' + sel.id + (currentTopic ? '_' + currentTopic.id : '')
+      
+      console.log('[DEBUG] Chat Selected:', {
+        selectedChatId: sel.id,
+        selectedChatTitle: sel.title || sel.firstName || sel.name,
+        isGroup: sel.isGroup || false,
+        isForum: isChatActuallyForum(sel),
+        topicCount: sel.topicCount || 0,
+        topicsFetched: !!topics[sel.id],
+        openedView: (isChatActuallyForum(sel) && !currentTopic && !forceNormalView) ? 'topics' : (currentTopic ? 'topicMessages' : 'normalChat'),
+        selectedTopicId: currentTopic?.id || null,
+        messageFetchKey: cacheKey
+      });
+
       if (msgsCacheRef.current[cacheKey]) {
         setMsgs(msgsCacheRef.current[cacheKey])
         setMessagesLoaded(true)
@@ -3032,7 +3050,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
       }
     }
     
-    if (sel.isForum && !currentTopic && !forceNormalView) {
+    if (isChatActuallyForum(sel) && !currentTopic && !forceNormalView) {
       setLoadingTopics(true)
       setTopicError(false)
       fetch(`/api/chat/topics/${sel.id}`, { headers: {"x-auth-token": token} })
@@ -4961,7 +4979,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
             <div style={{fontSize:16,fontWeight:500,color:'#f0e6ff'}}>Select a conversation</div>
             <div style={{fontSize:13}}>Pick a chat from your Telegram on the left</div>
           </div>
-        ): sel && sel.isForum && !selTopic && !forceNormalView ? (
+        ): sel && isChatActuallyForum(sel) && !selTopic && !forceNormalView ? (
           <ForumTopicsView {...chatProps} />
         ):<>
           <ChatHeader {...chatProps} />
