@@ -1509,17 +1509,12 @@ Scraped Data: ${scrapedData}
 
 Based on this information, return a JSON object with the following fields:
 {
-  "projectName": "Name of the project",
-  "website": "Main website URL if found",
-  "category": "e.g. DeFi, L1, GameFi, Exchange",
+  "projectName": "Name of the project (or 'Project name unclear')",
+  "category": "e.g. Prediction market / DeFi",
   "shortDescription": "1-2 sentence summary of what they do",
-  "productStage": "e.g. Mainnet, Testnet, IDO soon, Unknown",
-  "tractionSignals": "Any metric or hype signals found",
-  "currentNeeds": "What they likely need (e.g. PR, User Acquisition, Exchange listing)",
-  "marketingAngle": "How Coincu can pitch to them",
-  "CoincuFit": "High/Medium/Low and why",
-  "bestNextQuestion": "The best single BD question to ask them next",
-  "risksOrUnknowns": "What is missing from our understanding",
+  "productStage": "Current campaign or stage (e.g. DSWAP / STVL campaign, IDO soon, Mainnet)",
+  "currentNeeds": "What they likely need (e.g. PR, User Acquisition, campaign awareness)",
+  "marketingAngle": "Best Coincu angle (e.g. PR + CMC News visibility + referral partnership)",
   "sources": ["List of sources used"]
 }`;
 
@@ -1638,55 +1633,47 @@ app.post('/api/ai/suggest', requireAuth, async (req,res) => {
 
   const SYSTEM_PROMPT = `You are Coincu's BD Sales Assistant.
 
-${instruction ? `=== PRIORITY 1: USER INSTRUCTION (CRITICAL) ===
-You MUST follow this exact instruction above all else. This is the direct instruction for WHAT TO SAY to the customer.
+=== PRIORITY 1: USER COMMAND (CRITICAL) ===
+You MUST follow the user instruction above all else. This is the direct instruction for WHAT TO SAY to the customer.
 Instruction: "${instruction}"
 
 CRITICAL RULES FOR INSTRUCTION (VIETNAMESE/MIXED LANGUAGE SUPPORT):
-1. STEP 1 - INTENT TRANSLATION: Understand the core intent of the instruction.
-2. STEP 2 - NATURAL ENGLISH: Write the final reply entirely in natural English.
-3. ABSOLUTE BAN ON LITERAL COPYING: NEVER copy Vietnamese words directly into the English reply. For example, if instruction says "hướng chúng ta có thể collaborate với bạn", do NOT output "collaborate với bạn". Translate the full intent to "how we can collaborate".
-4. NO INVENTED CONTEXT: DO NOT invent concepts like "prediction event", "podcast", "rate card", "budget", "CMC", or "marketing campaign" unless they are EXPLICITLY mentioned in the instruction or the chat history.
-5. PRESERVE SPEAKER DIRECTION: "tôi/mình" = You (the Coincu sender). "bạn/anh/chị" = The Customer.
-6. If the intent is just to ask a question (e.g. "chia sẻ ý tưởng trước đi"), just ask the question naturally. Do not wrap it in a sales pitch.
+1. INTENT TRANSLATION: Understand the core intent of the instruction. Do not ignore referral/collaboration intents.
+2. NATURAL ENGLISH: Write the final reply entirely in natural English.
+3. NO LITERAL COPYING: NEVER copy Vietnamese words directly. Translate the intent.
+4. NO INVENTED CONTEXT: DO NOT invent concepts like "prediction event", "podcast", "rate card", "budget", "CMC", or "marketing campaign" unless they are EXPLICITLY mentioned in the instruction, chat history, or project research.
+5. SPEAKER DIRECTION: "tôi/mình" = You (Coincu). "bạn/anh/chị" = The Customer.
 
-VIETNAMESE INTENT EXAMPLES:
-- "bạn đang làm bao nhiêu dự án" -> intent is "ask how many projects customer is working on".
-- "cho tôi link dự án của bạn" -> intent is "ask customer to share their project link".
-- "chia sẻ ý tưởng của bạn trước đi" -> intent is "ask customer to share their idea first".
-- "bạn có thể đưa tôi example những gì bạn đã done không?" -> intent is "ask customer for examples of their past work".
-- "khi đó tôi sẽ biết được hướng chúng ta có thể collaborate với bạn" -> intent is "ask for details to see how we can collaborate".
-=========================================
-` : ''}
-=== PRIORITY 2: SCENARIO & BD KNOWLEDGE (Use ONLY to support the instruction, do not override it) ===
+=== PRIORITY 2: PROJECT RESEARCH ===
+If project research is provided, you MUST use its specific details (campaign name, category, specific needs) naturally in your reply. Do not just say "your project" or "prediction events" generically.
+
+=== PRIORITY 3: LATEST MESSAGE ===
+Ensure your reply makes sense as a direct response to the client's last message.
+
+=== PRIORITY 4: FULL CHAT CONTEXT ===
+Use the chat history to maintain context, but do not repeat what Leon (you) already said.
+
+=== PRIORITY 5: COINCU BD SYSTEM PROMPT ===
 Identify customer type: Project, Agency, Broker, Founder, Marketing, BD, Investor, Service Provider.
 Coincu.com is a crypto/Web3 international news website. Services: PR article, sponsored content, organic article, banner ads.
 Coincu can support distribution to CoinMarketCap News (CMC News) which improves credibility.
 
-BEHAVIOR RULES:
-- Short, natural, casual-professional, Telegram-style messages (1-3 sentences max).
-- NO email-style long paragraphs.
-- Do not hard sell too early. Ask only ONE clear open question.
-
-=== HANDLING VOICE TRANSCRIPTS ===
-If you see "[Voice Transcript]: <text>" or "[Voice Message]" in the history:
-1. Auto-detect the language of the transcript.
-2. If it is NOT English, translate/understand its meaning in English before drafting the reply.
-3. Your generated replies MUST respond directly to the meaning/content of the transcript (unless the USER INSTRUCTION overrides it).
-4. DO NOT generate replies based on the literal placeholder words "Voice" or "Voice Message".
-5. If the text says "(Transcript not available)", inform the user to transcribe it first or reply with a generic response.
-
-=== TASK: MULTIPLE SUGGESTIONS ===
-Based on the instruction and context, generate exactly 2 to 3 distinct reply options.
-Each option MUST be short, natural, Telegram-style, and copy/send ready.
+BEHAVIOR RULES (STRICT):
+- Output exactly 2-3 short, natural Telegram-style replies.
+- 1-2 SHORT SENTENCES MAX per reply.
+- NOT hard-sell.
+- One clear question max.
+- If a referral/commission is requested, mention it softly (e.g. "if you have partners who need media exposure, we can work out a referral collaboration").
+- Mention Coincu + CMC News only when relevant to the instruction or research.
 
 OUTPUT FORMAT:
 Return EXACTLY this JSON structure.
 {
-  "normalizedIntent": "Your internal translation/understanding of the user instruction (e.g. 'Ask the customer to share their project link'). If no instruction, summarize the BD goal.",
+  "normalizedIntent": "Your internal translation of the user command (e.g. 'Offer PR support and softly ask for referrals').",
+  "researchUsed": true/false,
   "suggestions": [
-    { "label": "Soft", "text": "The actual message text" },
-    { "label": "Value", "text": "Another text" }
+    { "label": "Direct", "text": "The actual message text" },
+    { "label": "Soft", "text": "Another text" }
   ]
 }
 `
@@ -1694,7 +1681,7 @@ Return EXACTLY this JSON structure.
   try {
     const userPrompt = [
       projectResearch ? `=== PRIORITY 2: PROJECT RESEARCH ===\n${projectResearch}\n` : null,
-      '=== PRIORITY 3: CONVERSATION CONTEXT ===',
+      '=== PRIORITY 3 & 4: CONVERSATION CONTEXT ===',
       `Chat ID: ${chatId || 'Unknown'}, Topic ID: ${topicId || 'None'}`,
       history.slice(-40).map(m=>(m.fromMe?'Leon':'Client')+': '+m.text).join('\n') || '(no messages yet)',
       '',
@@ -1705,7 +1692,7 @@ Return EXACTLY this JSON structure.
       'Client just said: "' + lastClientMsg + '"',
       'Leon already said (do not repeat): ' + (leonSaid || '(nothing)'),
       '',
-      'First, output "normalizedIntent" to confirm you understand the direction. Then generate 2 to 3 diverse, short, Telegram-style reply options in JSON format.'
+      'Generate 2 to 3 diverse, short (1-2 sentences max), Telegram-style reply options in JSON format.'
     ].filter(Boolean).join('\n')
 
     const axios = require('axios')
@@ -1805,12 +1792,21 @@ Return EXACTLY this JSON structure.
           
           for (const sug of tempSuggestions) {
             if (!sug.text) continue;
+            
+            // Validation 1: Vietnamese hallucination
             if (hasVietnameseLiteral(sug.text, instruction)) {
               failedReason = "DO NOT copy Vietnamese words into the final reply. Translate the intent to English only.";
               break;
             }
+            // Validation 2: Context hallucination
             if (hasHallucination(sug.text, instruction, combinedHistory)) {
               failedReason = "DO NOT invent contexts like 'prediction event' or 'podcast' unless explicitly mentioned.";
+              break;
+            }
+            // Validation 3: Length constraint
+            const sentenceCount = sug.text.split(/[.!?]+/).filter(s => s.trim().length > 0).length;
+            if (sentenceCount > 3) {
+              failedReason = "Replies must be strictly 1-2 short sentences max. Your reply was too long and salesy.";
               break;
             }
           }
@@ -1818,13 +1814,16 @@ Return EXACTLY this JSON structure.
           if (failedReason && retryCount < maxRetries) {
             validationResult = 'failed_retry_' + retryCount;
             log(`[AI Suggest Validation Failed]: ${failedReason}. Retrying...`);
-            currentPrompt += `\n\n[SYSTEM FEEDBACK]: Your previous response was invalid. ${failedReason} Fix it and return valid English options.`;
+            currentPrompt += `\n\n[SYSTEM FEEDBACK]: Your previous response was invalid. ${failedReason} Fix it and return exactly 2-3 SHORT, natural options.`;
             retryCount++;
             continue; 
           }
           
           safeSuggestions = tempSuggestions;
           if (failedReason) validationResult = 'failed_forced_accept';
+          
+          log(`[AI Suggest Final] validationResult: ${validationResult}, researchUsed: ${!!parsed.researchUsed}`);
+          log(`[AI Suggest Output]: ${JSON.stringify(safeSuggestions, null, 2)}`);
           break;
         } else {
           throw new Error("No suggestions found in JSON");

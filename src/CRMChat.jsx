@@ -689,21 +689,24 @@ function AISuggestPanel({text,suggestions,analysis,alternative,messages,loading,
   const getMsg = i => edited[i] !== undefined ? edited[i] : (msgs[i]?.text || '')
 
   return (
-    <div style={{margin:"0 16px 8px",background:"rgba(124,58,237,.08)",
-      border:"1px solid rgba(124,58,237,.25)",borderRadius:12,overflow:"hidden",flexShrink:0}}>
+    <div style={{margin:"0 16px 8px", background:"rgba(30,20,50,0.95)", backdropFilter:"blur(12px)",
+      border:"1px solid rgba(124,58,237,.35)", borderRadius:12, overflow:"hidden", flexShrink:0,
+      boxShadow: "0 8px 32px rgba(0,0,0,0.5)"}}>
       {/* Header */}
       
       {/* Project Research Card */}
       {isResearchActive && projectResearch.status === 'ready' && projectResearch.data && (
-        <div style={{margin: "12px 16px", padding: 12, background: "rgba(255,255,255,0.03)", borderRadius: 8, border: "1px solid rgba(255,255,255,0.05)"}}>
+        <div style={{margin: "12px 16px", padding: 12, background: "rgba(0,0,0,0.4)", borderRadius: 8, border: "1px solid rgba(124,58,237,0.3)"}}>
           <div style={{display: "flex", justifyContent: "space-between", alignItems: "flex-start"}}>
             <div>
               <div style={{fontSize: 14, fontWeight: 600, color: "#a78bfa"}}>
-                {projectResearch.data.projectName} 
+                {projectResearch.data.projectName || 'Project name unclear'} 
                 <span style={{fontSize: 11, color: "#94a3b8", marginLeft: 8, fontWeight: 400}}>{projectResearch.data.category}</span>
               </div>
               <div style={{fontSize: 12, color: "#cbd5e1", marginTop: 4}}>{projectResearch.data.shortDescription}</div>
-              <div style={{fontSize: 11, color: "#94a3b8", marginTop: 6}}><strong>Need:</strong> {projectResearch.data.currentNeeds}</div>
+              <div style={{fontSize: 11, color: "#94a3b8", marginTop: 6}}><strong>Campaign/Stage:</strong> {projectResearch.data.productStage}</div>
+              <div style={{fontSize: 11, color: "#94a3b8", marginTop: 2}}><strong>Likely Need:</strong> {projectResearch.data.currentNeeds}</div>
+              <div style={{fontSize: 11, color: "#38bdf8", marginTop: 2}}><strong>Coincu Angle:</strong> {projectResearch.data.marketingAngle}</div>
             </div>
             <label style={{display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 11, color: useResearch ? "#a78bfa" : "#64748b"}}>
               <input type="checkbox" checked={useResearch} onChange={e => setUseResearch(e.target.checked)} style={{cursor: "pointer", accentColor: "#7c3aed"}} />
@@ -711,7 +714,7 @@ function AISuggestPanel({text,suggestions,analysis,alternative,messages,loading,
             </label>
           </div>
           <div style={{display: "flex", gap: 12, marginTop: 10, fontSize: 11}}>
-            <span style={{color: "#38bdf8", cursor: "pointer"}} onClick={() => alert(JSON.stringify(projectResearch.data, null, 2))}>View details</span>
+            <span style={{color: "#a78bfa", cursor: "pointer"}} onClick={() => alert(JSON.stringify(projectResearch.data, null, 2))}>View details</span>
             <span style={{color: "#64748b", cursor: "pointer"}} onClick={onRefreshResearch}>Refresh research</span>
           </div>
         </div>
@@ -811,8 +814,8 @@ function AISuggestPanel({text,suggestions,analysis,alternative,messages,loading,
       ) : (
         <div style={{padding:"8px 10px",display:"flex",flexDirection:"column",gap:6}}>
           {msgs.map((msg,i) => (
-            <div key={i} style={{background:"rgba(124,58,237,.1)",borderRadius:10,
-              border:"1px solid rgba(124,58,237,.2)",overflow:"hidden"}}>
+            <div key={i} style={{background:"rgba(0,0,0,0.5)",borderRadius:10,
+              border:"1px solid rgba(124,58,237,.4)",overflow:"hidden"}}>
               <div style={{padding:"3px 10px 0",display:"flex",alignItems:"center",
                 justifyContent:"space-between"}}>
                 <span style={{fontSize:10,color:"#7c3aed",fontWeight:700,letterSpacing:.5,textTransform:"uppercase"}}>
@@ -2760,7 +2763,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
     const payload = {
       accountId: activeAccRef.current,
       chatId: sel?.id,
-      projectName: projectName || 'Detected Project',
+      projectName: projectName || 'Unknown',
       links: links,
       recentMessages: msgs.slice(-10)
     };
@@ -2803,7 +2806,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
     
     if (matches && matches.length > 0) {
       setProjectResearch({ status: 'loading', lastScannedMsgId: lastMsg.id });
-      doProjectResearch(matches, 'Detected Project');
+      doProjectResearch(matches, 'Unknown');
     } else {
       setProjectResearch(prev => ({ ...(prev || {}), lastScannedMsgId: lastMsg.id }));
     }
