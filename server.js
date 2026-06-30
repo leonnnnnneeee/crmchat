@@ -1684,30 +1684,35 @@ Based on this information, return a JSON object with the following fields:
 
 // ── AI SUGGEST (Groq) ──
 app.post('/api/ai/suggest', requireAuth, async (req,res) => {
-  const { contactName, lastMessage, messages, stage, notes, instruction, chatId, topicId, projectResearch } = req.body
+  const { activeAccountId, generationId, contactName, lastMessage, messages, stage, notes, instruction, chatId, topicId, projectResearch } = req.body
   const history = (messages||[]).slice(-40)
   const lastClientMsg = (lastMessage||'').trim()
   const leonLines = history.filter(m=>m.fromMe).map(m=>m.text).filter(Boolean)
   const leonSaid  = leonLines.join(' | ')
-  const thread    = history.map(m=>(m.fromMe?'Leon':'Client')+': '+m.text).join('\n')
+  const combinedHistoryStr = history.map(m=>m.text).join('\n')
 
   const normInstruction = instruction ? instruction.toLowerCase().normalize('NFC') : null;
   log('[AI Suggest Request Payload]: ' + JSON.stringify({
+    generationId,
+    activeAccountId,
     rawCommand: instruction,
     normalizedCommand: normInstruction,
     contactName: contactName,
     chatId: chatId,
     topicId: topicId,
-    messagesCount: history?.length || 0
+    messagesCount: history?.length || 0,
+    hasResearch: !!projectResearch
   }, null, 2))
 
   log('AI suggest — last: "' + lastClientMsg + '" stage: ' + stage)
 
-  function parseCommandIntent(cmd) {
+  function normalizeUserCommand(cmd, chatHistoryStr, researchStr) {
     const intent = {
       language: 'en',
+      normalizedEnglishIntent: 'General response',
       replyGoal: 'General response',
       tone: 'neutral',
+      salesLevel: 'normal',
       shouldMentionPR: false,
       shouldMentionCMC: false,
       shouldMentionReferral: false,
@@ -1715,9 +1720,9 @@ app.post('/api/ai/suggest', requireAuth, async (req,res) => {
       shouldAskBudget: false,
       shouldAskTimeline: false,
       shouldNotSellYet: false,
-      shouldFollowUp: false,
-      targetAudience: 'general',
-      projectContextNeeded: false
+      shouldAskPartnershipType: false,
+      shouldUseProjectResearch: false,
+      forbiddenMentions: 'Do not invent any project names, tokens, companies, or people that are not explicitly present in the current user command or the latest chat messages.'
     };
 
     if (!cmd) return intent;
@@ -1728,52 +1733,77 @@ app.post('/api/ai/suggest', requireAuth, async (req,res) => {
       intent.language = 'vi';
     }
 
-    if (norm.includes("đăng bài pr") || norm.includes("đi bài pr") || norm.includes("pr support")) {
+    if (norm.includes("tôi thấy bạn nhắn trong group") || norm.includes("tìm kiếm partnership") || norm.includes("partnership")) {
+      intent.replyGoal = 'soft outreach';
+      intent.shouldAskPartnershipType = true;
+      intent.shouldNotSellYet = true;
+      intent.normalizedEnglishIntent = 'Soft outreach, mention saw their group message, ask what kind of partnership they are exploring, no sales.';
+    }
+    else if (norm.includes("đăng bài pr") || norm.includes("đi bài pr") || norm.includes("pr support")) {
       intent.shouldMentionPR = true;
+      intent.normalizedEnglishIntent = 'PR article / media coverage.';
     }
-    if (norm.includes("cmc") || norm.includes("coinmarketcap")) {
-      intent.shouldMentionCMC = true;
-    }
-    if (norm.includes("push camp") || norm.includes("đẩy campaign")) {
+    else if (norm.includes("push camp") || norm.includes("đẩy campaign")) {
       intent.replyGoal = 'amplify campaign';
-      intent.projectContextNeeded = true;
+      intent.normalizedEnglishIntent = 'Amplify campaign.';
     }
-    if (norm.includes("giới thiệu dịch vụ")) {
+    else if (norm.includes("giới thiệu dịch vụ") || norm.includes("giới thiệu")) {
       intent.replyGoal = 'introduce Coincu services';
+      intent.shouldMentionReferral = true;
+      intent.normalizedEnglishIntent = 'Introduce Coincu to relevant partners/projects in their network.';
     }
+    
     if (norm.includes("mối quan hệ") || norm.includes("network") || norm.includes("đối tác") || norm.includes("referral")) {
       intent.shouldMentionReferral = true;
     }
     if (norm.includes("hoa hồng") || norm.includes("commission")) {
       intent.shouldMentionCommission = true;
+      intent.normalizedEnglishIntent += ' Offer referral commission.';
     }
     if (norm.includes("hỏi budget") || norm.includes("budget")) {
       intent.shouldAskBudget = true;
+      intent.normalizedEnglishIntent += ' Ask budget.';
     }
     if (norm.includes("hỏi timeline") || norm.includes("timeline")) {
       intent.shouldAskTimeline = true;
+      intent.normalizedEnglishIntent += ' Ask timeline.';
     }
-    if (norm.includes("đừng sale vội") || norm.includes("don't sell yet")) {
+    if (norm.includes("đừng sale vội") || norm.includes("don't sell yet") || norm.includes("no sale")) {
       intent.shouldNotSellYet = true;
+      intent.normalizedEnglishIntent += ' Do not sell, ask soft qualifying question.';
     }
     if (norm.includes("mềm hơn") || norm.includes("softer")) {
       intent.tone = 'softer';
+      intent.normalizedEnglishIntent += ' Softer tone.';
     }
     if (norm.includes("trực tiếp hơn") || norm.includes("direct")) {
       intent.tone = 'direct';
+      intent.normalizedEnglishIntent += ' More direct tone.';
     }
     if (norm.includes("follow up") || norm.includes("follow-up")) {
-      intent.shouldFollowUp = true;
+      intent.replyGoal = 'follow-up message';
+      intent.normalizedEnglishIntent = 'Follow-up message.';
+    }
+    if (norm.includes("cmc") || norm.includes("coinmarketcap")) {
+      intent.shouldMentionCMC = true;
     }
     
+    if (researchStr && (norm.includes("research") || norm.includes("dự án") || norm.includes("project"))) {
+      intent.shouldUseProjectResearch = true;
+    } else if (researchStr) {
+       intent.shouldUseProjectResearch = true;
+    }
+
     return intent;
   }
 
   function buildFallbackFromIntent(intent) {
     let parts = [];
     
-    if (intent.shouldFollowUp) {
+    if (intent.replyGoal === 'follow-up message') {
       parts.push("Just following up on our previous conversation.");
+    } else if (intent.replyGoal === 'soft outreach' || intent.shouldAskPartnershipType) {
+      parts.push("I saw your message in the group. What kind of partnership are you exploring?");
     }
     
     if (intent.shouldMentionPR && intent.replyGoal === 'amplify campaign') {
@@ -1781,7 +1811,7 @@ app.post('/api/ai/suggest', requireAuth, async (req,res) => {
     } else if (intent.shouldMentionPR) {
       parts.push("We can help amplify your reach with PR and media coverage.");
     } else if (intent.replyGoal === 'introduce Coincu services') {
-      parts.push("Coincu can provide tailored media services to boost your visibility.");
+      parts.push("Coincu can provide tailored media services to boost your visibility. If you have partners in your network looking for exposure, we'd love to connect.");
     }
     
     if (intent.shouldMentionCMC) {
@@ -1791,8 +1821,8 @@ app.post('/api/ai/suggest', requireAuth, async (req,res) => {
     if (intent.shouldMentionReferral && intent.shouldMentionCommission) {
       parts.push("If you have partners who need Coincu’s visibility, we can work on a commission-based referral.");
     } else if (intent.shouldMentionCommission) {
-      parts.push("We offer a commission for any successful referrals you bring to Coincu.");
-    } else if (intent.shouldMentionReferral) {
+      parts.push("We offer a solid commission for any successful referrals you bring to Coincu.");
+    } else if (intent.shouldMentionReferral && intent.replyGoal !== 'introduce Coincu services') {
       parts.push("If you know other projects looking for media exposure, I'd love to connect.");
     }
     
@@ -1800,44 +1830,46 @@ app.post('/api/ai/suggest', requireAuth, async (req,res) => {
       parts.push("What budget range are you considering for this?");
     } else if (intent.shouldAskTimeline) {
       parts.push("When are you planning to start?");
-    } else if (intent.shouldNotSellYet) {
+    } else if (intent.shouldNotSellYet && intent.replyGoal !== 'soft outreach') {
       parts.push("Got it. What’s your main focus right now?");
     }
     
-    const text = parts.join(" ");
+    const text = parts.join(" ").trim();
     if (!text || text === "Just following up on our previous conversation.") {
-      // If it's empty or just follow up, it means it's an unrecognized specific command.
-      // We return null so the system falls back to standard AI/Error.
       return null;
     }
     
     return [
-      { label: "Option 1", text: text },
-      { label: "Option 2", text: text.replace("Happy to support", "We can support").replace("If you have partners", "Also, if you can introduce us to partners") },
-      { label: "Option 3", text: text.replace("visibility", "exposure").replace("commission-based referral", "referral collaboration") }
+      { label: "Direct", text: text },
+      { label: "Soft", text: text.replace("Happy to support", "We can support").replace("If you have partners", "Also, if you can introduce us to partners") },
+      { label: "Alt", text: text.replace("visibility", "exposure").replace("commission-based referral", "referral collaboration") }
     ];
   }
 
 
   if (!GROQ_KEY) return res.json({ ok: false, error: "AI API key not configured." })
 
-  const intentSlots = parseCommandIntent(instruction);
+  const intentSlots = normalizeUserCommand(instruction, combinedHistoryStr, projectResearch);
 
   const SYSTEM_PROMPT = `You are Coincu's BD Sales Assistant.
 
 === PRIORITY 1: USER COMMAND (CRITICAL) ===
 You MUST follow the user instruction above all else. This is the direct instruction for WHAT TO SAY to the customer.
 Instruction: "${instruction}"
+Normalized Intent: "${intentSlots.normalizedEnglishIntent}"
 
 CRITICAL RULES FOR INSTRUCTION (VIETNAMESE/MIXED LANGUAGE SUPPORT):
 1. INTENT TRANSLATION: Understand the core intent of the instruction. Do not ignore referral/collaboration intents.
 2. NATURAL ENGLISH: Write the final reply entirely in natural English.
 3. NO LITERAL COPYING: NEVER copy Vietnamese words directly. Translate the intent.
-4. NO INVENTED CONTEXT: DO NOT invent concepts like "prediction event", "podcast", "rate card", "budget", "CMC", or "marketing campaign" unless they are EXPLICITLY mentioned in the instruction, chat history, or project research.
+4. NO INVENTED CONTEXT (ANTI-HALLUCINATION): ${intentSlots.forbiddenMentions}
 5. SPEAKER DIRECTION: "tôi/mình" = You (Coincu). "bạn/anh/chị" = The Customer.
 
 === EXPLICIT INTENT SLOTS DETECTED ===
 You must strictly fulfill these requirements in your output:
+- Reply Goal: ${intentSlots.replyGoal}
+- Tone: ${intentSlots.tone}
+- Ask Partnership Type: ${intentSlots.shouldAskPartnershipType}
 - Mention PR: ${intentSlots.shouldMentionPR}
 - Mention CMC: ${intentSlots.shouldMentionCMC}
 - Ask Referral/Network: ${intentSlots.shouldMentionReferral}
@@ -1882,7 +1914,7 @@ Return EXACTLY this JSON structure.
 
   try {
     const userPrompt = [
-      projectResearch ? `=== PRIORITY 2: PROJECT RESEARCH ===\n${projectResearch}\n` : null,
+      (projectResearch && intentSlots.shouldUseProjectResearch) ? `=== PRIORITY 2: PROJECT RESEARCH ===\n${projectResearch}\n` : null,
       '=== PRIORITY 3 & 4: CONVERSATION CONTEXT ===',
       `Chat ID: ${chatId || 'Unknown'}, Topic ID: ${topicId || 'None'}`,
       history.slice(-40).map(m=>(m.fromMe?'Leon':'Client')+': '+m.text).join('\n') || '(no messages yet)',

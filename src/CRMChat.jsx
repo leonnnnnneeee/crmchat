@@ -3915,6 +3915,8 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
     }
 
     const aiPayload = {
+      activeAccountId: activeAccRef.current,
+      generationId: attemptId,
       contactName: sel.name,
       lastMessage: lastClientMsg,
       messages: allMsgs.slice(-40).map(m => {
