@@ -211,27 +211,32 @@ export default function Composer(props) {
 
             {/* Input row */}
             <div className="ir" style={{ position: 'relative' }}>
-              <button className="ib" onClick={()=>setEmojiOpen(p=>!p)} title="Emoji"
-                style={{background:emojiOpen?"#2d1155":"transparent",fontSize:17}}>😊</button>
-              <button className="ib g" title="Attach file"
-                onClick={()=>fileInputRef.current?.click()} style={{fontSize:17}}>📎</button>
+              {/* AI Sparkle on the left */}
+              <button className="ib s" onClick={getAI} disabled={aiLoading} title="AI Suggest"
+                style={{fontSize:18, opacity: aiLoading ? 0.5 : 1}}>
+                {aiLoading?"⏳":"✨"}
+              </button>
+
               <input type="file" ref={fileInputRef} style={{display:'none'}} onChange={handleFileChange} />
-              <textarea className="message-input" placeholder="Message"
+              <textarea className="message-input" placeholder="Message..."
                 ref={inputRef} value={safeInputValue} rows={1}
                 onChange={handleInputChange}
                 onPaste={handleComposerPaste}
                 onKeyDown={composerKeyDown}
                 style={{height:"auto"}}/>
+              
+              {/* Right side buttons */}
               <button className={`ib g${showTmpl?" on":""}`} onClick={()=>setShowTmpl(v=>!v)} title="Templates" style={{fontSize:17}}>
                 📋
               </button>
-              <button className="ib g" onClick={getAI} disabled={aiLoading} title="AI Suggest"
-                style={{background:aiLoading?"rgba(124,58,237,.25)":TG.elevated,fontSize:17}}>
-                {aiLoading?"⏳":"✨"}
-              </button>
-              <button className="ib s" onClick={send} disabled={(!safeInputValue.trim() && !pastedFile)||sending}
-                style={{opacity:(safeInputValue.trim() || pastedFile)&&!sending?1:.4,fontSize:17,background:editingMsg?'#4caf50':'',color:editingMsg?'#fff':''}} title={editingMsg?"Save Edit":"Send"}>
-                {editingMsg?"✓":"➤"}
+              <button className="ib" onClick={()=>setEmojiOpen(p=>!p)} title="Emoji"
+                style={{fontSize:17}}>😊</button>
+              <button className="ib g" title="Attach file"
+                onClick={()=>fileInputRef.current?.click()} style={{fontSize:17}}>📎</button>
+              
+              <button className="sb" onClick={send} disabled={(!safeInputValue.trim() && !pastedFile)||sending}
+                style={{opacity:(safeInputValue.trim() || pastedFile)&&!sending?1:.4, background:editingMsg?'#4caf50':''}} title={editingMsg?"Save Edit":"Send"}>
+                {editingMsg ? "✓" : <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M2,21L23,12L2,3V10L17,12L2,14V21Z" /></svg>}
               </button>
             </div>
           </div>

@@ -24,15 +24,21 @@ export default function TranslateBar({ onTranslate, onDismiss, chatId, topicId, 
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'space-between',
-      padding: '8px 16px',
-      background: '#1c0a31', // slightly different from header
-      borderBottom: `1px solid ${TG.elevated}`,
+      padding: '8px 12px',
+      margin: '8px 16px',
+      background: 'rgba(30, 41, 59, 0.85)', /* Glassmorphism */
+      backdropFilter: 'blur(12px)',
+      border: '1px solid rgba(255,255,255,0.05)',
+      borderRadius: '12px',
+      boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
       flexShrink: 0,
-      cursor: 'pointer'
+      cursor: 'pointer',
+      transition: 'background 0.2s',
+      zIndex: 10
     }}
     onClick={onTranslate}
-    onMouseEnter={e => e.currentTarget.style.background = '#251141'}
-    onMouseLeave={e => e.currentTarget.style.background = '#1c0a31'}
+    onMouseEnter={e => e.currentTarget.style.background = 'rgba(30, 41, 59, 1)'}
+    onMouseLeave={e => e.currentTarget.style.background = 'rgba(30, 41, 59, 0.85)'}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 0 }}>
         <div style={{

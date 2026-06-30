@@ -4126,62 +4126,65 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
     .sidebar {
       display: flex; flex-direction: column; align-items: center;
       padding: 12px 0; gap: 8px;
-      background: #090e17;
+      background: #090e17; /* Very deep navy for sidebar */
       overflow: hidden;
       height: 100%;
-      width: 64px;
-      min-width: 64px;
+      width: 72px; /* Slim modern sidebar */
+      min-width: 72px;
       flex-shrink: 0;
+      border-right: 1px solid rgba(255,255,255,0.02);
     }
     .si {
-      width: 44px; height: 44px; border-radius: 12px;
+      width: 46px; height: 46px; border-radius: 14px;
       display: flex; align-items: center; justify-content: center;
-      cursor: pointer; font-size: 20px; color: #64748b;
-      transition: all .2s; flex-shrink: 0; border: none; background: transparent;
+      cursor: pointer; font-size: 22px; color: #64748b;
+      transition: all .2s ease; flex-shrink: 0; border: none; background: transparent;
     }
-    .si:hover { background: rgba(124,58,237,0.15); color: #a78bfa; }
-    .si.on { background: #7c3aed; color: #fff; box-shadow: 0 4px 12px rgba(124,58,237,0.3); }
+    .si:hover { background: rgba(124,58,237,0.1); color: #a78bfa; transform: translateY(-1px); }
+    .si.on { background: #7c3aed; color: #fff; box-shadow: 0 4px 14px rgba(124,58,237,0.35); }
 
-    /* ── LEFT COL ── */
+    /* ── LEFT COL (Chat List) ── */
     .lc {
       display: flex; flex-direction: column;
       height: 100%; max-height: 100%;
       min-height: 0;
-      width: 340px;
-      min-width: 340px;
+      width: 400px;
+      min-width: 400px;
       flex-shrink: 0;
-      background: #111827;
-      border-right: 1px solid #1f2937;
+      background: #111827; /* Charcoal */
+      border-right: 1px solid rgba(255,255,255,0.05);
     }
     .ci {
-      display: flex; gap: 12px; padding: 10px 16px;
-      height: 72px;
+      display: flex; gap: 14px; padding: 12px 16px;
+      height: 76px;
       cursor: pointer; align-items: center;
-      transition: background .1s;
+      transition: background .15s ease, transform .1s;
       flex-shrink: 0;
       box-sizing: border-box;
-      border-radius: 8px;
-      margin: 2px 8px;
+      border-radius: 12px;
+      margin: 2px 10px;
     }
-    .ci:hover { background: #1f2937; }
-    .ci.sel  { background: linear-gradient(90deg, #7c3aed, #6d28d9); color: #fff; }
-    .ci.sel .ci-preview, .ci.sel .ci-time { color: rgba(255,255,255,0.8) !important; }
+    .ci:hover { background: rgba(255,255,255,0.03); }
+    .ci.sel  { background: linear-gradient(135deg, #7c3aed, #5b21b6); color: #fff; box-shadow: 0 4px 10px rgba(0,0,0,0.15); }
+    .ci.sel .ci-preview, .ci.sel .ci-time { color: rgba(255,255,255,0.85) !important; }
     .ci.sel .ci-unread { background: #fff !important; color: #7c3aed !important; }
     
     .sinp {
       width: 100%;
-      background: #120929;
-      border: none;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.02);
       border-radius: 20px;
-      padding: 7px 12px 7px 34px;
-      color: #f0e6ff;
+      padding: 9px 12px 9px 36px;
+      color: #f8fafc;
       outline: none;
       font-size: 14px;
       box-sizing: border-box;
+      transition: background 0.2s, border 0.2s;
     }
-    .sinp::placeholder { color: #6b4d94; }
+    .sinp:focus { background: rgba(255,255,255,0.07); border-color: rgba(124,58,237,0.4); }
+    .sinp::placeholder { color: #64748b; }
 
-    /* ── MIDDLE COL — THE KEY LAYOUT ── */
+    /* ── MIDDLE COL (Main Chat) ── */
     .mc {
       flex: 1;
       display: flex;
@@ -4255,7 +4258,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
     .msg-content {
       display: flex;
       flex-direction: column;
-      max-width: min(68%, 520px);
+      max-width: min(64%, 560px);
       min-width: 0;
     }
     .msg-row.out .msg-content { align-items: flex-end; }
@@ -4265,39 +4268,40 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
     .bbl {
       position: relative;
       max-width: 100%;
-      min-width: 70px;
+      min-width: 80px;
       width: fit-content;
-      padding: 6px 12px 22px 12px; /* Increased bottom padding to prevent timestamp overlap */
-      border-radius: 16px;
-      font-size: 14px;
+      padding: 8px 12px 24px 12px;
+      border-radius: 18px;
+      font-size: 15px;
       line-height: 1.45;
       cursor: pointer;
       word-break: break-word;
       overflow-wrap: break-word;
       white-space: pre-wrap;
+      backdrop-filter: blur(10px);
     }
     .bbl::after {
       content: "";
       display: block;
       clear: both;
     }
-    .bbl.out { background: #8774e1; color: #fff; box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
-    .bbl.in { background: #212d3b; color: #fff; box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
+    .bbl.out { background: linear-gradient(135deg, #6d28d9, #4f46e5); color: #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.15); }
+    .bbl.in { background: rgba(30, 41, 59, 0.85); color: #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.15); border: 1px solid rgba(255,255,255,0.03); }
     .bbl.del { opacity: .5; font-style: italic; }
-    .bbl.rpl { border-left: 3px solid rgba(255,255,255,.5); padding-left: 10px; border-radius: 8px; margin-bottom: 4px; font-size: 13px; }
+    .bbl.rpl { border-left: 3px solid rgba(255,255,255,.5); padding-left: 10px; border-radius: 8px; margin-bottom: 6px; font-size: 13px; background: rgba(0,0,0,0.1); }
     .msg-link { color: #7dd3fc; text-decoration: none; word-break: break-word; overflow-wrap: anywhere; }
     .msg-link:hover { text-decoration: underline; }
     .bbl.out .msg-link { color: #e0e7ff; text-decoration: underline; }
 
     /* grouped radius */
-    .bbl.out.single { border-radius: 16px 16px 4px 16px; }
-    .bbl.out.top    { border-radius: 16px 16px 4px 16px; }
-    .bbl.out.mid    { border-radius: 16px 4px 4px 16px; }
-    .bbl.out.bottom { border-radius: 16px 4px 4px 16px; }
-    .bbl.in.single  { border-radius: 16px 16px 16px 4px; }
-    .bbl.in.top     { border-radius: 16px 16px 16px 4px; }
-    .bbl.in.mid     { border-radius: 4px 16px 16px 4px; }
-    .bbl.in.bottom  { border-radius: 4px 16px 16px 4px; }
+    .bbl.out.single { border-radius: 18px 18px 4px 18px; }
+    .bbl.out.top    { border-radius: 18px 18px 4px 18px; }
+    .bbl.out.mid    { border-radius: 18px 4px 4px 18px; }
+    .bbl.out.bottom { border-radius: 18px 4px 4px 18px; }
+    .bbl.in.single  { border-radius: 18px 18px 18px 4px; }
+    .bbl.in.top     { border-radius: 18px 18px 18px 4px; }
+    .bbl.in.mid     { border-radius: 4px 18px 18px 4px; }
+    .bbl.in.bottom  { border-radius: 4px 18px 18px 4px; }
 
     /* ── BUBBLE FOOTER (timestamp + tick) ── */
     .bfoot {
@@ -4306,11 +4310,12 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
       align-items: center;
       gap: 4px;
       position: absolute;
-      bottom: 4px;
-      right: 8px;
+      bottom: 5px;
+      right: 10px;
       white-space: nowrap;
       font-size: 11px;
-      color: rgba(255, 255, 255, 0.5);
+      color: rgba(255, 255, 255, 0.6);
+      font-weight: 500;
     }
 
     /* ── DATE SEPARATOR ── */
@@ -4341,10 +4346,8 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
       flex-shrink: 0;
       display: flex;
       flex-direction: column;
-      background: rgba(15, 23, 42, 0.85); /* Glassmorphism background */
-      backdrop-filter: blur(10px);
-      border-top: 1px solid rgba(255, 255, 255, 0.05);
-      height: auto;
+      background: transparent;
+      padding: 0 16px 16px;
     }
 
     /* Emoji popover row */
@@ -4352,17 +4355,24 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
       display: flex; gap: 2px; align-items: center;
       height: 36px; flex-shrink: 0;
       overflow-x: auto; padding: 2px 0;
-      border-bottom: 1px solid #2d1155;
       margin-bottom: 4px;
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(10px);
+      border-radius: 8px;
     }
 
     /* Composer row */
     .ir {
       display: flex;
       align-items: flex-end;
-      gap: 8px;
-      padding: 10px 16px 14px;
+      gap: 10px;
+      padding: 10px 14px;
       min-height: 56px;
+      background: rgba(15, 23, 42, 0.85); /* Glassmorphism background */
+      backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 20px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.2);
     }
 
     /* Icon buttons */
@@ -4371,33 +4381,34 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
       background: transparent; border: none; border-radius: 50%;
       cursor: pointer; display: flex; align-items: center; justify-content: center;
       color: #94a3b8; font-size: 22px; transition: background .15s, color .15s;
-      margin-bottom: 2px;
     }
     .ib:hover, .ib.on { background: rgba(255,255,255,0.08); color: #cbd5e1; }
     .ib.g { font-size: 18px; font-weight: 700; }
-    .ib.s { color: #7c3aed; }
-    .ib.s:hover { background: #7c3aed; color: #fff; }
+    .ib.s { color: #a78bfa; }
+    .ib.s:hover { background: rgba(124,58,237,0.15); color: #c4b5fd; }
 
     /* Textarea */
     .message-input {
       flex: 1; min-width: 0;
-      min-height: 44px; max-height: 140px;
-      padding: 12px 16px;
-      background: #1e293b; border: 1px solid rgba(255,255,255,0.05); border-radius: 22px;
+      min-height: 40px; max-height: 140px;
+      padding: 10px 4px;
+      background: transparent; border: none;
       color: #f8fafc; font-size: 15px; font-family: inherit;
       line-height: 20px; resize: none; outline: none;
       overflow-y: auto; box-sizing: border-box;
-      box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
     }
     .message-input::placeholder { color: #64748b; }
-    .message-input::placeholder { color: #6b4d94; }
 
     /* Send button */
     .sb {
-      width: 36px; height: 36px; flex-shrink: 0;
-      border-radius: 50%; background: #8774e1; border: none;
+      width: 40px; height: 40px; flex-shrink: 0;
+      border-radius: 50%; background: linear-gradient(135deg, #7c3aed, #4f46e5); border: none;
       cursor: pointer; display: flex; align-items: center; justify-content: center;
       font-size: 18px; color: #fff;
+      box-shadow: 0 4px 12px rgba(124,58,237,0.3);
+      transition: transform 0.1s;
+    }
+    .sb:hover { transform: scale(1.05); }
       transition: background .15s, opacity .15s;
       margin-bottom: 2px;
     }
@@ -4622,11 +4633,20 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
 
       {/* SIDEBAR */}
       <div className="sidebar">
-        <div title="Coincu App" style={{width:36,height:36,background:'#7c3aed',borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:15,marginBottom:10,cursor:"pointer",boxShadow:"0 4px 12px rgba(124,58,237,0.3)"}}>⚡</div>
-        <div style={{flex:1}}/>
+        <div title="Coincu App" style={{width:40,height:40,background:'linear-gradient(135deg, #7c3aed, #4f46e5)',borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:18,marginBottom:24,cursor:"pointer",boxShadow:"0 4px 14px rgba(124,58,237,0.4)"}}>⚡</div>
+        
+        <div style={{display:'flex', flexDirection:'column', gap:12, flex:1, width:'100%', alignItems:'center'}}>
+          <div className="si on" title="Chats" style={{fontSize:20}}>💬</div>
+          <div className="si" title="Leads" style={{fontSize:20}} onClick={()=>alert('Leads module coming soon')}>🎯</div>
+          <div className="si" title="CRM" style={{fontSize:20}} onClick={()=>alert('CRM module coming soon')}>📊</div>
+          <div className="si" title="Automation" style={{fontSize:20}} onClick={()=>alert('Automation coming soon')}>⚡️</div>
+          <div className="si" title="Analytics" style={{fontSize:20}} onClick={()=>alert('Analytics coming soon')}>📈</div>
+          <div className="si" title="Settings" style={{fontSize:20}} onClick={() => setShowSettings(true)}>⚙️</div>
+        </div>
 
-        <div className={`si${showBgSettings ? ' on' : ''}`} title="Background Settings" style={{fontSize:18}} onClick={() => setShowBgSettings(true)}>🖼️</div>
-        <div style={{marginTop:6,width:34,height:34,borderRadius:"50%",background:"#7c3aed",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}} title="Account" onClick={() => setShowAccountMenu(p => !p)}>L</div>
+        <div style={{marginTop:'auto',marginBottom:12}}>
+          <div style={{width:38,height:38,borderRadius:"50%",background:"#2d1155",border:"2px solid #7c3aed",display:"flex",alignItems:"center",justifyContent:"center",color:"#a78bfa",fontWeight:700,fontSize:14,cursor:"pointer",boxShadow:"0 2px 8px rgba(0,0,0,0.2)"}} title="Account" onClick={() => setShowAccountMenu(p => !p)}>L</div>
+        </div>
       </div>
       
       {showAccountMenu && (
