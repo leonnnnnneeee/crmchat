@@ -41,8 +41,8 @@ export default function TelegramMainMenu({
   }, [onClose, activeAccountId]);
 
   const activeAcc = accounts.find(a => a.accountId === activeAccountId) || accounts[0];
-  const avatarLetter = activeAcc?.firstName 
-    ? activeAcc.firstName.charAt(0).toUpperCase() 
+  const avatarLetter = activeAcc?.displayName 
+    ? activeAcc.displayName.charAt(0).toUpperCase() 
     : (activeAcc?.phone ? activeAcc.phone.charAt(1) : 'U');
 
   const handleItemClick = (label, action) => {
@@ -105,7 +105,7 @@ export default function TelegramMainMenu({
         </div>
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
           <div style={{ fontSize: 15, fontWeight: 600, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {activeAcc?.firstName || 'Account'} {activeAcc?.lastName || ''}
+            {activeAcc?.displayName || 'Account'}
           </div>
           <div style={{ fontSize: 13, color: '#a78bfa' }}>
             {activeAcc?.phone || activeAcc?.username || activeAccountId}

@@ -4726,8 +4726,8 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
               }}>
                 {(() => {
                   const acc = accounts.find(a => a.accountId === activeAccRef.current);
-                  return acc?.firstName
-                    ? acc.firstName.charAt(0).toUpperCase()
+                  return acc?.displayName
+                    ? acc.displayName.charAt(0).toUpperCase()
                     : (acc?.phone ? acc.phone.charAt(1) : 'U');
                 })()}
               </div>
