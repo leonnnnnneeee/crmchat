@@ -4677,9 +4677,65 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
           <div title="Coincu App" style={{width:36,height:36,background:'linear-gradient(135deg, #7c3aed, #4f46e5)',borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:16,cursor:"pointer",boxShadow:"0 4px 14px rgba(124,58,237,0.4)"}}>⚡</div>
         </div>
 
-        <div style={{marginTop:'auto',marginBottom:12}}>
-          <div style={{width:38,height:38,borderRadius:"50%",background:"#2d1155",border:"2px solid #7c3aed",display:"flex",alignItems:"center",justifyContent:"center",color:"#a78bfa",fontWeight:700,fontSize:14,cursor:"pointer",boxShadow:"0 2px 8px rgba(0,0,0,0.2)"}} title="Account" onClick={() => setShowMainMenu(true)}>
-            {accounts.find(a => a.accountId === activeAccRef.current)?.phone?.charAt(1) || 'L'}
+        {/* Bottom Account Button */}
+        <div style={{ marginTop: 'auto', marginBottom: 12, padding: '0 8px', width: '100%', boxSizing: 'border-box' }}>
+          <div
+            title="Account"
+            onClick={() => setShowMainMenu(true)}
+            style={{
+              width: '100%',
+              maxWidth: 56,
+              height: 64,
+              margin: '0 auto',
+              background: '#1c1132',
+              border: '1px solid rgba(124,58,237,0.2)',
+              borderRadius: 16,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+              transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.background = '#281a4a';
+              e.currentTarget.style.borderColor = 'rgba(124,58,237,0.4)';
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.background = '#1c1132';
+              e.currentTarget.style.borderColor = 'rgba(124,58,237,0.2)';
+              e.currentTarget.style.transform = 'scale(1)';
+              e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)';
+            }}
+            onMouseDown={e => {
+              e.currentTarget.style.transform = 'scale(0.95)';
+              e.currentTarget.style.boxShadow = '0 0 16px rgba(124,58,237,0.4)';
+            }}
+            onMouseUp={e => {
+              e.currentTarget.style.transform = 'scale(1)';
+              e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)';
+            }}
+          >
+            <div style={{ position: 'relative', width: 42, height: 42 }}>
+              <div style={{
+                width: '100%', height: '100%', borderRadius: '50%',
+                background: '#2d1155', border: '2px solid #7c3aed',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: '#a78bfa', fontWeight: 700, fontSize: 16,
+                boxSizing: 'border-box', overflow: 'hidden'
+              }}>
+                {(() => {
+                  const acc = accounts.find(a => a.accountId === activeAccRef.current);
+                  return acc?.name?.charAt(0) || acc?.phone?.charAt(1) || 'U';
+                })()}
+              </div>
+              <div style={{
+                position: 'absolute', right: -2, bottom: -2,
+                width: 12, height: 12, borderRadius: '50%',
+                background: '#10b981', border: '2.5px solid #1c1132',
+                boxSizing: 'border-box'
+              }} />
+            </div>
           </div>
         </div>
 
