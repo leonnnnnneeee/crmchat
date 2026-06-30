@@ -11,6 +11,7 @@ import PinnedMessageBar from './components/chat/PinnedMessageBar';
 import TranslateBar from './components/chat/TranslateBar';
 import { BackgroundSettingsModal, BACKGROUND_OPTIONS } from './components/chat/BackgroundSettingsModal';
 import TelegramSettings from './components/chat/TelegramSettings';
+import TelegramMainMenu from './components/chat/TelegramMainMenu';
 
 const translationCache = new Map();
 
@@ -2720,6 +2721,17 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
   });
   const [showBgSettings, setShowBgSettings] = useState(false);
 
+  // Main Menu States
+  const [showMainMenu, setShowMainMenu] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
+  
+  useEffect(() => {
+    if (toastMessage) {
+      const timer = setTimeout(() => setToastMessage(''), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [toastMessage]);
+
   const [lightbox,setLightbox]=useState(null)
   const [gifOpen,setGifOpen]=useState(false)
   const [emojiOpen,setEmojiOpen]=useState(false)
@@ -4632,23 +4644,65 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
     <div className="crm-root">
 
       {/* SIDEBAR */}
-      <div className="sidebar">
-        <div title="Coincu App" style={{width:40,height:40,background:'linear-gradient(135deg, #7c3aed, #4f46e5)',borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:18,marginBottom:24,cursor:"pointer",boxShadow:"0 4px 14px rgba(124,58,237,0.4)"}}>⚡</div>
+      <div className="sidebar" style={{position: 'relative', zIndex: 100}}>
+        <div 
+           title="Menu" 
+           style={{width:44,height:44,borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",color:"#64748b",fontSize:24,cursor:"pointer",transition:"all 0.2s"}}
+           onMouseEnter={e => e.currentTarget.style.color="#f0e6ff"}
+           onMouseLeave={e => e.currentTarget.style.color="#64748b"}
+           onClick={() => setShowMainMenu(true)}
+        >
+          ☰
+        </div>
         
-        <div style={{display:'flex', flexDirection:'column', gap:12, flex:1, width:'100%', alignItems:'center'}}>
-          <div className="si on" title="Chats" style={{fontSize:20}}>💬</div>
-          <div className="si" title="Leads" style={{fontSize:20}} onClick={()=>alert('Leads module coming soon')}>🎯</div>
-          <div className="si" title="CRM" style={{fontSize:20}} onClick={()=>alert('CRM module coming soon')}>📊</div>
-          <div className="si" title="Automation" style={{fontSize:20}} onClick={()=>alert('Automation coming soon')}>⚡️</div>
-          <div className="si" title="Analytics" style={{fontSize:20}} onClick={()=>alert('Analytics coming soon')}>📈</div>
-          <div className="si" title="Settings" style={{fontSize:20}} onClick={() => setShowSettings(true)}>⚙️</div>
+        <div style={{display:'flex', flexDirection:'column', gap:12, flex:1, width:'100%', alignItems:'center', marginTop: 12}}>
+          <div title="Coincu App" style={{width:36,height:36,background:'linear-gradient(135deg, #7c3aed, #4f46e5)',borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:16,cursor:"pointer",boxShadow:"0 4px 14px rgba(124,58,237,0.4)"}}>⚡</div>
         </div>
 
         <div style={{marginTop:'auto',marginBottom:12}}>
-          <div style={{width:38,height:38,borderRadius:"50%",background:"#2d1155",border:"2px solid #7c3aed",display:"flex",alignItems:"center",justifyContent:"center",color:"#a78bfa",fontWeight:700,fontSize:14,cursor:"pointer",boxShadow:"0 2px 8px rgba(0,0,0,0.2)"}} title="Account" onClick={() => setShowAccountMenu(p => !p)}>L</div>
+          <div style={{width:38,height:38,borderRadius:"50%",background:"#2d1155",border:"2px solid #7c3aed",display:"flex",alignItems:"center",justifyContent:"center",color:"#a78bfa",fontWeight:700,fontSize:14,cursor:"pointer",boxShadow:"0 2px 8px rgba(0,0,0,0.2)"}} title="Account" onClick={() => setShowMainMenu(true)}>
+            {accounts.find(a => a.accountId === activeAccRef.current)?.phone?.charAt(1) || 'L'}
+          </div>
         </div>
+
+        {/* Telegram Main Menu Dropdown */}
+        {showMainMenu && (
+          <TelegramMainMenu 
+            accounts={accounts}
+            activeAccountId={activeAccRef.current}
+            onClose={() => setShowMainMenu(false)}
+            onAddAccount={() => setShowAddAccount(true)}
+            onOpenSavedMessages={() => setToastMessage('Saved Messages is not available yet.')}
+            onOpenContacts={() => setToastMessage('Contacts list is not available yet.')}
+            onOpenSettings={() => {
+              console.log('[DEBUG] settingsOpened');
+              setShowSettings(true);
+            }}
+            onOpenBackground={() => {
+              console.log('[DEBUG] backgroundPanelOpen', true);
+              setShowBgSettings(true);
+            }}
+            onManageAccounts={() => setShowAccountMenu(true)}
+            onReconnectTelegram={onAuthFailed}
+            onSignOut={onLogout}
+            onResetOrder={handleResetOrder}
+          />
+        )}
       </div>
       
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div style={{
+          position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)',
+          background: 'rgba(30,41,59,0.95)', color: '#fff', padding: '12px 24px',
+          borderRadius: 8, fontSize: 14, fontWeight: 500, zIndex: 999999,
+          boxShadow: '0 4px 12px rgba(0,0,0,0.3)', backdropFilter: 'blur(8px)',
+          border: '1px solid rgba(255,255,255,0.1)'
+        }}>
+          {toastMessage}
+        </div>
+      )}
+
       {showAccountMenu && (
         <div style={{position: 'fixed', top:0, left:0, right:0, bottom:0, zIndex: 99998}} onClick={() => setShowAccountMenu(false)}>
           <AccountMenu 
@@ -4656,7 +4710,10 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
             activeAccountId={activeAccRef.current} 
             onOpenSettings={() => setShowSettings(true)}
             onClose={() => setShowAccountMenu(false)} 
-            onAddAccount={() => setShowAddAccount(true)}
+            onAddAccount={() => {
+              console.log('[DEBUG] addAccountClicked');
+              setShowAddAccount(true);
+            }}
             onSwitchAccount={(id) => {
               console.log('[MultiAccount] Switching to account:', id);
               setActiveAccId(id);
@@ -4686,16 +4743,6 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
             <span style={{fontSize:11,fontWeight:500,color:'#94a3b8'}}>Telegram connected</span>
           </div>
           <div style={{display: 'flex', gap: 8, alignItems: 'center'}}>
-            {customOrder.length > 0 && (
-              <button onClick={handleResetOrder}
-                style={{border:"none",color:'#a78bfa',
-                  cursor:"pointer",fontSize:11,fontWeight:600,padding:"4px 8px",
-                  borderRadius:8,background:'rgba(124,58,237,0.15)',transition:"all .2s"}}
-                title="Reset manual sorting order"
-              >
-                Reset Order
-              </button>
-            )}
             <button onClick={fetchChats} disabled={loadChats}
               style={{background:"none",border:"none",color:'#64748b',
                 cursor:"pointer",fontSize:16,width:32,height:32,
