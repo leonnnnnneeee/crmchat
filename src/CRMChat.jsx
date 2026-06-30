@@ -3053,7 +3053,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
     if (isChatActuallyForum(sel) && !currentTopic && !forceNormalView) {
       setLoadingTopics(true)
       setTopicError(false)
-      fetch(`/api/chat/topics/${sel.id}`, { headers: {"x-auth-token": token} })
+      fetch(`/api/chat/topics/${sel.id}?t=${Date.now()}`, { headers: {"x-auth-token": token} })
         .then(r=>{
           if (!r.ok) throw new Error('Failed to fetch')
           return r.json()
