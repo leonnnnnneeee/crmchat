@@ -1406,13 +1406,16 @@ app.post('/api/chat/send-media', requireAuth, upload.single('file'), async (req,
 app.post('/api/chat/delete', requireAuth, async (req, res) => {
   if (!_accounts.get(req.accountId)?.session) return res.json({ok: false, error: 'No session'});
   try {
-    const { chatId, msgIds, revoke } = req.body;
-    if (!chatId || !msgIds || !msgIds.length) return res.json({ok: false, error: 'Missing parameters'});
+    const { chatId, msgIds, messageId, revoke } = req.body;
+    let ids = msgIds || [];
+    if (messageId) ids.push(messageId);
+    
+    if (!chatId || !ids.length) return res.json({ok: false, error: 'Missing parameters'});
     
     const client = await getClient(req.accountId);
     const entity = await resolveEntity(client, chatId);
     
-    await client.deleteMessages(entity, msgIds, { revoke: revoke !== false });
+    await client.deleteMessages(entity, ids, { revoke: revoke !== false });
     
     res.json({ ok: true });
   } catch(e) {
