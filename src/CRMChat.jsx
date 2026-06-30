@@ -1,6 +1,7 @@
 // v-edit2-083448
 // v035029
 import React, { useState, useEffect, useRef, useMemo, useCallback, useDeferredValue } from "react"
+import { safeFetch } from './utils/api';
 import { ErrorBoundary } from './components/ErrorBoundary'
 import ForumTopicsView from './components/chat/ForumTopicsView';
 import ChatHeader from './components/chat/ChatHeader';
