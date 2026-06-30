@@ -2671,35 +2671,37 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
   const [highlightedMsgId, setHighlightedMsgId] = useState(null)
   const [loadingPinnedMsg, setLoadingPinnedMsg] = useState(false)
   
+  const allowedReactionsCacheRef = useRef({})
   const [allowedReactionsCache, setAllowedReactionsCache] = useState({})
   
   const fetchAllowedReactions = useCallback(async (chatId, force = false) => {
-    // If it's already fetching or successfully fetched, don't fetch unless forced
+    setAllowedReactionsCache(p => {
+      if (!force) {
+        const current = p[chatId];
+        if (current && (current.status === 'loading' || current.ok)) return p;
+      }
+      return { ...p, [chatId]: { status: 'loading' } };
+    });
+    
+    // Check if we actually need to fetch (double check outside setState)
     if (!force) {
-      const current = allowedReactionsCache[chatId];
+      const current = allowedReactionsCacheRef.current[chatId];
       if (current && (current.status === 'loading' || current.ok)) return;
     }
     
     try {
-      setAllowedReactionsCache(p => ({ ...p, [chatId]: { status: 'loading' } }));
-      
       const url = `/api/telegram/available-reactions?chatId=${chatId}`;
-      console.log('endpoint URL', url);
       const d = await safeFetch(url, { headers: { 'x-auth-token': token } });
-      console.log('response status', res.status);
-      ;
-      console.log('allowedReactionsFetchStatus', d);
-      console.log('source', d.source || 'fallback');
-      console.log('allowAll', d.allowAll);
-      console.log('reactions returned', d.reactions);
-      if (d.__httpStatus >= 400) console.log('fallback reason', d.error);
       
       setAllowedReactionsCache(p => ({ ...p, [chatId]: d }));
+      allowedReactionsCacheRef.current = { ...allowedReactionsCacheRef.current, [chatId]: d };
     } catch(e) {
       console.log('fetch available-reactions error:', e);
-      setAllowedReactionsCache(p => ({ ...p, [chatId]: { ok: false, error: e.message } }));
+      const errState = { ok: false, error: e.message };
+      setAllowedReactionsCache(p => ({ ...p, [chatId]: errState }));
+      allowedReactionsCacheRef.current = { ...allowedReactionsCacheRef.current, [chatId]: errState };
     }
-  }, [token, allowedReactionsCache]);
+  }, [token]);
 
   useEffect(() => {
     if (sel) {
