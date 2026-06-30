@@ -980,11 +980,11 @@ function ChatPhoto({msg, chatId, authToken, onImageClick, thumb}) {
       try {
         const url = `/api/chat/media/${chatId}/${msgId}?token=${authToken}&r=${retryCnt}${thumb !== undefined ? '&thumb=' + thumb : ''}`
         console.log(`[ChatPhoto] Fetching media for msgId=${msgId}, url=${url}`)
-        const data = await safeFetch(url)
+        const res = await fetch(url)
         
         if (!isMounted) return
         
-        if (res.__httpStatus >= 400) {
+        if (!res.ok) {
           console.error(`[ChatPhoto] Failed to fetch msgId=${msgId}, status=${res.status} ${res.statusText}`)
           setStatus('error')
           return
