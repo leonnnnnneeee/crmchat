@@ -3937,33 +3937,30 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
     console.log('[DEBUG] researchUsedInReply', !!(useResearch && projectResearch?.data));
 
     try {
-      const r = await fetch("/api/ai/suggest", {
+      const d = await safeFetch("/api/ai/suggest", {
         method: "POST",
         headers: {"Content-Type":"application/json","x-auth-token":token},
         body: JSON.stringify(aiPayload)
-      })
-      const d = r
+      });
       
       // Ignore if a newer request was started
       if (activeAiRequest.current !== attemptId) return;
       
-      if (r.status === 401 && d.code === 'TOKEN_EXPIRED') {
+      if (d.__httpStatus === 401 && d.code === 'TOKEN_EXPIRED') {
         try {
-          const refR = await fetch('/api/auth/refresh', {
+          const refD = await safeFetch('/api/auth/refresh', {
             method: 'POST',
             headers: { 'x-auth-token': token }
           });
-          const refD = refR;
           
           if (refD.ok && refD.token) {
             if (typeof onTokenRefresh === 'function') onTokenRefresh(refD.token);
             
-            const retryR = await fetch("/api/ai/suggest", {
+            const retryD = await safeFetch("/api/ai/suggest", {
               method: "POST",
               headers: {"Content-Type":"application/json","x-auth-token":refD.token},
               body: JSON.stringify(aiPayload)
             });
-            const retryD = retryR;
             
             if (activeAiRequest.current !== attemptId) return;
             
@@ -3993,7 +3990,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
         if (d.aiWarning) setAiWarning(d.aiWarning)
       }
     } catch(e) { 
-      setAiError("Network error connecting to AI service.")
+      setAiError(e.message || "Network error connecting to AI service.")
     } finally {
       if (activeAiRequest.current === attemptId) setAiLoading(false)
     }
