@@ -679,8 +679,6 @@ function AISuggestPanel({text,suggestions,analysis,alternative,messages,loading,
   const isResearchActive = projectResearch && !projectResearch.dismissed;
   const safeAiInstruction = (aiInstruction === "null" || aiInstruction == null) ? "" : aiInstruction;
 
-  if(!text && !loading && (!suggestions || suggestions.length === 0) && !aiError && !safeAiInstruction && !isResearchActive) return null
-
   // Support both new suggestions array and old text/alternative format
   let msgs = []
   if (suggestions && suggestions.length > 0) {
@@ -757,6 +755,7 @@ function AISuggestPanel({text,suggestions,analysis,alternative,messages,loading,
         <div style={{display:"flex", gap:8}}>
           <input 
             type="text" 
+            autoFocus
             placeholder="Tell AI what you want to reply, e.g. offer commission, ask budget, mention CMC..."
             value={safeAiInstruction}
             onChange={(e)=>{setAiInstruction&&setAiInstruction(e.target.value);}}
@@ -2498,6 +2497,25 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
   const [loadChats,setLoadChats]=useState(true)
   const [loadMsgs,setLoadMsgs]=useState(false)
   const [messageFetchError, setMessageFetchError] = useState(null)
+  
+  // -- AI Panel State --
+  const [aiPanelOpen, setAiPanelOpen] = useState(false);
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setAiPanelOpen(prev => {
+          if (prev) {
+            console.log('[Debug] panelClosedBy: escape');
+            return false;
+          }
+          return prev;
+        });
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
   const [messagesLoaded,setMessagesLoaded]=useState(false)
   const [loadingMore,setLoadingMore]=useState(false)
   const [hasMoreChats,setHasMoreChats]=useState(true)
@@ -3078,6 +3096,8 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
   const lastClientMsgText = clientMsgsCount > 0 ? (msgs||[]).filter(m => !m.fromMe && !m.deleted).pop().text : "";
 
   useEffect(()=>{
+    console.log('[Debug] chatSwitch - reset AI state', { selectedChatId: sel?.id, selectedTopicId: selTopic?.id });
+    setAiPanelOpen(false);
     setAiSuggestions([]); setAiText(""); setAiError(null); setAiInstruction("");
     activeAiRequest.current = null;
   },[sel?.id, selTopic?.id])
@@ -5015,36 +5035,31 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
             <MessageList {...chatProps} />
           </div>
           <div style={{ zIndex: 1, display: 'flex', flexDirection: 'column' }}>
-            <AISuggestPanel
-              text={aiText} suggestions={aiSuggestions} analysis={aiAnalysis} alternative={aiAlt} loading={aiLoading} warning={aiWarning}
-              aiError={aiError}
-              onUse={(txt)=>{setInput(txt);setAiText("");setAiSuggestions([]);setAiAnalysis("");setAiAlt("")}}
-              onUseAlt={()=>{setInput(aiAlt);setAiText("");setAiSuggestions([]);setAiAnalysis("");setAiAlt("")}}
-              onRegenerate={()=>getAI(false)}
-              onClose={()=>{
-                 setAiText("");
-                 setAiSuggestions([]);
-                 setAiAnalysis("");
-                 setAiAlt("");
-                 setAiLoading(false);
-                 setAiInstruction("");
-                 if (projectResearch) {
-                   setProjectResearch(prev => prev ? { ...prev, dismissed: true } : null);
-                 }
-              }}
-              aiInstruction={aiInstruction}
-              setAiInstruction={setAiInstruction}
-              onReconnect={onAuthFailed}
-              projectResearch={projectResearch} useResearch={useResearch} setUseResearch={setUseResearch}
-              onRefreshResearch={() => {
-                 if (projectResearch?.data?.website) {
-                    doProjectResearch([projectResearch.data.website], projectResearch.data.projectName);
-                 } else {
-                    alert("No website found to refresh research.");
-                 }
-              }}
-            />
-            <Composer {...chatProps} />
+            {aiPanelOpen && (
+              <AISuggestPanel
+                text={aiText} suggestions={aiSuggestions} analysis={aiAnalysis} alternative={aiAlt} loading={aiLoading} warning={aiWarning}
+                aiError={aiError}
+                onUse={(txt)=>{setInput(txt);setAiText("");setAiSuggestions([]);setAiAnalysis("");setAiAlt("");setAiPanelOpen(false);}}
+                onUseAlt={()=>{setInput(aiAlt);setAiText("");setAiSuggestions([]);setAiAnalysis("");setAiAlt("");setAiPanelOpen(false);}}
+                onRegenerate={()=>getAI(false)}
+                onClose={()=>{
+                   console.log('[Debug] panelClosedBy: x');
+                   setAiPanelOpen(false);
+                }}
+                aiInstruction={aiInstruction}
+                setAiInstruction={setAiInstruction}
+                onReconnect={onAuthFailed}
+                projectResearch={projectResearch} useResearch={useResearch} setUseResearch={setUseResearch}
+                onRefreshResearch={() => {
+                   if (projectResearch?.data?.website) {
+                      doProjectResearch([projectResearch.data.website], projectResearch.data.projectName);
+                   } else {
+                      alert("No website found to refresh research.");
+                   }
+                }}
+              />
+            )}
+            <Composer {...chatProps} setAiPanelOpen={setAiPanelOpen} />
           </div>
         </>}
       </div>

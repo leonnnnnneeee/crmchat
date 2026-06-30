@@ -24,7 +24,7 @@ export default function Composer(props) {
     tmplCat, TEMPLATES, setMsgs, setSelectMode, lightbox, StageBadge, gifOpen, setGifOpen,
     gifQuery, setGifQuery, searchGifs, gifs, loadingRef, showScrollBtn,
     pastedFile, setPastedFile, filePreview, setFilePreview, handleComposerPaste,
-    chatMembersCache, fetchMembers
+    chatMembersCache, fetchMembers, setAiPanelOpen
   } = props;
 
   // --- MENTIONS ---
@@ -212,7 +212,10 @@ export default function Composer(props) {
             {/* Input row */}
             <div className="ir" style={{ position: 'relative' }}>
               {/* AI Sparkle on the left */}
-              <button className="ib s" onClick={getAI} disabled={aiLoading} title="AI Suggest"
+              <button className="ib s" onClick={() => {
+                console.log('[Debug] sparkleClicked');
+                setAiPanelOpen(true);
+              }} disabled={aiLoading} title="AI Suggest"
                 style={{fontSize:18, opacity: aiLoading ? 0.5 : 1}}>
                 {aiLoading?"⏳":"✨"}
               </button>
