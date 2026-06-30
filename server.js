@@ -1287,6 +1287,98 @@ app.get('/api/chat/messages/:id', requireAuth, async (req,res) => {
   }
 })
 
+// ── GET TOPIC MESSAGES ──
+app.get('/api/chat/topics/:chatId/:topicId/messages', requireAuth, async (req,res) => {
+  if (!_accounts.get(req.accountId)?.session) return res.json([])
+  const t0 = Date.now()
+  try {
+    const client = await withTimeout(getClient(req.accountId), 10000, 'getClient')
+    const entity = await withTimeout(resolveEntity(client, req.params.chatId, req.query.username), 8000, 'resolveEntity')
+    const maxId = parseInt(req.query.maxId) || 0
+    const minId = parseInt(req.query.minId) || 0
+    const opts = { limit: 40, replyTo: parseInt(req.params.topicId) }
+    if (maxId > 0) opts.offsetId = maxId
+    if (minId > 0) opts.minId = minId
+    
+    let freshOutboxMaxId = parseInt(req.query.readOutboxMaxId) || 0;
+    
+    const msgsPromise = withTimeout(client.getMessages(entity, opts), 12000, 'getMessages');
+    const peerDialogsPromise = withTimeout(client.invoke(new Api.messages.GetPeerDialogs({ peers: [entity] })), 2000, 'GetPeerDialogs').catch(e => {
+      log('GetPeerDialogs error: ' + e.message);
+      return null;
+    });
+    
+    const [msgs, peerDialogs] = await Promise.all([msgsPromise, peerDialogsPromise]);
+    
+    if (peerDialogs && peerDialogs.dialogs && peerDialogs.dialogs.length > 0) {
+      freshOutboxMaxId = peerDialogs.dialogs[0].readOutboxMaxId || freshOutboxMaxId;
+    }
+    const results = (await Promise.all(msgs.reverse()
+      .map(async m => {
+        const isPhoto = m.media?.className === 'MessageMediaPhoto'
+        const isDoc   = m.media?.className === 'MessageMediaDocument'
+        const isVideo = isDoc && m.media?.document?.mimeType?.startsWith('video/')
+        const isAudio = isDoc && (m.media?.document?.mimeType?.startsWith('audio/') || m.media?.document?.attributes?.some?.(a=>a.className==='DocumentAttributeAudio'))
+        return {
+          id: m.id,
+          text: m.message || (isPhoto ? '' : isAudio ? '🎤 Voice' : isVideo ? '🎥 Video' : isDoc ? '📎 Document' : ''),
+          fromMe: m.out,
+          date: m.date,
+          hasMedia: !!m.media,
+          isPhoto,
+          isVideo,
+          isAudio,
+          isDoc: isDoc && !isVideo && !isAudio,
+          senderId: m.senderId?.toString() || null,
+          senderName: m.sender?.firstName
+            ? (m.sender.firstName + (m.sender.lastName ? ' ' + m.sender.lastName : ''))
+            : (m.sender?.username || null),
+          senderUsername: m.sender?.username || null,
+          senderAccessHash: m.sender?.accessHash ? m.sender.accessHash.toString() : null,
+          reactions: parseReactions(m.reactions?.results) || [],
+          recentReactions: parseRecentReactions(m.reactions?.recentReactions) || [],
+          entities: m.entities ? m.entities.map(e => ({
+            className: e.className,
+            offset: e.offset,
+            length: e.length,
+            url: e.url,
+            language: e.language,
+            userId: e.userId ? e.userId.toString() : null,
+            customEmojiId: e.customEmojiId ? e.customEmojiId.toString() : null
+          })) : [],
+          fwdFrom: await resolveFwdInfo(client, m.fwdFrom),
+          webPage: m.media?.className === 'MessageMediaWebPage' && m.media.webpage ? {
+            className: m.media.webpage.className,
+            url: m.media.webpage.url,
+            displayUrl: m.media.webpage.displayUrl,
+            type: m.media.webpage.type,
+            siteName: m.media.webpage.siteName,
+            title: m.media.webpage.title,
+            description: m.media.webpage.description
+          } : null,
+          messageId: m.id,
+          isOutgoing: m.out,
+          sentAt: m.date,
+          readAt: null,
+          seenAt: null,
+          seenTimeAvailable: false,
+          seenTimeUnavailableReason: 'Telegram API did not provide exact read timestamp',
+          normalizedStatus: m.out ? (m.id <= freshOutboxMaxId ? 'seen' : 'sent') : null,
+        }
+      })))
+      .filter(m => m.text || m.isPhoto || m.isVideo || m.isDoc)
+    log('topic messages loaded: ' + results.length + ' msgs in ' + (Date.now()-t0) + 'ms')
+    res.json(results)
+  } catch(e) { 
+    log('topic messages error: '+e.message+' ('+(Date.now()-t0)+'ms)'); 
+    if (e.message.includes('AUTH_KEY') || e.message.includes('SESSION')) {
+      const acc = _accounts.get(req.accountId); if(acc) { acc.session = ''; acc.client = null; acc.ready = false; }
+      return res.status(401).json({ error: 'AUTH_FAILED' })
+    }
+    res.status(500).json({ error: e.message }) 
+  }
+})
+
 // ── SEND MESSAGE ──
 app.post('/api/chat/send', requireAuth, async (req,res) => {
   const { chatId, text } = req.body
