@@ -1557,88 +1557,125 @@ app.post('/api/ai/suggest', requireAuth, async (req,res) => {
 
   log('AI suggest — last: "' + lastClientMsg + '" stage: ' + stage)
 
-  // Local intent fallback for simple Vietnamese commands if AI fails
-  function localFallback(cmd) {
-    if (!cmd) return null;
+  function parseCommandIntent(cmd) {
+    const intent = {
+      language: 'en',
+      replyGoal: 'General response',
+      tone: 'neutral',
+      shouldMentionPR: false,
+      shouldMentionCMC: false,
+      shouldMentionReferral: false,
+      shouldMentionCommission: false,
+      shouldAskBudget: false,
+      shouldAskTimeline: false,
+      shouldNotSellYet: false,
+      shouldFollowUp: false,
+      targetAudience: 'general',
+      projectContextNeeded: false
+    };
+
+    if (!cmd) return intent;
     const norm = cmd.toLowerCase().normalize('NFC');
     
-    if (norm.includes("bao nhiêu dự án") || norm.includes("mấy dự án")) {
-      log('AI Suggest Fallback: Used local fallback for "bao nhiêu dự án" intent');
-      return [
-        { label: "Option 1", text: "How many projects are you currently working on?" },
-        { label: "Option 2", text: "Are you currently handling one project or multiple projects?" },
-        { label: "Option 3", text: "How many projects are you managing at the moment?" }
-      ];
+    // Check if Vietnamese
+    if (/[àáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ]/i.test(norm)) {
+      intent.language = 'vi';
     }
 
-    if (norm.includes("dự án web3") || norm.includes("dự web3") || norm.includes("nào khác")) {
-      log('AI Suggest Fallback: Used local fallback for "other Web3 projects" intent');
-      return [
-        { label: "Option 1", text: "Are you currently supporting any other Web3 projects?" },
-        { label: "Option 2", text: "Just curious, are you working with any other Web3 projects at the moment?" },
-        { label: "Option 3", text: "Besides this, are you currently helping any other crypto/Web3 projects?" }
-      ];
+    if (norm.includes("đăng bài pr") || norm.includes("đi bài pr") || norm.includes("pr support")) {
+      intent.shouldMentionPR = true;
     }
-
-    if (norm.includes("group chung") || norm.includes("hợp tác") || norm.includes("cơ hội")) {
-      log('AI Suggest Fallback: Used local fallback for "shared group collaboration" intent');
-      return [
-        { label: "Option 1", text: "Hey, I noticed we're in the same group, so I wanted to reach out and see if there's any potential collaboration." },
-        { label: "Option 2", text: "Hi, I saw we're both in the same community. Would be nice to connect and explore if there's any way to collaborate." },
-        { label: "Option 3", text: "Hey, I noticed we share the same group here. Are you open to a quick chat about possible collaboration?" }
-      ];
+    if (norm.includes("cmc") || norm.includes("coinmarketcap")) {
+      intent.shouldMentionCMC = true;
     }
-
-    if (norm.includes("ý tưởng") || norm.includes("trước đi") || norm.includes("chia sẻ ý tưởng")) {
-      log('AI Suggest Fallback: Used local fallback for "share idea first" intent');
-      return [
-        { label: "Option 1", text: "Sure, please share your idea first." },
-        { label: "Option 2", text: "Can you share your idea first so I can understand it better?" },
-        { label: "Option 3", text: "Please send me your idea first, then I'll see how we can align." }
-      ];
+    if (norm.includes("push camp") || norm.includes("đẩy campaign")) {
+      intent.replyGoal = 'amplify campaign';
+      intent.projectContextNeeded = true;
     }
-
-    if (norm.includes("example") || norm.includes("done") || norm.includes("đã làm") || norm.includes("case study")) {
-      log('AI Suggest Fallback: Used local fallback for "share examples" intent');
-      return [
-        { label: "Option 1", text: "Could you share some examples of what you've done before?" },
-        { label: "Option 2", text: "Can you send me a few examples of your previous work?" },
-        { label: "Option 3", text: "Would you mind sharing some examples or case studies you've done?" }
-      ];
+    if (norm.includes("giới thiệu dịch vụ")) {
+      intent.replyGoal = 'introduce Coincu services';
     }
-
-    if (norm.includes("link dự án") || norm.includes("cho xin link") || norm.includes("gửi link")) {
-      log('AI Suggest Fallback: Used local fallback for "project link" intent');
-      return [
-        { label: "Option 1", text: "Could you share the link to your project?" },
-        { label: "Option 2", text: "Do you mind sending over your project link so I can take a look?" },
-        { label: "Option 3", text: "Please drop your project link here when you have a moment." }
-      ];
+    if (norm.includes("mối quan hệ") || norm.includes("network") || norm.includes("đối tác") || norm.includes("referral")) {
+      intent.shouldMentionReferral = true;
     }
-
-    if (norm.includes("đăng bài pr") || norm.includes("push camp") || (norm.includes("giới thiệu") && norm.includes("hoa hồng"))) {
-      log('AI Suggest Fallback: Used local fallback for "PR support + referral commission" intent');
-      return [
-        { label: "Option 1", text: "We can help push your campaign with PR visibility. Also, if you can introduce Coincu to relevant projects in your network, I’m happy to offer referral commission for closed deals." },
-        { label: "Option 2", text: "Happy to support your campaign through PR and media coverage. If you have partners who need Coincu’s PR/CMC visibility, we can work on a commission-based referral." },
-        { label: "Option 3", text: "This could work both ways — Coincu can help amplify your campaign, and if you refer relevant projects to us, I can offer commission for successful deals." }
-      ];
+    if (norm.includes("hoa hồng") || norm.includes("commission")) {
+      intent.shouldMentionCommission = true;
+    }
+    if (norm.includes("hỏi budget") || norm.includes("budget")) {
+      intent.shouldAskBudget = true;
+    }
+    if (norm.includes("hỏi timeline") || norm.includes("timeline")) {
+      intent.shouldAskTimeline = true;
+    }
+    if (norm.includes("đừng sale vội") || norm.includes("don't sell yet")) {
+      intent.shouldNotSellYet = true;
+    }
+    if (norm.includes("mềm hơn") || norm.includes("softer")) {
+      intent.tone = 'softer';
+    }
+    if (norm.includes("trực tiếp hơn") || norm.includes("direct")) {
+      intent.tone = 'direct';
+    }
+    if (norm.includes("follow up") || norm.includes("follow-up")) {
+      intent.shouldFollowUp = true;
     }
     
-    if (norm.includes("commission") || norm.includes("hoa hồng") || norm.includes("giới thiệu")) {
-      log('AI Suggest Fallback: Used local fallback for "commission" intent');
-      return [
-        { label: "Option 1", text: "We offer a 20% commission per closed deal if you refer clients to us." },
-        { label: "Option 2", text: "Just so you know, we provide a 20% commission for any successful referrals." },
-        { label: "Option 3", text: "If you introduce any clients, we offer a 20% referral fee per closed deal." }
-      ];
-    }
-    
-    // If no explicit keywords match, return null to allow proper API error handling
-    return null;
+    return intent;
   }
 
+  function buildFallbackFromIntent(intent) {
+    let parts = [];
+    
+    if (intent.shouldFollowUp) {
+      parts.push("Just following up on our previous conversation.");
+    }
+    
+    if (intent.shouldMentionPR && intent.replyGoal === 'amplify campaign') {
+      parts.push("Happy to support your campaign through PR and media coverage.");
+    } else if (intent.shouldMentionPR) {
+      parts.push("We can help amplify your reach with PR and media coverage.");
+    } else if (intent.replyGoal === 'introduce Coincu services') {
+      parts.push("Coincu can provide tailored media services to boost your visibility.");
+    }
+    
+    if (intent.shouldMentionCMC) {
+      parts.push("We also distribute to CMC News for added credibility.");
+    }
+    
+    if (intent.shouldMentionReferral && intent.shouldMentionCommission) {
+      parts.push("If you have partners who need Coincu’s visibility, we can work on a commission-based referral.");
+    } else if (intent.shouldMentionCommission) {
+      parts.push("We offer a commission for any successful referrals you bring to Coincu.");
+    } else if (intent.shouldMentionReferral) {
+      parts.push("If you know other projects looking for media exposure, I'd love to connect.");
+    }
+    
+    if (intent.shouldAskBudget) {
+      parts.push("What budget range are you considering for this?");
+    } else if (intent.shouldAskTimeline) {
+      parts.push("When are you planning to start?");
+    } else if (intent.shouldNotSellYet) {
+      parts.push("Got it. What’s your main focus right now?");
+    }
+    
+    const text = parts.join(" ");
+    if (!text || text === "Just following up on our previous conversation.") {
+      // If it's empty or just follow up, it means it's an unrecognized specific command.
+      // We return null so the system falls back to standard AI/Error.
+      return null;
+    }
+    
+    return [
+      { label: "Option 1", text: text },
+      { label: "Option 2", text: text.replace("Happy to support", "We can support").replace("If you have partners", "Also, if you can introduce us to partners") },
+      { label: "Option 3", text: text.replace("visibility", "exposure").replace("commission-based referral", "referral collaboration") }
+    ];
+  }
+
+
   if (!GROQ_KEY) return res.json({ ok: false, error: "AI API key not configured." })
+
+  const intentSlots = parseCommandIntent(instruction);
 
   const SYSTEM_PROMPT = `You are Coincu's BD Sales Assistant.
 
@@ -1652,6 +1689,16 @@ CRITICAL RULES FOR INSTRUCTION (VIETNAMESE/MIXED LANGUAGE SUPPORT):
 3. NO LITERAL COPYING: NEVER copy Vietnamese words directly. Translate the intent.
 4. NO INVENTED CONTEXT: DO NOT invent concepts like "prediction event", "podcast", "rate card", "budget", "CMC", or "marketing campaign" unless they are EXPLICITLY mentioned in the instruction, chat history, or project research.
 5. SPEAKER DIRECTION: "tôi/mình" = You (Coincu). "bạn/anh/chị" = The Customer.
+
+=== EXPLICIT INTENT SLOTS DETECTED ===
+You must strictly fulfill these requirements in your output:
+- Mention PR: ${intentSlots.shouldMentionPR}
+- Mention CMC: ${intentSlots.shouldMentionCMC}
+- Ask Referral/Network: ${intentSlots.shouldMentionReferral}
+- Offer Commission: ${intentSlots.shouldMentionCommission}
+- Ask Budget: ${intentSlots.shouldAskBudget}
+- Ask Timeline: ${intentSlots.shouldAskTimeline}
+- Do Not Sell Yet: ${intentSlots.shouldNotSellYet}
 
 === PRIORITY 2: PROJECT RESEARCH ===
 If project research is provided, you MUST use its specific details (campaign name, category, specific needs) naturally in your reply. Do not just say "your project" or "prediction events" generically.
@@ -1818,6 +1865,24 @@ Return EXACTLY this JSON structure.
               failedReason = "Replies must be strictly 1-2 short sentences max. Your reply was too long and salesy.";
               break;
             }
+            // Validation 4: Strict Intent Fulfillment
+            const textLower = sug.text.toLowerCase();
+            if (intentSlots.shouldMentionCommission && !textLower.match(/commission|fee|referral|reward/)) {
+              failedReason = "The user explicitly commanded you to offer a commission, but you did not mention it. Please include commission/referral fee.";
+              break;
+            }
+            if (intentSlots.shouldMentionPR && !textLower.match(/pr\b|media|coverage|article/)) {
+              failedReason = "The user explicitly commanded you to mention PR, but you did not. Please mention PR or media coverage.";
+              break;
+            }
+            if (intentSlots.shouldMentionReferral && !textLower.match(/partner|network|project|intro|refer/)) {
+              failedReason = "The user commanded you to ask for a referral/network introduction, but you didn't. Please ask them to introduce partners.";
+              break;
+            }
+            if (intentSlots.shouldNotSellYet && textLower.match(/buy|offer|price|cost|buy|service/)) {
+              failedReason = "The user explicitly commanded you NOT to sell yet, but your reply sounds salesy. Please ask a softer qualifying question.";
+              break;
+            }
           }
 
           if (failedReason && retryCount < maxRetries) {
@@ -1850,14 +1915,17 @@ Return EXACTLY this JSON structure.
       }
     }
 
-    const fallback = !safeSuggestions && instruction ? localFallback(instruction) : null;
+    const fallback = !safeSuggestions && instruction ? buildFallbackFromIntent(intentSlots) : null;
 
     log('[AI Suggest Debug]', {
+      accountId: req.accountId,
+      chatId: chatId,
+      projectName: projectResearch ? "Used Research" : "No Research",
       rawCommand: instruction,
       aiApiStatus: safeSuggestions ? "success" : "failed",
       aiApiErrorCode: apiErrorStr || null,
       fallbackUsed: !!fallback,
-      detectedVietnameseIntent: !!fallback,
+      intentSlots: intentSlots,
       validationResult: validationResult,
       finalSuggestions: safeSuggestions || fallback || null
     });
