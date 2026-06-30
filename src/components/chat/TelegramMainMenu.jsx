@@ -41,7 +41,9 @@ export default function TelegramMainMenu({
   }, [onClose, activeAccountId]);
 
   const activeAcc = accounts.find(a => a.accountId === activeAccountId) || accounts[0];
-  const avatarLetter = activeAcc?.phone ? activeAcc.phone.charAt(1) : 'T'; // Usually starts with +
+  const avatarLetter = activeAcc?.firstName 
+    ? activeAcc.firstName.charAt(0).toUpperCase() 
+    : (activeAcc?.phone ? activeAcc.phone.charAt(1) : 'U');
 
   const handleItemClick = (label, action) => {
     console.log('[DEBUG] clickedMenuItem', label);
@@ -114,6 +116,11 @@ export default function TelegramMainMenu({
       <div style={{ padding: '8px 0' }}>
         {!showMore ? (
           <>
+            <ItemRow icon="➕" label="Add Account" onClick={() => handleItemClick('Add Account', onAddAccount)} />
+            <ItemRow icon="🔖" label="Saved Messages" onClick={() => handleItemClick('Saved Messages', onOpenSavedMessages)} />
+            <ItemRow icon="📱" label="My Stories" onClick={() => handleItemClick('My Stories', () => onOpenSavedMessages())} />
+            <ItemRow icon="👥" label="Contacts" onClick={() => handleItemClick('Contacts', onOpenContacts)} />
+            <ItemRow icon="⚙️" label="Settings" onClick={() => handleItemClick('Settings', onOpenSettings)} />
             <ItemRow icon="🖼️" label="Background" onClick={() => handleItemClick('Background', onOpenBackground)} />
             <ItemRow icon="⋯" label="More" onClick={() => setShowMore(true)} hasArrow />
           </>
