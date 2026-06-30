@@ -1357,6 +1357,51 @@ app.get('/api/chat/messages/:chatId/:msgId/read-receipts', requireAuth, async (r
   }
 });
 
+// ── GET TOPICS ──
+app.get('/api/chat/topics/:id', requireAuth, async (req, res) => {
+  const { id } = req.params;
+  const accountId = req.accountId;
+  try {
+    const { Api } = require('telegram/tl');
+    const client = await getClient(accountId);
+    const entity = await withTimeout(resolveEntity(client, id, req.query.username), 8000, 'resolveEntity');
+    
+    // Call GetForumTopics
+    const result = await client.invoke(new Api.channels.GetForumTopics({
+      channel: entity,
+      offsetDate: 0,
+      offsetId: 0,
+      offsetTopic: 0,
+      limit: 100
+    }));
+
+    if (!result || !result.topics) {
+      return res.json([]);
+    }
+
+    const topics = result.topics.map(t => {
+      const lastMsgObj = result.messages ? result.messages.find(m => m.id === t.topMessage) : null;
+      let lastMsgText = '';
+      if (lastMsgObj) {
+        lastMsgText = lastMsgObj.message || (lastMsgObj.media ? '[Media]' : '');
+      }
+      
+      return {
+        id: t.id,
+        title: t.title,
+        date: t.date,
+        unread: t.unreadCount || 0,
+        lastMsg: lastMsgText
+      };
+    });
+
+    res.json(topics);
+  } catch (err) {
+    console.error('Error fetching topics:', err.message);
+    res.json([]);
+  }
+});
+
 // ── SEND TOPIC MESSAGE ──
 app.post('/api/chat/topics/:chatId/:topicId/send', requireAuth, async (req,res) => {
   const { chatId, topicId } = req.params
