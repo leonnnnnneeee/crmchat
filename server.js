@@ -1616,6 +1616,15 @@ app.post('/api/ai/suggest', requireAuth, async (req,res) => {
       ];
     }
 
+    if (norm.includes("đăng bài pr") || norm.includes("push camp") || (norm.includes("giới thiệu") && norm.includes("hoa hồng"))) {
+      log('AI Suggest Fallback: Used local fallback for "PR support + referral commission" intent');
+      return [
+        { label: "Option 1", text: "We can help push your campaign with PR visibility. Also, if you can introduce Coincu to relevant projects in your network, I’m happy to offer referral commission for closed deals." },
+        { label: "Option 2", text: "Happy to support your campaign through PR and media coverage. If you have partners who need Coincu’s PR/CMC visibility, we can work on a commission-based referral." },
+        { label: "Option 3", text: "This could work both ways — Coincu can help amplify your campaign, and if you refer relevant projects to us, I can offer commission for successful deals." }
+      ];
+    }
+    
     if (norm.includes("commission") || norm.includes("hoa hồng") || norm.includes("giới thiệu")) {
       log('AI Suggest Fallback: Used local fallback for "commission" intent');
       return [
@@ -1845,35 +1854,25 @@ Return EXACTLY this JSON structure.
 
     log('[AI Suggest Debug]', {
       rawCommand: instruction,
-      normalizedCommand: normInstruction,
-      detectedIntent: detectedIntent,
-      chatContextUsed: !!history.length,
-      finalEnglishOptions: safeSuggestions || fallback || null,
-      validationResult: validationResult,
+      aiApiStatus: safeSuggestions ? "success" : "failed",
+      aiApiErrorCode: apiErrorStr || null,
       fallbackUsed: !!fallback,
-      apiError: apiErrorStr
+      detectedVietnameseIntent: !!fallback,
+      validationResult: validationResult,
+      finalSuggestions: safeSuggestions || fallback || null
     });
 
     if (safeSuggestions) {
       res.json({ 
         ok: true, 
         suggestions: safeSuggestions,
-        source: "fresh",
-        normalizedIntent: detectedIntent,
-        finalPromptPreview: currentPrompt
-      })
+        researchUsed: !!projectResearch,
+        normalizedIntent: detectedIntent || null
+      });
     } else if (fallback) {
-      res.json({
-        ok: true,
-        suggestions: fallback,
-        source: "local_fallback",
-        error: "API failed, used local fallback"
-      })
+      res.json({ ok: true, suggestions: fallback, aiWarning: "AI API failed, showing fallback suggestions", fallbackUsed: true, apiError: apiErrorStr })
     } else {
-      res.json({
-        ok: false,
-        error: apiErrorStr || (instruction ? "Failed to generate custom reply. Please try rephrasing your command." : "Failed to generate contextual replies. Please provide a custom instruction.")
-      })
+      res.json({ ok: false, code: "AI_API_FAILED", error: apiErrorStr || "Failed to generate suggestions" })
     }
   } catch(e) {
     log('AI Suggest Error: ' + e.message)

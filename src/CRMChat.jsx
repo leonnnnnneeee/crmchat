@@ -666,7 +666,7 @@ function ContextMenu({x,y,msg,chatId,token,allowedReactions,readOutboxMaxId,onDe
 
 
 // ── AI Suggest Panel ──
-function AISuggestPanel({text,suggestions,analysis,alternative,messages,loading,onUse,onUseAlt,onUseAll,onRegenerate,onClose,hasResearch,aiInstruction,setAiInstruction,aiError,onReconnect, projectResearch, useResearch, setUseResearch, onRefreshResearch}) {
+function AISuggestPanel({text,suggestions,analysis,alternative,messages,loading,warning,onUse,onUseAlt,onUseAll,onRegenerate,onClose,hasResearch,aiInstruction,setAiInstruction,aiError,onReconnect, projectResearch, useResearch, setUseResearch, onRefreshResearch}) {
   const [editIdx,setEditIdx] = useState(null)
   const [edited,setEdited]   = useState({})
 
@@ -802,6 +802,13 @@ function AISuggestPanel({text,suggestions,analysis,alternative,messages,loading,
               </button>
             </>
           )}
+        </div>
+      )}
+
+      {/* Warning State */}
+      {warning && !aiError && (
+        <div style={{padding:"8px 16px", background:"rgba(245,158,11,.1)", color:"#fbbf24", fontSize:12, fontWeight:600, display:"flex", alignItems:"center", gap:8}}>
+          <span>⚠️</span> {warning}
         </div>
       )}
 
@@ -2594,6 +2601,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
   const [aiAlt, setAiAlt] = useState('')
   const [aiLoading, setAiLoading] = useState(false)
   const [aiError, setAiError] = useState(null)
+  const [aiWarning, setAiWarning] = useState(null)
   const [aiInstruction,setAiInstruction]=useState("")
   const msgsRef = useRef([])
   useEffect(()=>{ msgsRef.current = msgs },[msgs])
@@ -3064,15 +3072,16 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
 
   useEffect(()=>{
     // Don't clear instruction, just clear the suggestions/error because the context changed
-    if (aiSuggestions.length > 0 || aiError || aiText) {
-      setAiSuggestions([]); setAiText(""); setAiError(null);
+    if (aiSuggestions.length > 0 || aiError || aiText || aiWarning) {
+      setAiSuggestions([]); setAiText(""); setAiError(null); setAiWarning(null);
     }
   },[msgs?.length, lastClientMsgText])
 
   // Clear AI error when command input changes, but keep suggestions until Generate is clicked
   useEffect(() => {
-    if (aiError) {
+    if (aiError || aiWarning) {
       setAiError(null);
+      setAiWarning(null);
     }
   }, [aiInstruction]);
 
@@ -3943,12 +3952,14 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
         return;
       }
 
-      if (d.ok === false || d.error) {
+      if (d.ok === false) {
         setAiError(d.code === 'AI_PROVIDER_AUTH_ERROR' ? "AI Service Provider is unavailable. Please check backend configuration." : (d.error || "Failed to generate custom reply."));
       } else if (d.suggestions) {
         setAiSuggestions(d.suggestions)
+        if (d.aiWarning) setAiWarning(d.aiWarning)
       } else if (d.suggestion) {
         setAiText(d.suggestion)
+        if (d.aiWarning) setAiWarning(d.aiWarning)
       }
     } catch(e) { 
       setAiError("Network error connecting to AI service.")
@@ -4532,7 +4543,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
     chats, sending, setForceNormalView, loadingMore, readChats,
     firstUnreadRef, renderMessageText, chatSearch, endRef, aiInstruction, setAiInstruction,
     chatMembersCache, fetchMembers,
-    AISuggestPanel, aiText, setAiText, aiSuggestions, setAiSuggestions, aiAnalysis, setAiAnalysis,
+    AISuggestPanel, aiText, setAiText, aiSuggestions, setAiSuggestions, aiAnalysis, setAiAnalysis, aiWarning, setAiWarning,
     aiAlt, setAiAlt, setAiLoading, tmplCats, setTmplCat,
     tmplCat, TEMPLATES: [], setMsgs, setSelectMode, lightbox, StageBadge, gifOpen, setGifOpen,
     gifQuery, setGifQuery, searchGifs, gifs, loadingRef, showScrollBtn, aiError, highlightedMsgId, onAuthFailed,
@@ -4940,7 +4951,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
           </div>
           <div style={{ zIndex: 1, display: 'flex', flexDirection: 'column' }}>
             <AISuggestPanel
-              text={aiText} suggestions={aiSuggestions} analysis={aiAnalysis} alternative={aiAlt} loading={aiLoading}
+              text={aiText} suggestions={aiSuggestions} analysis={aiAnalysis} alternative={aiAlt} loading={aiLoading} warning={aiWarning}
               aiError={aiError}
               onUse={(txt)=>{setInput(txt);setAiText("");setAiSuggestions([]);setAiAnalysis("");setAiAlt("")}}
               onUseAlt={()=>{setInput(aiAlt);setAiText("");setAiSuggestions([]);setAiAnalysis("");setAiAlt("")}}
