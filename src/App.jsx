@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react"
 import CRMChat from "./CRMChat.jsx"
+import { safeFetch } from "./utils/api"
 
 // ── Telegram color palette ──
 const TG = {
@@ -42,14 +43,13 @@ function Login({ onLogin }) {
     if (!user || !pass) return setErr("Nhập đủ thông tin")
     setBusy(true); setErr("")
     try {
-      const r = await fetch("/api/login", {
+      const d = await safeFetch("/api/login", {
         method:"POST", headers:{"Content-Type":"application/json"},
         body: JSON.stringify({username:user, password:pass})
       })
-      const d = await r.json()
       if (d.ok) onLogin(d.token)
       else setErr(d.message || "Sai thông tin đăng nhập")
-    } catch { setErr("Không kết nối được server") }
+    } catch { setErr("Không kết nối được server hoặc lỗi cấu hình") }
     setBusy(false)
   }
 
@@ -94,12 +94,11 @@ function TelegramConnect({ token, onConnected, onLogout }) {
     if (!phone.trim()) return setErr("Nhập số điện thoại")
     setBusy(true); setErr("")
     try {
-      const r = await fetch("/api/tg/send-otp",{
+      const d = await safeFetch("/api/tg/send-otp",{
         method:"POST", headers:{"Content-Type":"application/json","x-auth-token":token},
         body: JSON.stringify({phone})
       })
-      if (r.status === 401) return onLogout();
-      const d = await r.json()
+      if (d.__httpStatus === 401) return onLogout();
       if (d.ok) { setHash(d.phoneCodeHash); setStep("otp") }
       else setErr(d.error || "Gửi OTP thất bại")
     } catch(e) { setErr(e.message) }
@@ -110,12 +109,11 @@ function TelegramConnect({ token, onConnected, onLogout }) {
     if (!code.trim()) return setErr("Nhập mã OTP")
     setBusy(true); setErr("")
     try {
-      const r = await fetch("/api/tg/verify-otp",{
+      const d = await safeFetch("/api/tg/verify-otp",{
         method:"POST", headers:{"Content-Type":"application/json","x-auth-token":token},
         body: JSON.stringify({phone, code, phoneCodeHash:hash, password:pw})
       })
-      if (r.status === 401) return onLogout();
-      const d = await r.json()
+      if (d.__httpStatus === 401) return onLogout();
       if (d.ok) { setStep("done"); setTimeout(onConnected, 1200) }
       else if (d.error?.includes("PASSWORD")) { setStep("2fa"); setErr("") }
       else setErr(d.error || "Xác thực thất bại")
@@ -229,16 +227,15 @@ export default function App() {
     if (!token) { setChecking(false); return }
     const controller = new AbortController()
     const timeout = setTimeout(()=>{ controller.abort(); setChecking(false) }, 5000)
-    fetch("/api/tg/status",{headers:{"x-auth-token":token}, signal:controller.signal})
-      .then(r => {
-        if (r.status === 401) {
+    safeFetch("/api/tg/status",{headers:{"x-auth-token":token}, signal:controller.signal})
+      .then(d => {
+        if (d.__httpStatus === 401) {
           setToken("");
           localStorage.removeItem("crm_token");
           throw new Error("Unauthorized");
         }
-        return r.json()
+        clearTimeout(timeout); setTgOk(d.connected); setChecking(false) 
       })
-      .then(d=>{ clearTimeout(timeout); setTgOk(d.connected); setChecking(false) })
       .catch(()=>{ clearTimeout(timeout); setChecking(false) })
   },[token])
 

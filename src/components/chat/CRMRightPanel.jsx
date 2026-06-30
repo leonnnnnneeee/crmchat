@@ -1,4 +1,5 @@
 import React from 'react';
+import { safeFetch } from '../../utils/api';
 
 export default function CRMRightPanel(props) {
   const { 
@@ -213,7 +214,7 @@ export default function CRMRightPanel(props) {
                 const validOpts = pollOptions.filter(o=>o.trim())
                 if(validOpts.length<2) return alert('Need at least 2 options')
                 const pollText = '📊 '+pollQuestion+'\n'+validOpts.map((o,i)=>`${i+1}. ${o}`).join('\n')
-                await fetch("/api/chat/send",{method:"POST",
+                await safeFetch("/api/chat/send",{method:"POST",
                   headers:{"Content-Type":"application/json","x-auth-token":token},
                   body:JSON.stringify({chatId:sel.id,text:pollText})
                 })
@@ -335,7 +336,7 @@ export default function CRMRightPanel(props) {
               {chats.filter(c=>c.name).slice(0,20).map(c=>(
                 <div key={c.id} onClick={async()=>{
                   try {
-                    await fetch("/api/chat/send",{method:"POST",
+                    await safeFetch("/api/chat/send",{method:"POST",
                       headers:{"Content-Type":"application/json","x-auth-token":token},
                       body:JSON.stringify({chatId:c.id,text:"↪️ "+forwardMsg.text})
                     })

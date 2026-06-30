@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { safeFetch } from '../../utils/api';
 
 const TG = {
   blueLight: "#5288c1",
@@ -100,12 +101,11 @@ export default function VoiceMessage({ msg, chatId, token }) {
 
     setTranscribing(true);
     try {
-      const res = await fetch('/api/ai/transcribe-voice', {
+      const data = await safeFetch('/api/ai/transcribe-voice', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
         body: JSON.stringify({ chatId, messageId: msg.id, fileId })
       });
-      const data = await res.json();
       if (data.ok && data.text) {
         setTranscript(data.text);
         localStorage.setItem(cacheKey, data.text);

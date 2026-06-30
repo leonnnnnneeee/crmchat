@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import VoiceMessage from './VoiceMessage';
+import { safeFetch } from '../../utils/api';
 
 const getSenderId = (m) => m.senderId || m.fromId || m.userId || m.peerId || m.author?.id || m.sender?.id || m.from?.id;
 
@@ -466,7 +467,7 @@ const MessageList = React.memo(function MessageList(props) {
               <button onClick={()=>{
                 const toDelete = [...selectedMsgs].map(i=>msgs[i]).filter(m=>m&&m.fromMe&&m.id>0)
                 setMsgs(p=>p.filter((m,i)=>!selectedMsgs.has(i)))
-                toDelete.forEach(m=>fetch("/api/chat/delete",{method:"POST",headers:{"Content-Type":"application/json","x-auth-token":token},body:JSON.stringify({chatId:sel.id,messageId:m.id})}))
+                toDelete.forEach(m=>safeFetch("/api/chat/delete",{method:"POST",headers:{"Content-Type":"application/json","x-auth-token":token},body:JSON.stringify({chatId:sel.id,messageId:m.id})}).catch(e=>console.error('Delete failed:', e)))
                 setSelectMode(false);setSelectedMsgs(new Set())
               }} style={{padding:"7px 14px",background:"rgba(229,57,53,.15)",color:"#e53935",border:"1px solid rgba(229,57,53,.3)",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600}}>
                 🗑 Delete
@@ -498,7 +499,7 @@ const MessageList = React.memo(function MessageList(props) {
                       onClick={async()=>{
                         setGifOpen(false)
                         // Send GIF as a message with the URL
-                        await fetch("/api/chat/send",{method:"POST",
+                        await safeFetch("/api/chat/send",{method:"POST",
                           headers:{"Content-Type":"application/json","x-auth-token":token},
                           body:JSON.stringify({chatId:sel.id,text:url})
                         })

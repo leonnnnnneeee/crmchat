@@ -1511,6 +1511,15 @@ app.post('/api/ai/transcribe-voice', requireAuth, async (req,res) => {
 })
 
 // ── AI RESEARCH PROJECT ──
+// Placeholder for missing AI Reply route
+app.post('/api/ai/reply', requireAuth, async (req, res) => {
+  res.json({
+    ok: false,
+    error: "AI Reply feature is currently under construction on the backend.",
+    code: "NOT_IMPLEMENTED"
+  });
+});
+
 app.post('/api/ai/research-project', requireAuth, async (req, res) => {
   const { accountId, chatId, projectName, links, recentMessages } = req.body;
   if (!global.researchCache) global.researchCache = {};
@@ -2740,6 +2749,15 @@ app.get('/api/chat/common_groups/:id', requireAuth, async (req, res) => {
 
 // ── STATIC FILES — must be LAST, after all API routes ──
 app.use(express.static(require('path').join(__dirname, 'dist')))
+// Prevent /api requests from falling back to the React HTML
+app.all('/api/*', (req, res) => {
+  res.status(404).json({
+    ok: false,
+    code: 'API_ROUTE_NOT_FOUND',
+    error: `API route ${req.method} ${req.path} not found on the backend.`
+  });
+});
+
 app.get('*', (req,res) => res.sendFile(require('path').join(__dirname,'dist','index.html')))
 
 // Prevent crashes from unhandled rejections

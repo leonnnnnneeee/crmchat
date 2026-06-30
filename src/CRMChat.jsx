@@ -116,7 +116,7 @@ function Avatar({name, chatId, username, accessHash, size=40}) {
     if (accessHash) qsObj.append('accessHash', accessHash)
     const qs = qsObj.toString() ? `?${qsObj.toString()}` : ""
     fetch(`/api/chat/photo/${chatId}${qs}`, {headers:{"x-auth-token":_authToken}})
-      .then(r => { if (!r.ok) throw new Error("no photo"); return r.blob() })
+      .then(r => { if (r.__httpStatus >= 400) throw new Error("no photo"); return r.blob() })
       .then(blob => {
         const url = URL.createObjectURL(blob)
         photoCache[chatId] = url
@@ -302,12 +302,11 @@ function ContextMenu({x,y,msg,chatId,token,allowedReactions,readOutboxMaxId,onDe
   useEffect(() => {
     if (msg?.fromMe && msg.id <= readOutboxMaxId && chatId) {
       setReadInfo({ loading: true, data: null, error: null });
-      fetch(`/api/chat/messages/${chatId}/${msg.id}/read-receipts`, {
+      safeFetch(`/api/chat/messages/${chatId}/${msg.id}/read-receipts`, {
         headers: { 'x-auth-token': token }
       })
-      .then(r => r.json())
       .then(res => {
-        if (res.ok) {
+        if (!res.__httpStatus || res.ok) {
           setReadInfo({ loading: false, data: res, error: null });
         } else {
           setReadInfo({ loading: false, data: null, error: res.error });
@@ -406,7 +405,7 @@ function ContextMenu({x,y,msg,chatId,token,allowedReactions,readOutboxMaxId,onDe
     if (allowedReactions.status === 'loading') {
       isLoading = true;
       emojisToRender = [];
-    } else if (allowedReactions.ok) {
+    } else if (!allowedReactions.__httpStatus || allowedReactions.ok) {
       if (allowedReactions.reactionsEnabled === false) {
         reactionsNotAllowed = true;
         emojisToRender = [];
@@ -473,7 +472,7 @@ function ContextMenu({x,y,msg,chatId,token,allowedReactions,readOutboxMaxId,onDe
     if (allowedReactions.status === 'loading') {
       isLoading = true;
       emojisToRender = [];
-    } else if (allowedReactions.ok) {
+    } else if (!allowedReactions.__httpStatus || allowedReactions.ok) {
       if (allowedReactions.reactionsEnabled === false) {
         reactionsNotAllowed = true;
         emojisToRender = [];
@@ -912,8 +911,7 @@ function LinkPreview({url, webPage}) {
     
     if(!isVisible || meta||failed||!url) return
     if(linkCache[url]) { setMeta(linkCache[url]); return }
-    fetch('https://api.allorigins.win/get?url='+encodeURIComponent(url))
-      .then(r=>r.json())
+    safeFetch('https://api.allorigins.win/get?url='+encodeURIComponent(url))
       .then(d=>{
         const h = d.contents||''
         const title = h.match(/<meta[^>]*property="og:title"[^>]*content="([^"]+)"/)?.[1]
@@ -981,11 +979,11 @@ function ChatPhoto({msg, chatId, authToken, onImageClick, thumb}) {
       try {
         const url = `/api/chat/media/${chatId}/${msgId}?token=${authToken}&r=${retryCnt}${thumb !== undefined ? '&thumb=' + thumb : ''}`
         console.log(`[ChatPhoto] Fetching media for msgId=${msgId}, url=${url}`)
-        const res = await fetch(url)
+        const data = await safeFetch(url)
         
         if (!isMounted) return
         
-        if (!res.ok) {
+        if (res.__httpStatus >= 400) {
           console.error(`[ChatPhoto] Failed to fetch msgId=${msgId}, status=${res.status} ${res.statusText}`)
           setStatus('error')
           return
@@ -1238,16 +1236,16 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
     if (!targetId) return;
     let isMounted = true
     console.log(`[Debug] Resolve endpoint URL: /api/chat/profile/${targetId}`);
-    fetch(`/api/chat/profile/${targetId}`, { headers: {'x-auth-token': token} })
+    safeFetch(`/api/chat/profile/${targetId}`, { headers: {'x-auth-token': token} })
       .then(async r => {
         const ct = r.headers.get('content-type');
         if (ct && ct.includes('text/html')) throw new Error('API route not found or backend returned HTML');
-        if (!r.ok) {
+        if (r.__httpStatus >= 400) {
           if (r.status === 401 && typeof onAuthFailed === 'function') onAuthFailed();
-          const err = await r.json().catch(()=>({}));
+          const err = r.catch(()=>({}));
           throw new Error(err.error || err.code || `HTTP ${r.status}`);
         }
-        return r.json();
+        return r;
       })
       .then(d => { 
         if(isMounted && d.ok && d.full) {
@@ -1262,16 +1260,16 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
   useEffect(() => {
     if (!data?.id) return
     let isMounted = true
-    fetch(`/api/chat/status/${data.id}`, { headers: {'x-auth-token': token} })
+    safeFetch(`/api/chat/status/${data.id}`, { headers: {'x-auth-token': token} })
       .then(async r => {
         const ct = r.headers.get('content-type');
         if (ct && ct.includes('text/html')) throw new Error('API route not found or backend returned HTML');
-        if (!r.ok) {
+        if (r.__httpStatus >= 400) {
           if (r.status === 401 && typeof onAuthFailed === 'function') onAuthFailed();
-          const err = await r.json().catch(()=>({}));
+          const err = r.catch(()=>({}));
           throw new Error(err.error || err.code || `HTTP ${r.status}`);
         }
-        return r.json();
+        return r;
       })
       .then(d => { if(isMounted) setStatus(d.status) })
       .catch(e => { if(isMounted) setStatus('') })
@@ -1351,17 +1349,17 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
       const accessHashQuery = data.accessHash ? `?accessHash=${data.accessHash}` : '';
       const usernameQuery = data.username ? (data.accessHash ? `&username=${data.username}` : `?username=${data.username}`) : '';
       
-      fetch(`/api/chat/common_groups/${data.id}${accessHashQuery}${usernameQuery}`, { headers: {'x-auth-token': token}, signal: controller.signal })
+      safeFetch(`/api/chat/common_groups/${data.id}${accessHashQuery}${usernameQuery}`, { headers: {'x-auth-token': token}, signal: controller.signal })
         .then(async r => {
           clearTimeout(timeoutId);
           const ct = r.headers.get('content-type');
           if (ct && ct.includes('text/html')) throw new Error('API route not found or backend returned HTML');
-          if (!r.ok) {
+          if (r.__httpStatus >= 400) {
             if (r.status === 401 && typeof onAuthFailed === 'function') onAuthFailed();
-          const err = await r.json().catch(()=>({}));
+          const err = r.catch(()=>({}));
             throw new Error(err.error || `HTTP ${r.status}`);
           }
-          return r.json()
+          return r
         })
         .then(d => {
           if (isMounted && d.ok) {
@@ -1397,17 +1395,17 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
     const currentCursor = isBackgroundRefresh ? 0 : tabOffsetId[tab];
     console.log(`[Debug] Media tab type: ${tab} | API URL: /api/telegram/shared-media?chatId=${data.chatId}&type=${tab}${fromUserQuery}${accessHashQuery}${topicIdQuery}&cursor=${currentCursor}&limit=30`);
     
-    fetch(`/api/telegram/shared-media?chatId=${data.chatId}&type=${tab}${fromUserQuery}${accessHashQuery}${topicIdQuery}&cursor=${currentCursor}&limit=30`, { headers: {'x-auth-token': token}, signal: controller.signal })
+    safeFetch(`/api/telegram/shared-media?chatId=${data.chatId}&type=${tab}${fromUserQuery}${accessHashQuery}${topicIdQuery}&cursor=${currentCursor}&limit=30`, { headers: {'x-auth-token': token}, signal: controller.signal })
       .then(async r => {
         clearTimeout(timeoutId);
         const ct = r.headers.get('content-type');
         if (ct && ct.includes('text/html')) throw new Error('API route not found or backend returned HTML');
-        if (!r.ok) {
+        if (r.__httpStatus >= 400) {
           if (r.status === 401 && typeof onAuthFailed === 'function') onAuthFailed();
-          const err = await r.json().catch(()=>({}));
+          const err = r.catch(()=>({}));
           throw new Error(err.error || err.code || `HTTP ${r.status}`);
         }
-        return r.json();
+        return r;
       })
       .then(d => {
         if (isMounted && d.ok) {
@@ -1493,11 +1491,10 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
         try {
           const queryParam = data.username ? `username=${data.username}` : `peerId=${data.id}`;
           console.log(`[Fwd Debug] Resolving entity via backend: ${queryParam}`);
-          const res = await fetch(`/api/telegram/entities/resolve?${queryParam}`, { headers: {'x-auth-token': token} });
-          const json = await res.json();
+          const json = await safeFetch(`/api/telegram/entities/resolve?${queryParam}`, { headers: {'x-auth-token': token} });
           console.log(`[Fwd Debug] Resolve response:`, json);
           
-          if (json.ok) {
+          if (!json.__httpStatus || json.ok) {
             finalAccessHash = json.accessHash;
             if (json.username) finalUsername = json.username;
             if (json.firstName) {
@@ -2062,8 +2059,8 @@ function AddAccountModal({ onClose, onSuccess }) {
         headers: { 'Content-Type': 'application/json', 'x-auth-token': _authToken },
         body: JSON.stringify({ phone, accountId: newId })
       });
-      const data = await res.json();
-      if (!data.ok) throw new Error(data.error);
+      ;
+      if (data.__httpStatus >= 400) throw new Error(data.error);
       setPhoneCodeHash(data.phoneCodeHash);
     } catch (e) {
       setError(e.message);
@@ -2082,8 +2079,8 @@ function AddAccountModal({ onClose, onSuccess }) {
         headers: { 'Content-Type': 'application/json', 'x-auth-token': _authToken },
         body: JSON.stringify({ phone, code, phoneCodeHash, password, accountId })
       });
-      const data = await res.json();
-      if (!data.ok) {
+      const data = res;
+      if (data.__httpStatus >= 400) {
         if (data.error && data.error.includes('SESSION_PASSWORD_NEEDED')) {
           setNeedsPassword(true);
           return;
@@ -2110,8 +2107,8 @@ function AddAccountModal({ onClose, onSuccess }) {
         headers: { 'Content-Type': 'application/json', 'x-auth-token': _authToken },
         body: JSON.stringify({ sessionString: sessionStr.trim(), accountId: newId })
       });
-      const data = await res.json();
-      if (!data.ok) throw new Error(data.error);
+      const data = res;
+      if (data.__httpStatus >= 400) throw new Error(data.error);
       if (onSuccess) onSuccess(data.accountId);
       onClose();
     } catch (e) {
@@ -2217,8 +2214,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
   useEffect(() => { setActiveAccountId(activeAccountId); }, [activeAccountId]);
 
   const fetchAccounts = useCallback(() => {
-    fetch('/api/telegram/accounts', { headers: { 'x-auth-token': token } })
-      .then(r => r.json())
+    safeFetch('/api/telegram/accounts', { headers: { 'x-auth-token': token } })
       .then(data => {
         if (Array.isArray(data) && data.length > 0) {
           setAccounts(data);
@@ -2364,8 +2360,8 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
         body: JSON.stringify(payload)
       });
       
-      const data = await res.json();
-      if (!data.ok) {
+      const data = res;
+      if (data.__httpStatus >= 400) {
         toast.error(data.error || 'Translation failed');
         return;
       }
@@ -2392,9 +2388,9 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
     setIsGlobalSearching(true);
     try {
       const url = `/api/telegram/search?q=${encodeURIComponent(search.trim())}`
-      const res = await fetch(url, { headers: { 'x-auth-token': token } })
-      if (res.ok) {
-        const data = await res.json()
+      const data = await safeFetch(url, { headers: { 'x-auth-token': token } })
+      if (!res.__httpStatus || res.ok) {
+        
         const query = search.trim().toLowerCase()
         const strictMatches = (data || []).filter(c => {
           const name = (c.name || '').toLowerCase()
@@ -2517,8 +2513,8 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
     let isMounted = true
     const fetchStatus = async () => {
       try {
-        const res = await fetch(`/api/chat/status/${sel.id}`, {headers:{"x-auth-token":token}})
-        const data = await res.json()
+        const data = await safeFetch(`/api/chat/status/${sel.id}`, {headers:{"x-auth-token":token}})
+        
         if (isMounted && data.status) {
           setOnlineStatus(data.status)
         } else if (isMounted) {
@@ -2558,7 +2554,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
     setMembersError(null)
     console.log(`[Members API] Fetching members for ${sel.id}...`)
     try {
-      const res = await fetch(`/api/chat/members/${sel.id}`, { headers: { "x-auth-token": token }})
+      const data = await safeFetch(`/api/chat/members/${sel.id}`, { headers: { "x-auth-token": token }})
       console.log(`[Members API] URL: /api/chat/members/${sel.id}, Status: ${res.status}`)
       
       if (res.status === 401) {
@@ -2570,8 +2566,8 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
         return
       }
       
-      const data = await res.json()
-      if (data.ok) {
+      
+      if (!data.__httpStatus || data.ok) {
         setChatMembersCache(p => ({...p, [sel.id]: data.members}))
       } else {
         if (data.error === 'No session' || data.error === 'TG_SESSION_EXPIRED' || data.error?.includes('SESSION')) {
@@ -2670,14 +2666,14 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
       
       const url = `/api/telegram/available-reactions?chatId=${chatId}`;
       console.log('endpoint URL', url);
-      const res = await fetch(url, { headers: { 'x-auth-token': token } });
+      const d = await safeFetch(url, { headers: { 'x-auth-token': token } });
       console.log('response status', res.status);
-      const d = await res.json();
+      ;
       console.log('allowedReactionsFetchStatus', d);
       console.log('source', d.source || 'fallback');
       console.log('allowAll', d.allowAll);
       console.log('reactions returned', d.reactions);
-      if (!d.ok) console.log('fallback reason', d.error);
+      if (d.__httpStatus >= 400) console.log('fallback reason', d.error);
       
       setAllowedReactionsCache(p => ({ ...p, [chatId]: d }));
     } catch(e) {
@@ -2793,15 +2789,10 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
       recentMessages: msgs.slice(-10)
     };
     
-    fetch('/api/ai/research-project', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
-      body: JSON.stringify(payload)
-    })
-    .then(r => r.json())
+    safeFetch('/api/ai/research-project', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-auth-token': token }, body: JSON.stringify(payload) })
     .then(d => {
        console.log('[DEBUG] researchApiStatus', d);
-       if (d.ok) {
+       if (!d.__httpStatus || d.ok) {
          setProjectResearch({ status: 'ready', data: d.research });
          setUseResearch(true);
        } else {
@@ -2852,8 +2843,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
            url += `&offsetDate=${lastChat.date}&offsetId=${lastChat.msgId || 0}&offsetPeer=${lastChat.id}`
         }
       }
-      const r = await fetch(url,{headers:{"x-auth-token":token}})
-      const d = await r.json()
+      const d = await safeFetch(url,{headers:{"x-auth-token":token}})
       if (Array.isArray(d)) {
         if (d.length < 50) setHasMoreChats(false)
         else if (!append) setHasMoreChats(true)
@@ -2945,10 +2935,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
       setSelTopic(prev => prev && prev.id === topicId ? { ...prev, unread: 0 } : prev)
     }
 
-    fetch('/api/chat/read', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json', 'x-auth-token': token},
-      body: JSON.stringify({ chatId, maxId: maxMsgId })
+    safeFetch('/api/chat/read', { method: 'POST', headers: {'Content-Type': 'application/json', 'x-auth-token': token}, body: JSON.stringify({ chatId, maxId: maxMsgId })
     }).catch(err => console.error("Auto read error", err))
   }, [token])
 
@@ -3053,11 +3040,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
     if (isChatActuallyForum(sel) && !currentTopic && !forceNormalView) {
       setLoadingTopics(true)
       setTopicError(false)
-      fetch(`/api/chat/topics/${sel.id}?t=${Date.now()}`, { headers: {"x-auth-token": token} })
-        .then(r=>{
-          if (!r.ok) throw new Error('Failed to fetch')
-          return r.json()
-        })
+      safeFetch(`/api/chat/topics/${sel.id}?t=${Date.now()}`, { headers: {"x-auth-token": token} })
         .then(d=>{
           const tList = Array.isArray(d) ? d : []
           setTopics(p=>({...p, [sel.id]: tList}))
@@ -3078,10 +3061,8 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
     loadMessages(sel, currentTopic?.id || null)
 
     // Fetch Pinned Message
-    fetch(`/api/telegram/messages/pinned?chatId=${sel.id}${currentTopic ? '&topicId='+currentTopic.id : ''}`, {
-      headers:{'x-auth-token':token}
-    })
-    .then(r=>r.json())
+    safeFetch(`/api/telegram/messages/pinned?chatId=${sel.id}${currentTopic ? '&topicId='+currentTopic.id : ''}`, { headers:{'x-auth-token':token} })
+    .then(r => r)
     .then(d=>{
       if(d.ok && d.pinnedMessage) setPinnedMessage(d.pinnedMessage)
       else setPinnedMessage(null)
@@ -3434,8 +3415,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
       } else {
         url = '/api/chat/messages/'+chat.id+qs
       }
-      const r = await fetch(url, {headers:{"x-auth-token":token}})
-      const d = await r.json()
+      const d = await safeFetch(url, {headers:{"x-auth-token":token}})
       
       if (loadMessageRequestIds.current[cacheKey] !== reqId) {
         console.log('[DEBUG] staleResponseIgnored', true, { 
@@ -3563,7 +3543,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
 
     let validationResult = 'allowed';
     if (allowed) {
-      if (allowed.ok) {
+      if (!allowed.__httpStatus || allowed.ok) {
         if (allowed.reactionsEnabled === false) {
           validationResult = 'not_allowed';
         } else if (!allowed.allowAll) {
@@ -3668,7 +3648,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
           topicId: targetTopicId
         })
       });
-      const d = await res.json();
+      const d = res;
       console.log('apiStatus', d);
       console.log('backendValidationResult', d.code || 'allowed');
       console.log('finalReactionsFromTelegram', d.tgRes || 'unchanged');
@@ -3713,7 +3693,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
           headers:{'Content-Type':'application/json','x-auth-token':token},
           body:JSON.stringify({chatId:sel.id,msgId:origId,text,username:sel.username||undefined})
         })
-        const d = await r.json()
+        const d = r
         if(!d.ok) console.error('Edit failed:', d.error)
       } catch(e) { console.error('Edit error:', e) }
       return
@@ -3781,7 +3761,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
           headers: { "x-auth-token": token },
           body: formData
         })
-        const d = await r.json()
+        const d = r
         if (d.ok && d.messageId) { realMsgId = d.messageId; realDate = d.date; }
         
         setPastedFile(null)
@@ -3791,7 +3771,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
           method:"POST", headers:{"Content-Type":"application/json","x-auth-token":token},
           body:JSON.stringify({text, username: sel.username || undefined})
         })
-        const d = await r.json()
+        const d = r
         if (d.ok && d.messageId) { realMsgId = d.messageId; realDate = d.date; }
       } else {
         const payload = {chatId:sel.id, text, username: sel.username || undefined};
@@ -3799,7 +3779,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
           method:"POST", headers:{"Content-Type":"application/json","x-auth-token":token},
           body:JSON.stringify(payload)
         })
-        const d = await r.json()
+        const d = r
         if (d.ok && d.messageId) { realMsgId = d.messageId; realDate = d.date; }
         console.log('[DEBUG] sendApiResponse', d)
       }
@@ -3847,7 +3827,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
         headers:{'Content-Type':'application/json','x-auth-token':token},
         body:JSON.stringify({messages:msgs.slice(-30),contactName:sel.name})
       })
-      const d = await r.json()
+      const d = r
       setAiText(d.summary||'No summary available')
       setAiAnalysis('📝 Conversation Summary')
     } catch(e) { setAiText('Summary error: '+e.message) }
@@ -3864,7 +3844,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
         headers:{'Content-Type':'application/json','x-auth-token':token},
         body:JSON.stringify({messages:msgs.slice(-40),contactName:sel.name})
       })
-      const d = await r.json()
+      const d = r
       const info = d.info||{}
       const text = Object.entries(info)
         .filter(([,v])=>v&&v!=='unknown'&&v!=='N/A')
@@ -3941,7 +3921,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
         headers: {"Content-Type":"application/json","x-auth-token":token},
         body: JSON.stringify(aiPayload)
       })
-      const d = await r.json()
+      const d = r
       
       // Ignore if a newer request was started
       if (activeAiRequest.current !== attemptId) return;
@@ -3952,7 +3932,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
             method: 'POST',
             headers: { 'x-auth-token': token }
           });
-          const refD = await refR.json();
+          const refD = refR;
           
           if (refD.ok && refD.token) {
             if (typeof onTokenRefresh === 'function') onTokenRefresh(refD.token);
@@ -3962,7 +3942,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
               headers: {"Content-Type":"application/json","x-auth-token":refD.token},
               body: JSON.stringify(aiPayload)
             });
-            const retryD = await retryR.json();
+            const retryD = retryR;
             
             if (activeAiRequest.current !== attemptId) return;
             
@@ -4010,7 +3990,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
     setMsgs(p=>p.filter((m,i)=>i!==idx))
     if(msg.id && msg.id > 0 && msg.fromMe) {
       try {
-        await fetch("/api/chat/delete",{
+        await safeFetch("/api/chat/delete",{
           method:"POST", headers:{"Content-Type":"application/json","x-auth-token":token},
           body:JSON.stringify({chatId:sel.id, messageId:msg.id})
         })
@@ -4026,7 +4006,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
     // Delete each on server
     for(const msg of myMsgs) {
       try {
-        await fetch("/api/chat/delete",{
+        await safeFetch("/api/chat/delete",{
           method:"POST", headers:{"Content-Type":"application/json","x-auth-token":token},
           body:JSON.stringify({chatId:sel.id, messageId:msg.id})
         })
@@ -4612,10 +4592,9 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
     try {
       setLoadingPinnedMsg(true);
       const url = `/api/telegram/messages/around?chatId=${sel.id}&messageId=${pinnedMessageId}${selTopic?.id ? `&topicId=${selTopic.id}` : ''}`;
-      const res = await fetch(url, { headers: { 'x-auth-token': token } });
-      const d = await res.json();
+      const d = await safeFetch(url, { headers: { 'x-auth-token': token } });
       console.log('aroundFetchStatus', d.ok);
-      if (!d.ok) {
+      if (d.__httpStatus >= 400) {
         console.log('errorCode', d.code);
         alert(d.error || 'Failed to load pinned message context.');
         setLoadingPinnedMsg(false);

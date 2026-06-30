@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { safeFetch } from '../../utils/api';
 
 export default function TelegramSettings({ onClose, activeAccountId, accounts, token }) {
   const [profileData, setProfileData] = useState(null);
@@ -15,10 +16,9 @@ export default function TelegramSettings({ onClose, activeAccountId, accounts, t
     
     const fetchProfile = async () => {
       try {
-        const res = await fetch(`/api/chat/profile/${activeAcc.telegramUserId}`, {
+        const data = await safeFetch(`/api/chat/profile/${activeAcc.telegramUserId}`, {
           headers: { 'x-auth-token': token }
         });
-        const data = await res.json();
         if (data.ok && data.full) {
           setProfileData(data.full);
         }
