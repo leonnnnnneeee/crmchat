@@ -2502,6 +2502,49 @@ app.get('/api/telegram/accounts/:accountId/status', (req, res) => {
   res.json({ status: acc && acc.session && acc.ready ? 'connected' : 'disconnected' });
 });
 
+app.get('/api/telegram/accounts/:accountId/profile', requireAuth, async (req, res) => {
+  const accountId = req.params.accountId;
+  const acc = _accounts.get(accountId);
+  if (!acc?.session) return res.status(404).json({ ok: false, error: 'Account not found or not connected' });
+  
+  try {
+    const client = await getClient(accountId);
+    const { Api } = require('telegram/tl');
+    const me = await client.getMe();
+    
+    let full = null;
+    try {
+      full = await client.invoke(new Api.users.GetFullUser({ id: 'me' }));
+    } catch (e) {
+      log('GetFullUser for me error: ' + e.message);
+    }
+    
+    const telegramUserId = me.id.toString();
+    const displayName = (me.firstName || '') + (me.lastName ? ' ' + me.lastName : '');
+    
+    const responseData = {
+      ok: true,
+      accountId,
+      telegramUserId,
+      displayName: displayName.trim(),
+      firstName: me.firstName || '',
+      lastName: me.lastName || '',
+      username: me.username || '',
+      phone: me.phone || '',
+      status: me.status?.className || '',
+      bio: full?.fullUser?.about || '',
+      businessHours: full?.fullUser?.businessWorkHours || null,
+      location: full?.fullUser?.businessLocation || null
+    };
+    
+    res.json(responseData);
+  } catch (e) {
+    log('accounts profile error: ' + e.message);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+
 app.get('/api/health', (req,res) => res.json({ ok: true, tgConnected: _accounts.has('default') && _accounts.get('default').session.length > 10 }))
 app.get('/api/logs', requireAuth, (req,res) => res.json(logs))
 

@@ -5,42 +5,97 @@ export default function TelegramSettings({ onClose, activeAccountId, accounts, t
   const [profileData, setProfileData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [toastMsg, setToastMsg] = useState('');
+  const [avatarSrc, setAvatarSrc] = useState(null);
 
-  const activeAcc = accounts.find(a => a.accountId === activeAccountId) || accounts[0];
+  const activeAcc = accounts.find(a => a.accountId === activeAccountId);
 
   useEffect(() => {
-    if (!activeAcc?.telegramUserId) {
+    if (!activeAccountId) {
       setLoading(false);
       return;
     }
     
+    let isMounted = true;
+    setLoading(true);
+
     const fetchProfile = async () => {
+      console.log('[DEBUG] activeAccountId:', activeAccountId);
+      console.log('[DEBUG] settingsProfileRequestUrl:', `/api/telegram/accounts/${activeAccountId}/profile`);
+      console.log('[DEBUG] accountFromList:', activeAcc);
+
       try {
-        const data = await safeFetch(`/api/chat/profile/${activeAcc.telegramUserId}`, {
+        const data = await safeFetch(`/api/telegram/accounts/${activeAccountId}/profile`, {
           headers: { 'x-auth-token': token }
         });
-        if (data.ok && data.full) {
-          setProfileData(data.full);
+        
+        console.log('[DEBUG] telegramProfileResponse:', data);
+        if (data.ok && isMounted) {
+          setProfileData(data);
         }
       } catch (err) {
-        console.error('Failed to fetch full profile', err);
+        console.error('Failed to fetch account profile', err);
       } finally {
-        setLoading(false);
+        if (isMounted) setLoading(false);
       }
     };
     
     fetchProfile();
-  }, [activeAcc, token]);
+
+    return () => { isMounted = false; };
+  }, [activeAccountId, token]); // Only depend on IDs and token to prevent loops
+
+  // --- Profile Merging Logic ---
+  const mergedDisplayName = profileData?.displayName || activeAcc?.displayName || profileData?.username || activeAcc?.username || profileData?.phone || activeAcc?.phone || "Telegram Account";
+  const mergedUsername = profileData?.username || activeAcc?.username || "";
+  const rawPhone = profileData?.phone || activeAcc?.phone || "";
+  const mergedBio = profileData?.bio || "Not set";
+  const mergedStatus = profileData?.status?.replace('UserStatus', '') || "online";
+  const telegramUserId = profileData?.telegramUserId || activeAcc?.telegramUserId;
+
+  console.log('[DEBUG] mergedProfile:', { mergedDisplayName, mergedUsername, rawPhone, mergedBio, telegramUserId });
+
+  // --- Avatar Logic ---
+  useEffect(() => {
+    if (!telegramUserId) return;
+    let isMounted = true;
+    
+    fetch(`/api/chat/photo/${telegramUserId}`, { headers: { 'x-auth-token': token } })
+      .then(r => {
+        if (!r.ok) throw new Error('No photo');
+        return r.blob();
+      })
+      .then(blob => {
+        if (blob.size > 0 && isMounted) {
+          setAvatarSrc(URL.createObjectURL(blob));
+          console.log('[DEBUG] avatarResolved', true);
+        } else {
+          console.log('[DEBUG] avatarResolved', false);
+          console.log('[DEBUG] fallbackUsed reason:', 'Blob size is 0');
+        }
+      })
+      .catch(e => {
+        console.log('[DEBUG] avatarResolved', false);
+        console.log('[DEBUG] fallbackUsed reason:', e.message);
+      });
+      
+    return () => { isMounted = false; };
+  }, [telegramUserId, token]);
 
   const showToast = (msg) => {
     setToastMsg(msg);
     setTimeout(() => setToastMsg(''), 2500);
   };
 
-  const getBio = () => {
-    if (profileData && profileData.about) return profileData.about;
-    if (profileData && profileData.fullUser && profileData.fullUser.about) return profileData.fullUser.about;
-    return 'Not set';
+  const formatPhone = (phone) => {
+    if (!phone) return 'Not set';
+    const p = phone.replace(/[^0-9+]/g, '');
+    if (p.startsWith('84') || p.startsWith('+84')) {
+      const core = p.replace(/^\+?84/, '');
+      if (core.length === 9) {
+        return `+84 ${core.slice(0,3)} ${core.slice(3,6)} ${core.slice(6)}`;
+      }
+    }
+    return p.startsWith('+') ? p : '+' + p;
   };
 
   const SectionItem = ({ icon, label, value, onClick }) => (
@@ -137,15 +192,19 @@ export default function TelegramSettings({ onClose, activeAccountId, accounts, t
               <div style={{
                 width: 120, height: 120, borderRadius: '50%', background: '#a78bfa',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 48, color: '#fff',
-                boxShadow: '0 4px 12px rgba(0,0,0,0.3)'
+                boxShadow: '0 4px 12px rgba(0,0,0,0.3)', overflow: 'hidden'
               }}>
-                {activeAcc?.displayName ? activeAcc.displayName.charAt(0).toUpperCase() : 'A'}
+                {avatarSrc ? (
+                  <img src={avatarSrc} alt="Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : (
+                  mergedDisplayName.charAt(0).toUpperCase()
+                )}
               </div>
               <div style={{ fontSize: 22, fontWeight: 600, color: '#fff', marginTop: 16, textShadow: '0 1px 4px rgba(0,0,0,0.5)' }}>
-                {activeAcc?.displayName || 'Unknown'}
+                {loading && !profileData ? 'Loading...' : mergedDisplayName}
               </div>
               <div style={{ fontSize: 14, color: 'rgba(255,255,255,0.8)', marginTop: 4 }}>
-                online
+                {loading && !profileData ? '...' : mergedStatus}
               </div>
             </div>
           </div>
@@ -153,9 +212,9 @@ export default function TelegramSettings({ onClose, activeAccountId, accounts, t
           <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 16 }}>
             {/* Account Info Card */}
             <div style={{ background: '#1c1c1e', borderRadius: 12, overflow: 'hidden' }}>
-              <InfoItem icon="📞" value={activeAcc?.phone ? `+${activeAcc.phone}` : 'Not set'} label="Phone" />
-              <InfoItem icon="👤" value={activeAcc?.username ? `@${activeAcc.username}` : 'Not set'} label="Username" />
-              <InfoItem icon="ℹ️" value={loading ? 'Loading...' : getBio()} label="Bio" />
+              <InfoItem icon="📞" value={formatPhone(rawPhone)} label="Phone" />
+              <InfoItem icon="👤" value={mergedUsername ? `@${mergedUsername}` : 'Not set'} label="Username" />
+              <InfoItem icon="ℹ️" value={loading && !profileData ? 'Loading...' : mergedBio} label="Bio" />
             </div>
 
             {/* General Settings Card */}
