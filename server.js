@@ -2464,37 +2464,56 @@ app.get('/api/telegram/accounts', async (req, res) => {
 
   log(`[Accounts Debug] rawAccounts count: ${rawAccounts.length}`);
   
-  // Deduplicate using telegramUserId > normalizedPhone > accountId
-  const dedupedMap = new Map();
-  let hiddenInvalidAccounts = 0;
-  
+  // 1. Group accounts by stable identity
+  const groups = new Map();
   for (const acc of rawAccounts) {
     const key = acc.telegramUserId || acc.phone || acc.accountId;
-    log(`[Accounts Debug] raw accountId: ${acc.accountId}, userId: ${acc.telegramUserId}, phone: ${acc.phone}, displayName: ${acc.displayName}, key: ${key}`);
-    
-    if (dedupedMap.has(key)) {
-      const existing = dedupedMap.get(key);
-      log(`[Accounts Debug] Duplicate found! Merging ${acc.accountId} into canonical ${existing.accountId}`);
-      // Merge: prefer connected session, keep isActive if any is active, keep phone/username
-      if (acc.isActive) {
-        existing.isActive = true;
-        log(`[Accounts Debug] Migrating active checkmark to canonicalAccountId: ${existing.accountId}`);
-      }
-      if (acc.phone && !existing.phone) existing.phone = acc.phone;
-      if (acc.username && !existing.username) existing.username = acc.username;
-      if (acc.sessionStatus === 'connected') existing.sessionStatus = 'connected';
-      
-      // If the duplicate has a better display name, use it
-      if (acc.displayName && acc.displayName !== 'Telegram Account' && existing.displayName === 'Telegram Account') {
-         existing.displayName = acc.displayName;
-      }
-      hiddenInvalidAccounts++;
-    } else {
-      dedupedMap.set(key, { ...acc });
-    }
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(acc);
   }
 
-  const finalAccounts = Array.from(dedupedMap.values());
+  log(`[Accounts Debug] Duplicate groups: ${groups.size}`);
+  
+  const finalAccounts = [];
+  let hiddenInvalidAccounts = 0;
+
+  // 2. Select canonical account per group
+  for (const [key, group] of groups.entries()) {
+    // Sort to prefer: connected > valid session > has profile > accountId length
+    group.sort((a, b) => {
+      if (a.sessionStatus === 'connected' && b.sessionStatus !== 'connected') return -1;
+      if (b.sessionStatus === 'connected' && a.sessionStatus !== 'connected') return 1;
+      
+      const aHasSession = _accounts.get(a.accountId)?.session ? 1 : 0;
+      const bHasSession = _accounts.get(b.accountId)?.session ? 1 : 0;
+      if (aHasSession !== bHasSession) return bHasSession - aHasSession;
+
+      const aHasProfile = (a.displayName && a.displayName !== 'Telegram Account') ? 1 : 0;
+      const bHasProfile = (b.displayName && b.displayName !== 'Telegram Account') ? 1 : 0;
+      if (aHasProfile !== bHasProfile) return bHasProfile - aHasProfile;
+
+      return a.accountId.localeCompare(b.accountId);
+    });
+
+    const canonical = group[0];
+    const duplicates = group.slice(1);
+    
+    // Merge best data into canonical
+    for (const dup of duplicates) {
+      log(`[Accounts Debug] Merging duplicate ${dup.accountId} into canonical ${canonical.accountId}`);
+      if (dup.isActive) canonical.isActive = true;
+      if (dup.phone && !canonical.phone) canonical.phone = dup.phone;
+      if (dup.username && !canonical.username) canonical.username = dup.username;
+      hiddenInvalidAccounts++;
+    }
+
+    // Expose canonical mapping for frontend migration
+    canonical.canonicalAccountId = canonical.accountId;
+    canonical.duplicateIds = duplicates.map(d => d.accountId);
+
+    finalAccounts.push(canonical);
+  }
+
   log(`[Accounts Debug] dedupedAccounts count: ${finalAccounts.length}, hiddenInvalidAccounts count: ${hiddenInvalidAccounts}`);
   res.json(finalAccounts);
 });
@@ -2540,10 +2559,33 @@ app.post('/api/telegram/accounts/add-session', async (req, res) => {
   }
 });
 
-app.post('/api/telegram/accounts/switch', (req, res) => {
+app.post('/api/telegram/accounts/switch', requireAuth, async (req, res) => {
   const { accountId } = req.body;
-  if (!_accounts.has(accountId)) return res.status(404).json({ error: 'Account not found' });
-  res.json({ ok: true, message: 'Switched to ' + accountId });
+  if (!accountId) return res.status(400).json({ ok: false, error: 'accountId required' });
+
+  const acc = _accounts.get(accountId);
+  if (!acc || !acc.session) {
+    return res.status(400).json({
+      ok: false,
+      code: 'ACCOUNT_SESSION_INVALID',
+      accountId,
+      error: 'This account session is invalid or missing'
+    });
+  }
+
+  try {
+    const client = await withTimeout(getClient(accountId), 5000, 'switch_getClient');
+    await withTimeout(client.getMe(), 3000, 'switch_getMe');
+    res.json({ ok: true, accountId });
+  } catch (e) {
+    log(`Switch account failed for ${accountId}: ${e.message}`);
+    return res.status(400).json({
+      ok: false,
+      code: 'ACCOUNT_SESSION_INVALID',
+      accountId,
+      error: 'This account session is invalid or expired'
+    });
+  }
 });
 
 app.post('/api/telegram/accounts/logout', async (req, res) => {

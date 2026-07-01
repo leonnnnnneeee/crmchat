@@ -1948,7 +1948,32 @@ function AccountMenu({ accounts, activeAccountId, onClose, onAddAccount, onSwitc
       <div style={{ maxHeight: 200, overflowY: 'auto' }}>
         {accounts.map(acc => (
           <div key={acc.accountId} 
-            onClick={() => { onSwitchAccount(acc.accountId); onClose(); }}
+            onClick={async () => {
+              if (window._isSwitchingAccount) return;
+              window._isSwitchingAccount = true;
+              try {
+                const prev = e.currentTarget.style.opacity;
+                e.currentTarget.style.opacity = '0.5';
+                const d = await window.fetch('/api/telegram/accounts/switch', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', 'x-auth-token': localStorage.getItem('crm_token') || '' },
+                  body: JSON.stringify({ accountId: acc.accountId })
+                }).then(r => r.json());
+                e.currentTarget.style.opacity = prev;
+                
+                if (d.ok) {
+                  onSwitchAccount(acc.accountId);
+                  onClose();
+                } else {
+                  alert(d.error || 'This account session is invalid or expired.');
+                  if (onAuthFailed) onAuthFailed();
+                }
+              } catch (e) {
+                alert('Network error while switching accounts.');
+              } finally {
+                window._isSwitchingAccount = false;
+              }
+            }}
             style={{ padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', background: acc.accountId === activeAccountId ? 'rgba(124,58,237,0.1)' : 'transparent' }}
             onMouseEnter={e => { if(acc.accountId !== activeAccountId) e.currentTarget.style.background = 'rgba(255,255,255,0.05)' }}
             onMouseLeave={e => { if(acc.accountId !== activeAccountId) e.currentTarget.style.background = 'transparent' }}
@@ -2204,8 +2229,13 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
           const activeCanonical = data.find(a => a.isActive);
           
           let targetActiveId = currActive;
+          const canonicalForDup = data.find(a => a.duplicateIds && a.duplicateIds.includes(currActive));
+          
           if (activeCanonical) {
             targetActiveId = activeCanonical.accountId;
+          } else if (canonicalForDup) {
+            targetActiveId = canonicalForDup.accountId;
+            console.log('[MultiAccount] Found canonical for duplicate:', targetActiveId);
           } else {
             const exists = data.find(a => a.accountId === currActive);
             if (!exists) {
@@ -2845,7 +2875,20 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
            url += `&offsetDate=${lastChat.date}&offsetId=${lastChat.msgId || 0}&offsetPeer=${lastChat.id}`
         }
       }
-      const d = await safeFetch(url,{headers:{"x-auth-token":token}})
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      let d;
+      try {
+        d = await safeFetch(url,{headers:{"x-auth-token":token}, signal: controller.signal});
+        clearTimeout(timeoutId);
+      } catch (err) {
+        clearTimeout(timeoutId);
+        if (err.name === 'AbortError') {
+          throw new Error('Timeout: Account took too long to load.');
+        }
+        throw err;
+      }
+      
       if (reqAcc !== activeAccRef.current) {
         console.log('[MultiAccount] Discarding fetchChats because account switched');
         return;
@@ -2884,8 +2927,12 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
       } else {
         // Handle server error returning non-array
         console.error("fetchChats invalid response:", d)
+        if (reqAcc === activeAccRef.current) setLoadChatsError(d?.error || 'Invalid response from server');
       }
-    } catch(e) { console.error("fetchChats error:", e) }
+    } catch(e) { 
+      console.error("fetchChats error:", e);
+      if (reqAcc === activeAccRef.current) setLoadChatsError(e.message || 'Failed to load chats');
+    }
     if (reqAcc === activeAccRef.current) {
       console.timeEnd('fetchChats')
       if (!append) setLoadChats(false)
