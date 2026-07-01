@@ -2032,13 +2032,12 @@ function AddAccountModal({ onClose, onSuccess }) {
     const newId = generateAccountId(phone.replace(/[^0-9]/g, ''));
     setAccountId(newId);
     try {
-      const res = await fetch('/api/tg/send-otp', {
+      const data = await safeFetch('/api/tg/send-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-auth-token': _authToken },
         body: JSON.stringify({ phone, accountId: newId })
       });
-      ;
-      if (data.__httpStatus >= 400) throw new Error(data.error);
+      if (data.__httpStatus >= 400) throw new Error(data.error || 'Failed to send OTP');
       setPhoneCodeHash(data.phoneCodeHash);
     } catch (e) {
       setError(e.message);
@@ -2052,12 +2051,11 @@ function AddAccountModal({ onClose, onSuccess }) {
     setError('');
     setLoading(true);
     try {
-      const res = await fetch('/api/tg/verify-otp', {
+      const data = await safeFetch('/api/tg/verify-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-auth-token': _authToken },
         body: JSON.stringify({ phone, code, phoneCodeHash, password, accountId })
       });
-      const data = res;
       if (data.__httpStatus >= 400) {
         if (data.error && data.error.includes('SESSION_PASSWORD_NEEDED')) {
           setNeedsPassword(true);
@@ -2080,13 +2078,12 @@ function AddAccountModal({ onClose, onSuccess }) {
     setLoading(true);
     const newId = generateAccountId('import');
     try {
-      const res = await fetch('/api/telegram/accounts/add-session', {
+      const data = await safeFetch('/api/telegram/accounts/add-session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-auth-token': _authToken },
         body: JSON.stringify({ sessionString: sessionStr.trim(), accountId: newId })
       });
-      const data = res;
-      if (data.__httpStatus >= 400) throw new Error(data.error);
+      if (data.__httpStatus >= 400) throw new Error(data.error || 'Failed to import session');
       if (onSuccess) onSuccess(data.accountId);
       onClose();
     } catch (e) {
