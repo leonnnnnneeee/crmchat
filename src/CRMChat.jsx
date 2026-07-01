@@ -1929,9 +1929,13 @@ function AccountMenu({ accounts, activeAccountId, onClose, onAddAccount, onSwitc
     }}>
       {/* Active Account Info */}
       <div style={{ padding: '16px', borderBottom: '1px solid #2c2c2e', display: 'flex', alignItems: 'center', gap: 12 }}>
-        <div style={{ width: 44, height: 44, borderRadius: '50%', background: '#7c3aed', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 18, fontWeight: 600 }}>
-          {getSafeInitials(activeAcc?.displayName || 'A')}
-        </div>
+        {activeAcc?.telegramUserId ? (
+          <Avatar accountId={activeAcc.accountId} name={activeAcc.displayName || activeAcc.accountId} chatId="me" size={44} />
+        ) : (
+          <div style={{ width: 44, height: 44, borderRadius: '50%', background: '#7c3aed', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 18, fontWeight: 600 }}>
+            {getSafeInitials(activeAcc?.displayName || 'A')}
+          </div>
+        )}
         <div style={{ flex: 1, overflow: 'hidden' }}>
           <div style={{ color: '#fff', fontWeight: 600, fontSize: 15, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {activeAcc?.displayName || 'Unknown Account'}
@@ -2249,13 +2253,36 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
     safeFetch('/api/telegram/accounts', { headers: { 'x-auth-token': token } })
       .then(data => {
         if (Array.isArray(data) && data.length > 0) {
-          setAccounts(data);
+          // Frontend strict deduplication as a safety measure
+          const normData = data.map(normalizeTelegramAccount);
+          const groupsMap = new Map();
+          for (const acc of normData) {
+             if (!groupsMap.has(acc.canonicalKey)) groupsMap.set(acc.canonicalKey, []);
+             groupsMap.get(acc.canonicalKey).push(acc);
+          }
+          
+          const finalAccounts = [];
+          for (const [key, group] of groupsMap.entries()) {
+             const canonical = group[0];
+             const duplicates = group.slice(1);
+             for (const dup of duplicates) {
+                if (dup.isActive) canonical.isActive = true;
+             }
+             if (canonical.duplicateIds) {
+                canonical.duplicateIds.push(...duplicates.map(d => d.accountId));
+             } else {
+                canonical.duplicateIds = duplicates.map(d => d.accountId);
+             }
+             finalAccounts.push(canonical);
+          }
+
+          setAccounts(finalAccounts);
           
           const currActive = localStorage.getItem('crmchat_active_account') || 'default';
-          const activeCanonical = data.find(a => a.isActive);
+          const activeCanonical = finalAccounts.find(a => a.isActive);
           
           let targetActiveId = currActive;
-          const canonicalForDup = data.find(a => a.duplicateIds && a.duplicateIds.includes(currActive));
+          const canonicalForDup = finalAccounts.find(a => a.duplicateIds && a.duplicateIds.includes(currActive));
           
           if (activeCanonical) {
             targetActiveId = activeCanonical.accountId;
@@ -2263,9 +2290,9 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
             targetActiveId = canonicalForDup.accountId;
             console.log('[MultiAccount] Found canonical for duplicate:', targetActiveId);
           } else {
-            const exists = data.find(a => a.accountId === currActive);
+            const exists = finalAccounts.find(a => a.accountId === currActive);
             if (!exists) {
-              const first = data.find(a => a.sessionStatus === 'connected') || data[0];
+              const first = finalAccounts.find(a => a.sessionStatus === 'connected') || finalAccounts[0];
               targetActiveId = first.accountId;
             }
           }
@@ -2273,8 +2300,6 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
           if (targetActiveId !== currActive) {
             console.log('[Multi-Account] Migrating active account from', currActive, 'to canonical', targetActiveId);
             localStorage.setItem('crmchat_active_account', targetActiveId);
-          } else {
-            console.log('[Multi-Account] Restored active account:', targetActiveId);
           }
           
           setActiveAccId(targetActiveId);
