@@ -1948,7 +1948,7 @@ function AccountMenu({ accounts, activeAccountId, onClose, onAddAccount, onSwitc
       <div style={{ maxHeight: 200, overflowY: 'auto' }}>
         {accounts.map(acc => (
           <div key={acc.accountId} 
-            onClick={async () => {
+            onClick={async (e) => {
               if (window._isSwitchingAccount) return;
               window._isSwitchingAccount = true;
               try {
