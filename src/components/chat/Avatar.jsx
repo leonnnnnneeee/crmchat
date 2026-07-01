@@ -18,7 +18,8 @@ function Avatar({name, chatId, username, size=40}) {
     if (!chatId || !_authToken || failed) return
     if (photoCache[chatId]) { setPhotoUrl(photoCache[chatId]); return }
     const qs = username ? `?username=${encodeURIComponent(username)}` : ""
-    fetch(`/api/chat/photo/${chatId}${qs}`, {headers:{"x-auth-token":_authToken}})
+    const activeAcc = localStorage.getItem('crmchat_active_account') || '';
+    fetch(`/api/chat/photo/${chatId}${qs}`, {headers:{"x-auth-token":_authToken, "x-account-id": activeAcc}})
       .then(r => { if (!r.ok) throw new Error("no photo"); return r.blob() })
       .then(blob => {
         const url = URL.createObjectURL(blob)

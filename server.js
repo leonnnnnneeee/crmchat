@@ -378,12 +378,13 @@ app.post('/api/tg/verify-otp', requireAuth, async (req,res) => {
       }
     }
     
+    const displayName = (me.firstName || '') + (me.lastName ? ' ' + me.lastName : '') || me.username || userPhone || 'Telegram Account';
     if (canonicalAccountId !== accountId) {
       log(`[Auth] Duplicate found for ${telegramUserId}, merging session into ${canonicalAccountId}`);
-      _accounts.set(canonicalAccountId, { session: newSession, client: client, ready: true, telegramUserId, phone: userPhone });
+      _accounts.set(canonicalAccountId, { session: newSession, client: client, ready: true, telegramUserId, phone: userPhone, displayName });
       await saveSessionToDB(newSession, canonicalAccountId);
     } else {
-      _accounts.set(accountId, { session: newSession, client: client, ready: true, telegramUserId, phone: userPhone });
+      _accounts.set(accountId, { session: newSession, client: client, ready: true, telegramUserId, phone: userPhone, displayName });
       await saveSessionToDB(newSession, accountId);
     }
     
@@ -2426,7 +2427,8 @@ app.get('/api/telegram/accounts', async (req, res) => {
       phone: normalizePhone(acc.phone || '')
     };
 
-    if (!acc.telegramUserId && acc.sessionStatus !== 'expired') {
+    const isPhoneName = /^\+?\d+$/.test(meData.displayName || '');
+    if ((!acc.telegramUserId || !meData.displayName || isPhoneName || meData.displayName === 'Telegram Account') && acc.sessionStatus !== 'expired') {
       try {
         const client = await getClient(id);
         const me = await client.getMe();
@@ -2566,12 +2568,13 @@ app.post('/api/telegram/accounts/add-session', async (req, res) => {
       }
     }
 
+    const displayName = (me.firstName || '') + (me.lastName ? ' ' + me.lastName : '') || me.username || userPhone || 'Telegram Account';
     if (canonicalAccountId !== accountId) {
       log(`[Auth] Duplicate imported session for ${telegramUserId}, merging into ${canonicalAccountId}`);
-      _accounts.set(canonicalAccountId, { session: sessionString, client: client, ready: true, telegramUserId, phone: userPhone });
+      _accounts.set(canonicalAccountId, { session: sessionString, client: client, ready: true, telegramUserId, phone: userPhone, displayName });
       await saveSessionToDB(sessionString, canonicalAccountId);
     } else {
-      _accounts.set(accountId, { session: sessionString, client: client, ready: true, telegramUserId, phone: userPhone });
+      _accounts.set(accountId, { session: sessionString, client: client, ready: true, telegramUserId, phone: userPhone, displayName });
       await saveSessionToDB(sessionString, accountId);
     }
     
