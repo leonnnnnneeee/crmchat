@@ -4887,7 +4887,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
               setSel(null);
               setSelTopic(null);
               setMsgs([]);
-              setChats(chatsCache[id] || []); // Instantly show cached chats
+              setChats(chatsCacheRef.current[id] || []); // Instantly show cached chats
               setShowAccountMenu(false);
             }}
             onLogout={onLogout}

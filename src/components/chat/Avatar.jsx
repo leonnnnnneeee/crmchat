@@ -19,7 +19,11 @@ function Avatar({name, chatId, username, size=40, accountId}) {
   useEffect(()=>{
     if (!chatId || !_authToken || failed) return
     if (photoCache[cacheKey]) { setPhotoUrl(photoCache[cacheKey]); return }
-    const qs = username ? `?username=${encodeURIComponent(username)}` : ""
+    const qsParams = new URLSearchParams();
+    if (username) qsParams.append('username', username);
+    if (targetAcc) qsParams.append('acc', targetAcc);
+    const qs = qsParams.toString() ? `?${qsParams.toString()}` : "";
+    
     fetch(`/api/chat/photo/${chatId}${qs}`, {headers:{"x-auth-token":_authToken, "x-account-id": targetAcc}})
       .then(r => { if (!r.ok) throw new Error("no photo"); return r.blob() })
       .then(blob => {
