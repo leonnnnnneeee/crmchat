@@ -2832,6 +2832,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
   const fetchChats = useCallback(async (append=false) => {
     if (loadingChatsRef.current) return
     loadingChatsRef.current = true
+    const reqAcc = activeAccRef.current;
     if (!append && chatsRef.current.length === 0) setLoadChats(true)
     console.time('fetchChats')
     
@@ -2844,6 +2845,10 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
         }
       }
       const d = await safeFetch(url,{headers:{"x-auth-token":token}})
+      if (reqAcc !== activeAccRef.current) {
+        console.log('[MultiAccount] Discarding fetchChats because account switched');
+        return;
+      }
       if (Array.isArray(d)) {
         if (d.length < 50) setHasMoreChats(false)
         else if (!append) setHasMoreChats(true)
@@ -2880,16 +2885,21 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
         console.error("fetchChats invalid response:", d)
       }
     } catch(e) { console.error("fetchChats error:", e) }
-    console.timeEnd('fetchChats')
-    if (!append) setLoadChats(false)
-    loadingChatsRef.current = false
+    if (reqAcc === activeAccRef.current) {
+      console.timeEnd('fetchChats')
+      if (!append) setLoadChats(false)
+      loadingChatsRef.current = false
+    }
   }, [token])
 
   useEffect(()=>{ 
+    loadingChatsRef.current = false;
     if (chatsCacheRef.current[activeAccountId]) {
       setChats(chatsCacheRef.current[activeAccountId])
+      setLoadChats(false)
     } else {
       setChats([])
+      setLoadChats(true)
     }
     fetchChats() 
   }, [fetchChats, activeAccountId])
@@ -3395,6 +3405,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
       if (!hasCached && msgsRef.current.length === 0 && !isBackground) setLoadMsgs(true)
       setHasMore(true)
     }
+    const reqAcc = activeAccRef.current;
     console.time('loadMessages')
     
     try {
@@ -3513,15 +3524,17 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
         }
       }
     } catch(e) { console.error("loadMsgs:",e); setMessageFetchError(e.message); }
-    console.timeEnd('loadMessages')
-    
-    if(append) {
-      loadingMoreRef.current = false
-      setLoadingMore(false)
-    } else {
-      loadingRef.current = false
-      setLoadMsgs(false)
-      setMessagesLoaded(true)
+    if (reqAcc === activeAccRef.current) {
+      console.timeEnd('loadMessages')
+      
+      if(append) {
+        loadingMoreRef.current = false
+        setLoadingMore(false)
+      } else {
+        loadingRef.current = false
+        setLoadMsgs(false)
+        setMessagesLoaded(true)
+      }
     }
   }
 
