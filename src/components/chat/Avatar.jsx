@@ -7,27 +7,28 @@ const photoCache = {};
 let _authToken = '';
 export const setAvatarAuthToken = (t) => _authToken = t;
 
-function Avatar({name, chatId, username, size=40}) {
+function Avatar({name, chatId, username, size=40, accountId}) {
   const colors=["#c03d33","#4fad2d","#d09306","#168acd","#8544d6","#cd4073","#2996ad","#ce671b"]
   const colorIdx = (name||"?").charCodeAt(0) % colors.length
   const initials = getSafeInitials(name);
-  const [photoUrl, setPhotoUrl] = useState(photoCache[chatId] || null)
+  const targetAcc = accountId || localStorage.getItem('crmchat_active_account') || '';
+  const cacheKey = `${targetAcc}_${chatId}`;
+  const [photoUrl, setPhotoUrl] = useState(photoCache[cacheKey] || null)
   const [failed, setFailed] = useState(false)
 
   useEffect(()=>{
     if (!chatId || !_authToken || failed) return
-    if (photoCache[chatId]) { setPhotoUrl(photoCache[chatId]); return }
+    if (photoCache[cacheKey]) { setPhotoUrl(photoCache[cacheKey]); return }
     const qs = username ? `?username=${encodeURIComponent(username)}` : ""
-    const activeAcc = localStorage.getItem('crmchat_active_account') || '';
-    fetch(`/api/chat/photo/${chatId}${qs}`, {headers:{"x-auth-token":_authToken, "x-account-id": activeAcc}})
+    fetch(`/api/chat/photo/${chatId}${qs}`, {headers:{"x-auth-token":_authToken, "x-account-id": targetAcc}})
       .then(r => { if (!r.ok) throw new Error("no photo"); return r.blob() })
       .then(blob => {
         const url = URL.createObjectURL(blob)
-        photoCache[chatId] = url
+        photoCache[cacheKey] = url
         setPhotoUrl(url)
       })
       .catch(() => setFailed(true))
-  }, [chatId])
+  }, [chatId, targetAcc])
 
   if (photoUrl && !failed) {
     return (

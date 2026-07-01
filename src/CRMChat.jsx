@@ -2005,7 +2005,7 @@ function AccountMenu({ accounts, activeAccountId, onClose, onAddAccount, onSwitc
             onMouseLeave={e => { if(acc.accountId !== activeAccountId) e.currentTarget.style.background = 'transparent' }}
           >
             {acc.telegramUserId ? (
-              <Avatar name={acc.displayName || acc.accountId} chatId={acc.telegramUserId} size={32} />
+              <Avatar accountId={acc.accountId} name={acc.displayName || acc.accountId} chatId="me" size={32} />
             ) : (
               <div style={{ width: 32, height: 32, borderRadius: '50%', background: acc.accountId === activeAccountId ? '#7c3aed' : '#3a3a3c', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 13, fontWeight: 600 }}>
                 {getSafeInitials(acc.displayName || 'A')}
@@ -4786,7 +4786,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
           >
             {(() => {
               const acc = accounts.find(a => a.accountId === activeAccRef.current) || accounts[0];
-              return <Avatar chatId={acc?.telegramUserId} name={acc?.displayName || acc?.username || acc?.phone} size={42} />;
+              return <Avatar accountId={acc?.accountId} chatId="me" name={acc?.displayName || acc?.username || acc?.phone} size={42} />;
             })()}
             
             {/* Green Online Dot */}
@@ -4861,7 +4861,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
               setSel(null);
               setSelTopic(null);
               setMsgs([]);
-              setChats([]);
+              setChats(chatsCache[id] || []); // Instantly show cached chats
               setShowAccountMenu(false);
             }}
             onLogout={onLogout}

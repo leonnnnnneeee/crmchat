@@ -273,6 +273,9 @@ async function warmupClients() {
 const _entityCache = {}
 
 async function resolveEntity(client, idStr, username) {
+  if (idStr === 'me' || idStr === 'self') {
+    return await client.getMe();
+  }
   const cacheKey = username || idStr
   if (_entityCache[cacheKey]) return _entityCache[cacheKey]
 
