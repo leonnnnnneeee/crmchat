@@ -16,9 +16,17 @@ function Avatar({name, chatId, username, size=40, accountId}) {
   const [photoUrl, setPhotoUrl] = useState(photoCache[cacheKey] || null)
   const [failed, setFailed] = useState(false)
 
+  useEffect(() => {
+    setFailed(false);
+    setPhotoUrl(photoCache[cacheKey] || null);
+  }, [cacheKey]);
+
   useEffect(()=>{
     if (!chatId || !_authToken || failed) return
-    if (photoCache[cacheKey]) { setPhotoUrl(photoCache[cacheKey]); return }
+    if (photoCache[cacheKey]) { 
+      setPhotoUrl(photoCache[cacheKey]); 
+      return; 
+    }
     const qsParams = new URLSearchParams();
     if (username) qsParams.append('username', username);
     if (targetAcc) qsParams.append('acc', targetAcc);
@@ -32,7 +40,7 @@ function Avatar({name, chatId, username, size=40, accountId}) {
         setPhotoUrl(url)
       })
       .catch(() => setFailed(true))
-  }, [chatId, targetAcc])
+  }, [chatId, targetAcc, failed, username])
 
   if (photoUrl && !failed) {
     return (
