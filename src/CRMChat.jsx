@@ -4864,7 +4864,6 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
               setChats([]);
               setShowAccountMenu(false);
             }}
-            onAuthFailed={onAuthFailed}
             onLogout={onLogout}
           />
         </div>

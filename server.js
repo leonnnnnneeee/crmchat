@@ -2680,6 +2680,22 @@ app.get('/api/telegram/accounts/:accountId/profile', requireAuth, async (req, re
 });
 
 
+
+app.get('/api/debug/accounts', (req, res) => {
+  const dump = [];
+  for (const [id, acc] of _accounts.entries()) {
+    dump.push({
+      accountId: id,
+      telegramUserId: acc.telegramUserId,
+      phone: acc.phone,
+      displayName: acc.displayName,
+      sessionStatus: acc.sessionStatus,
+      hasSession: !!acc.session
+    });
+  }
+  res.json(dump);
+});
+
 app.get('/api/health', (req,res) => res.json({ ok: true, tgConnected: _accounts.has('default') && _accounts.get('default').session.length > 10 }))
 app.get('/api/logs', requireAuth, (req,res) => res.json(logs))
 
