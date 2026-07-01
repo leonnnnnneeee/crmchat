@@ -3488,6 +3488,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
     
     try {
       let url, qs = chat.username ? '?username='+encodeURIComponent(chat.username) : ''
+      if (chat.accessHash) qs += (qs ? '&' : '?') + 'accessHash=' + chat.accessHash;
       
       let maxId = 0
       if(append && msgsRef.current.length > 0) {

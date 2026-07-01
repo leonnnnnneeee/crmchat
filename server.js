@@ -1249,7 +1249,7 @@ app.get('/api/chat/messages/:id', requireAuth, async (req,res) => {
   const t0 = Date.now()
   try {
     const client = await withTimeout(getClient(req.accountId), 10000, 'getClient')
-    const entity = await withTimeout(resolveEntity(client, req.params.id, req.query.username), 8000, 'resolveEntity')
+    const entity = await withTimeout(resolveEntity(client, req.params.id, req.query.username, req.query.accessHash), 8000, 'resolveEntity')
     const maxId = parseInt(req.query.maxId) || 0
     const minId = parseInt(req.query.minId) || 0
     const opts = { limit: 40 }
