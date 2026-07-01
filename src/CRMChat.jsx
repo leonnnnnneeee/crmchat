@@ -117,7 +117,7 @@ function Avatar({name, chatId, username, accessHash, size=40}) {
     if (accessHash) qsObj.append('accessHash', accessHash)
     const qs = qsObj.toString() ? `?${qsObj.toString()}` : ""
     fetch(`/api/chat/photo/${chatId}${qs}`, {headers:{"x-auth-token":_authToken}})
-      .then(r => { if (r.__httpStatus >= 400) throw new Error("no photo"); return r.blob() })
+      .then(r => { if (!r.ok) throw new Error("no photo"); return r.blob() })
       .then(blob => {
         const url = URL.createObjectURL(blob)
         photoCache[chatId] = url

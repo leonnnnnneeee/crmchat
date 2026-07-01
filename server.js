@@ -974,10 +974,21 @@ app.get('/api/chat/photo/:id', requireAuth, async (req, res) => {
     
     if (typeof entity === 'string' || typeof entity === 'number') {
       if (accessHashStr) {
-        entity = new Api.InputUser({
-          userId: BigInt(userIdStr),
-          accessHash: BigInt(accessHashStr)
-        });
+        const numId = Number(userIdStr);
+        let inputPeer;
+        if (numId < 0) {
+          const channelId = Math.abs(numId) - 1000000000000;
+          if (channelId > 0) {
+            inputPeer = new Api.InputChannel({ channelId: BigInt(channelId), accessHash: BigInt(accessHashStr) });
+          } else {
+            inputPeer = new Api.InputPeerChat({ chatId: BigInt(Math.abs(numId)) });
+          }
+        } else {
+          inputPeer = new Api.InputUser({ userId: BigInt(userIdStr), accessHash: BigInt(accessHashStr) });
+        }
+        try {
+          entity = await client.getEntity(inputPeer);
+        } catch(e) { entity = inputPeer; }
       } else if (username) {
         try {
           entity = await client.getEntity(username);
