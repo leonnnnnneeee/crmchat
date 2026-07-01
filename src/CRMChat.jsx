@@ -2895,6 +2895,10 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
 
   useEffect(()=>{ 
     loadingChatsRef.current = false;
+    loadingRef.current = false;
+    loadingMoreRef.current = false;
+    setLoadMsgs(false);
+    setLoadingMore(false);
     if (chatsCacheRef.current[activeAccountId]) {
       setChats(chatsCacheRef.current[activeAccountId])
       setLoadChats(false)
