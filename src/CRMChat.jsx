@@ -4135,15 +4135,17 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
 
     /* ── SIDEBAR ── */
     .sidebar {
-      display: flex; flex-direction: column; align-items: center;
-      padding: 12px 0; gap: 8px;
-      background: #090e17; /* Very deep navy for sidebar */
-      overflow: hidden;
-      height: 100%;
-      width: 72px; /* Slim modern sidebar */
-      min-width: 72px;
+      width: 64px;
+      min-width: 64px;
       flex-shrink: 0;
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      background: #090e17;
       border-right: 1px solid rgba(255,255,255,0.02);
+      padding: 12px 0;
     }
     .si {
       width: 46px; height: 46px; border-radius: 14px;
@@ -4472,7 +4474,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
     @keyframes pulse   { 0%,100% { opacity:.4; } 50% { opacity:.8; } }
 
     @media (max-width: 900px) {
-      .sidebar { width: 44px; min-width: 44px; }
+      .sidebar { width: 64px; min-width: 64px; }
       .rc { display: none; }
     }
     @media (max-width: 600px) {
@@ -4642,7 +4644,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
     <div className="crm-root">
 
       {/* SIDEBAR */}
-      <div className="sidebar" style={{position: 'relative', zIndex: 100, width: 60, minWidth: 60, flexShrink: 0}}>
+      <div className="sidebar">
         {/* Top Hamburger Menu */}
         <div style={{ marginTop: 12, padding: '0 8px', width: '100%', boxSizing: 'border-box' }}>
           <div 
@@ -4665,7 +4667,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
           </div>
         </div>
         
-        {/* Middle Area (Cleaned) */}
+        {/* Middle Area (Spacer) */}
         <div style={{ display: 'flex', flexDirection: 'column', flex: 1, width: '100%' }}></div>
 
         {/* Bottom Account Button */}
