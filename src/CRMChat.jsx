@@ -4642,82 +4642,66 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
     <div className="crm-root">
 
       {/* SIDEBAR */}
-      <div className="sidebar" style={{position: 'relative', zIndex: 100}}>
-        <div 
-           title="Menu" 
-           style={{width:44,height:44,borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",color:"#64748b",fontSize:24,cursor:"pointer",transition:"all 0.2s"}}
-           onMouseEnter={e => e.currentTarget.style.color="#f0e6ff"}
-           onMouseLeave={e => e.currentTarget.style.color="#64748b"}
-           onClick={() => setShowMainMenu(true)}
-        >
-          ☰
+      <div className="sidebar" style={{position: 'relative', zIndex: 100, width: 60, minWidth: 60, flexShrink: 0}}>
+        {/* Top Hamburger Menu */}
+        <div style={{ marginTop: 12, padding: '0 8px', width: '100%', boxSizing: 'border-box' }}>
+          <div 
+             title="Menu" 
+             onClick={() => setShowMainMenu(true)}
+             style={{
+               width: 44, height: 44, margin: '0 auto', borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center",
+               color: "#a78bfa", fontSize: 24, cursor: "pointer", transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+             }}
+             onMouseEnter={e => {
+               e.currentTarget.style.background = 'rgba(124,58,237,0.15)';
+               e.currentTarget.style.color = '#f0e6ff';
+             }}
+             onMouseLeave={e => {
+               e.currentTarget.style.background = 'transparent';
+               e.currentTarget.style.color = '#a78bfa';
+             }}
+          >
+            ☰
+          </div>
         </div>
         
-        <div style={{display:'flex', flexDirection:'column', gap:12, flex:1, width:'100%', alignItems:'center', marginTop: 12}}>
-          <div title="Coincu App" style={{width:36,height:36,background:'linear-gradient(135deg, #7c3aed, #4f46e5)',borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:16,cursor:"pointer",boxShadow:"0 4px 14px rgba(124,58,237,0.4)"}}>⚡</div>
-        </div>
+        {/* Middle Area (Cleaned) */}
+        <div style={{ display: 'flex', flexDirection: 'column', flex: 1, width: '100%' }}></div>
 
         {/* Bottom Account Button */}
         <div style={{ marginTop: 'auto', marginBottom: 12, padding: '0 8px', width: '100%', boxSizing: 'border-box' }}>
           <div
-            title="Account"
-            onClick={() => setShowMainMenu(true)}
+            title="Switch Account"
+            onClick={() => setShowAccountMenu(true)}
             style={{
-              width: '100%',
-              maxWidth: 56,
-              height: 64,
+              width: 44,
+              height: 44,
               margin: '0 auto',
-              background: '#1c1132',
-              border: '1px solid rgba(124,58,237,0.2)',
-              borderRadius: 16,
+              borderRadius: '50%',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               cursor: 'pointer',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
               transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+              position: 'relative'
             }}
-            onMouseEnter={e => {
-              e.currentTarget.style.background = '#281a4a';
-              e.currentTarget.style.borderColor = 'rgba(124,58,237,0.4)';
-            }}
-            onMouseLeave={e => {
-              e.currentTarget.style.background = '#1c1132';
-              e.currentTarget.style.borderColor = 'rgba(124,58,237,0.2)';
-              e.currentTarget.style.transform = 'scale(1)';
-              e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)';
-            }}
-            onMouseDown={e => {
-              e.currentTarget.style.transform = 'scale(0.95)';
-              e.currentTarget.style.boxShadow = '0 0 16px rgba(124,58,237,0.4)';
-            }}
-            onMouseUp={e => {
-              e.currentTarget.style.transform = 'scale(1)';
-              e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)';
-            }}
+            onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.05)'}
+            onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+            onMouseDown={e => e.currentTarget.style.transform = 'scale(0.95)'}
+            onMouseUp={e => e.currentTarget.style.transform = 'scale(1.05)'}
           >
-            <div style={{ position: 'relative', width: 42, height: 42 }}>
-              <div style={{
-                width: '100%', height: '100%', borderRadius: '50%',
-                background: '#2d1155', border: '2px solid #7c3aed',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                color: '#a78bfa', fontWeight: 700, fontSize: 16,
-                boxSizing: 'border-box', overflow: 'hidden'
-              }}>
-                {(() => {
-                  const acc = accounts.find(a => a.accountId === activeAccRef.current);
-                  return acc?.displayName
-                    ? acc.displayName.charAt(0).toUpperCase()
-                    : (acc?.phone ? acc.phone.charAt(1) : 'U');
-                })()}
-              </div>
-              <div style={{
-                position: 'absolute', right: -2, bottom: -2,
-                width: 12, height: 12, borderRadius: '50%',
-                background: '#10b981', border: '2.5px solid #1c1132',
-                boxSizing: 'border-box'
-              }} />
-            </div>
+            {(() => {
+              const acc = accounts.find(a => a.accountId === activeAccRef.current) || accounts[0];
+              return <Avatar chatId={acc?.telegramUserId} name={acc?.displayName || acc?.username || acc?.phone} size={42} />;
+            })()}
+            
+            {/* Green Online Dot */}
+            <div style={{
+              position: 'absolute', right: -2, bottom: -2,
+              width: 14, height: 14, borderRadius: '50%',
+              background: '#10b981', border: '3px solid #090e17',
+              boxSizing: 'border-box'
+            }} />
           </div>
         </div>
 

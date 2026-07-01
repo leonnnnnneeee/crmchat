@@ -118,7 +118,6 @@ export default function TelegramMainMenu({
           <>
             <ItemRow icon="➕" label="Add Account" onClick={() => handleItemClick('Add Account', onAddAccount)} />
             <ItemRow icon="🔖" label="Saved Messages" onClick={() => handleItemClick('Saved Messages', onOpenSavedMessages)} />
-            <ItemRow icon="📱" label="My Stories" onClick={() => handleItemClick('My Stories', () => onOpenSavedMessages())} />
             <ItemRow icon="👥" label="Contacts" onClick={() => handleItemClick('Contacts', onOpenContacts)} />
             <ItemRow icon="⚙️" label="Settings" onClick={() => handleItemClick('Settings', onOpenSettings)} />
             <ItemRow icon="🖼️" label="Background" onClick={() => handleItemClick('Background', onOpenBackground)} />
