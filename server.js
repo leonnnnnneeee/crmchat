@@ -2574,8 +2574,8 @@ app.post('/api/telegram/accounts/switch', requireAuth, async (req, res) => {
   }
 
   try {
-    const client = await withTimeout(getClient(accountId), 5000, 'switch_getClient');
-    await withTimeout(client.getMe(), 3000, 'switch_getMe');
+    const client = await withTimeout(getClient(accountId), 15000, 'switch_getClient');
+    await withTimeout(client.getMe(), 10000, 'switch_getMe');
     res.json({ ok: true, accountId });
   } catch (e) {
     log(`Switch account failed for ${accountId}: ${e.message}`);

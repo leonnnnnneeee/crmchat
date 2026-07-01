@@ -4827,6 +4827,10 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
               console.log('[DEBUG] addAccountClicked');
               setShowAddAccount(true);
             }}
+            onAuthFailed={() => {
+              setShowAccountMenu(false);
+              setShowAddAccount(true);
+            }}
             onSwitchAccount={(id) => {
               console.log('[MultiAccount] Switching to account:', id);
               setActiveAccId(id);
