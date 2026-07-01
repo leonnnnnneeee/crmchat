@@ -3250,7 +3250,8 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
 
             // 2. Append to msgs if in active chat
             const isSameChat = selRef.current?.id?.toString() === msg.chatId?.toString();
-            const isSameTopic = !selRef.current?.isForum || (msg.topicId && selTopicRef.current?.id === msg.topicId) || (!msg.topicId && !selTopicRef.current);
+            const getTId = (t) => (t && t !== 1 && t !== '1') ? t.toString() : '1';
+            const isSameTopic = !selRef.current?.isForum || getTId(msg.topicId) === getTId(selTopicRef.current?.id);
             console.log('[DEBUG] active chatId/topicId', selRef.current?.id, selTopicRef.current?.id)
             
             if (isSameChat && isSameTopic) {
@@ -3303,7 +3304,8 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
           else if (data.type === 'update_reactions') {
             const { chatId, msgId, topicId, reactions, recentReactions } = data;
             const isSameChat = selRef.current?.id?.toString() === chatId?.toString();
-            const isSameTopic = !selRef.current?.isForum || (topicId && selTopicRef.current?.id === topicId) || (!topicId && !selTopicRef.current);
+            const getTId = (t) => (t && t !== 1 && t !== '1') ? t.toString() : '1';
+            const isSameTopic = !selRef.current?.isForum || getTId(topicId) === getTId(selTopicRef.current?.id);
             
             if (isSameChat && isSameTopic) {
               setMsgs(prev => {
