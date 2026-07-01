@@ -1952,9 +1952,13 @@ function AccountMenu({ accounts, activeAccountId, onClose, onAddAccount, onSwitc
             onMouseEnter={e => { if(acc.accountId !== activeAccountId) e.currentTarget.style.background = 'rgba(255,255,255,0.05)' }}
             onMouseLeave={e => { if(acc.accountId !== activeAccountId) e.currentTarget.style.background = 'transparent' }}
           >
-            <div style={{ width: 32, height: 32, borderRadius: '50%', background: acc.accountId === activeAccountId ? '#7c3aed' : '#3a3a3c', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 13, fontWeight: 600 }}>
-              {acc.displayName ? acc.displayName.charAt(0).toUpperCase() : 'A'}
-            </div>
+            {acc.telegramUserId ? (
+              <Avatar name={acc.displayName || acc.accountId} chatId={acc.telegramUserId} size={32} />
+            ) : (
+              <div style={{ width: 32, height: 32, borderRadius: '50%', background: acc.accountId === activeAccountId ? '#7c3aed' : '#3a3a3c', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 13, fontWeight: 600 }}>
+                {acc.displayName ? acc.displayName.charAt(0).toUpperCase() : 'A'}
+              </div>
+            )}
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
               <div style={{ color: acc.accountId === activeAccountId ? '#fff' : '#e5e5ea', fontSize: 14, fontWeight: 500 }}>
                 {acc.displayName || acc.accountId}

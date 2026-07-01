@@ -109,6 +109,13 @@ app.post('/api/auth/refresh', (req, res) => {
 });
 
 // ── TELEGRAM SESSION (in-memory + env fallback) ──
+
+function normalizePhone(p) {
+  if (!p) return '';
+  let cleaned = String(p).replace(/[\s\-\(\)]/g, '');
+  if (!cleaned.startsWith('+') && cleaned.length > 5) cleaned = '+' + cleaned;
+  return cleaned;
+}
 const _accounts = new Map() // accountId -> { session: string, client: TelegramClient, ready: boolean }
 const DEFAULT_ACCOUNT_ID = 'default'
 let _pendingClient = null
@@ -358,12 +365,13 @@ app.post('/api/tg/verify-otp', requireAuth, async (req,res) => {
     // Deduplicate logic
     const me = await client.getMe();
     const telegramUserId = me.id.toString();
-    const userPhone = me.phone || '';
+    const userPhone = normalizePhone(me.phone || '');
     
     let canonicalAccountId = accountId;
     for (const [id, acc] of _accounts.entries()) {
       if (id !== accountId && acc.session) {
-         if ((acc.telegramUserId && acc.telegramUserId === telegramUserId) || (acc.phone && userPhone && acc.phone === userPhone)) {
+         const accPhone = normalizePhone(acc.phone || '');
+         if ((acc.telegramUserId && acc.telegramUserId === telegramUserId) || (accPhone && userPhone && accPhone === userPhone)) {
             canonicalAccountId = id;
             break;
          }
@@ -2413,9 +2421,9 @@ app.get('/api/telegram/accounts', async (req, res) => {
     
     let meData = {
       telegramUserId: acc.telegramUserId,
-      displayName: acc.displayName || `Account ${id}`,
+      displayName: acc.displayName,
       username: acc.username || '',
-      phone: acc.phone || ''
+      phone: normalizePhone(acc.phone || '')
     };
 
     if (!acc.telegramUserId && acc.sessionStatus !== 'expired') {
@@ -2423,19 +2431,24 @@ app.get('/api/telegram/accounts', async (req, res) => {
         const client = await getClient(id);
         const me = await client.getMe();
         meData.telegramUserId = me.id.toString();
-        meData.displayName = me.firstName + (me.lastName ? ' ' + me.lastName : '');
+        const first = me.firstName || '';
+        const last = me.lastName || '';
+        meData.displayName = (first + (last ? ' ' + last : '')).trim() || me.username || normalizePhone(me.phone || '') || 'Telegram Account';
         meData.username = me.username || '';
-        meData.phone = me.phone || '';
+        meData.phone = normalizePhone(me.phone || '');
         
         acc.telegramUserId = meData.telegramUserId;
         acc.displayName = meData.displayName;
         acc.username = meData.username;
         acc.phone = meData.phone;
-        // Optionally save to DB to persist the newly fetched metadata
         saveSessionToDB(acc.session, id);
       } catch (e) {
         log(`Failed to fetch getMe for ${id} in GET /accounts: ${e.message}`);
       }
+    }
+
+    if (!meData.displayName || meData.displayName.startsWith('Account default')) {
+       meData.displayName = meData.username || meData.phone || 'Telegram Account';
     }
 
     rawAccounts.push({
@@ -2443,32 +2456,46 @@ app.get('/api/telegram/accounts', async (req, res) => {
       telegramUserId: meData.telegramUserId,
       displayName: meData.displayName,
       username: meData.username,
-      phone: meData.phone,
+      phone: meData.phone, // Normalized
       isActive: id === req.accountId,
       sessionStatus: acc.sessionStatus || 'disconnected'
     });
   }
 
-  // Deduplicate using telegramUserId > phone > accountId
+  log(`[Accounts Debug] rawAccounts count: ${rawAccounts.length}`);
+  
+  // Deduplicate using telegramUserId > normalizedPhone > accountId
   const dedupedMap = new Map();
+  let hiddenInvalidAccounts = 0;
+  
   for (const acc of rawAccounts) {
     const key = acc.telegramUserId || acc.phone || acc.accountId;
+    log(`[Accounts Debug] raw accountId: ${acc.accountId}, userId: ${acc.telegramUserId}, phone: ${acc.phone}, displayName: ${acc.displayName}, key: ${key}`);
+    
     if (dedupedMap.has(key)) {
       const existing = dedupedMap.get(key);
+      log(`[Accounts Debug] Duplicate found! Merging ${acc.accountId} into canonical ${existing.accountId}`);
       // Merge: prefer connected session, keep isActive if any is active, keep phone/username
-      if (acc.isActive) existing.isActive = true;
+      if (acc.isActive) {
+        existing.isActive = true;
+        log(`[Accounts Debug] Migrating active checkmark to canonicalAccountId: ${existing.accountId}`);
+      }
       if (acc.phone && !existing.phone) existing.phone = acc.phone;
       if (acc.username && !existing.username) existing.username = acc.username;
       if (acc.sessionStatus === 'connected') existing.sessionStatus = 'connected';
-      // If the new one is active but we are keeping the existing one as canonical, 
-      // the frontend will see existing.isActive = true and migrate to existing.accountId.
+      
+      // If the duplicate has a better display name, use it
+      if (acc.displayName && acc.displayName !== 'Telegram Account' && existing.displayName === 'Telegram Account') {
+         existing.displayName = acc.displayName;
+      }
+      hiddenInvalidAccounts++;
     } else {
       dedupedMap.set(key, { ...acc });
     }
   }
 
   const finalAccounts = Array.from(dedupedMap.values());
-  log(`[AccountDedup] raw: ${rawAccounts.length}, deduped: ${finalAccounts.length}`);
+  log(`[Accounts Debug] dedupedAccounts count: ${finalAccounts.length}, hiddenInvalidAccounts count: ${hiddenInvalidAccounts}`);
   res.json(finalAccounts);
 });
 
@@ -2483,12 +2510,13 @@ app.post('/api/telegram/accounts/add-session', async (req, res) => {
     await client.connect();
     const me = await client.getMe(); // Verify it works
     const telegramUserId = me.id.toString();
-    const userPhone = me.phone || '';
+    const userPhone = normalizePhone(me.phone || '');
     
     let canonicalAccountId = accountId;
     for (const [id, acc] of _accounts.entries()) {
       if (id !== accountId && acc.session) {
-         if ((acc.telegramUserId && acc.telegramUserId === telegramUserId) || (acc.phone && userPhone && acc.phone === userPhone)) {
+         const accPhone = normalizePhone(acc.phone || '');
+         if ((acc.telegramUserId && acc.telegramUserId === telegramUserId) || (accPhone && userPhone && accPhone === userPhone)) {
             canonicalAccountId = id;
             break;
          }
