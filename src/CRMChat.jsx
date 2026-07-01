@@ -1986,9 +1986,11 @@ function AccountMenu({ accounts, activeAccountId, onClose, onAddAccount, onSwitc
                   onSwitchAccount(acc.accountId);
                   onClose();
                 } else {
-                  alert(d.error || 'This account session is invalid or expired.');
                   if (d.code === 'ACCOUNT_SESSION_INVALID' && onAuthFailed) {
+                    alert('Phiên đăng nhập Telegram của tài khoản này đã hết hạn (hoặc bị đăng xuất từ thiết bị khác). Vui lòng kết nối lại!');
                     onAuthFailed();
+                  } else {
+                    alert('Lỗi kết nối: ' + (d.error || 'Phiên làm việc không hợp lệ.'));
                   }
                 }
               } catch (e) {
