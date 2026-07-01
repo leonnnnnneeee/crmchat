@@ -87,15 +87,42 @@ const MessageList = React.memo(function MessageList(props) {
             {loadMsgs&&<div style={{textAlign:"center",color:TG.textMuted,fontSize:13,marginTop:40}}>Loading messages...</div>}
             
             {messageFetchError && !loadMsgs && (
-              <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:12,color:TG.textSec,marginTop:60}}>
-                <div style={{fontSize:40}}>⚠️</div>
-                <div style={{fontSize:14, textAlign:'center', maxWidth:300, lineHeight:'1.5', color: '#ff453a', fontWeight:600}}>{messageFetchError}</div>
-                <button 
-                  onClick={() => loadMessages(sel, selTopic?.id || null)}
-                  style={{padding:'8px 16px', background:'#7c3aed', color:'#fff', border:'none', borderRadius:6, cursor:'pointer', fontWeight:600}}
-                >
-                  Retry
-                </button>
+              <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,color:"#e2d3f5",marginTop:60,padding:20}}>
+                <div style={{fontSize:48,marginBottom:8}}>⚠️</div>
+                <div style={{fontSize:16, textAlign:'center', maxWidth:400, lineHeight:'1.5', color: '#ff6b6b', fontWeight:600}}>
+                  {typeof messageFetchError === 'string' ? messageFetchError : (messageFetchError.error || "Could not open this chat. Refresh dialogs or reconnect this Telegram account.")}
+                </div>
+                {typeof messageFetchError === 'object' && messageFetchError.code === 'ENTITY_RESOLVE_FAILED' && (
+                  <div style={{fontSize:13,color:"rgba(255,255,255,0.5)",textAlign:'center',maxWidth:400,marginBottom:8}}>
+                    Entity resolving failed for this chat. This happens when the account hasn't cached this chat yet or lacks permission.
+                  </div>
+                )}
+                <div style={{display:'flex',gap:12,flexWrap:'wrap',justifyContent:'center'}}>
+                  {typeof messageFetchError === 'object' && messageFetchError.code === 'ENTITY_RESOLVE_FAILED' && (
+                    <button 
+                      onClick={() => props.handleRefreshDialogs && props.handleRefreshDialogs()}
+                      style={{padding:'10px 20px', background:'#3d1f6a', color:'#c4a8e8', border:'1px solid #7c3aed', borderRadius:8, cursor:'pointer', fontWeight:600, display:'flex', alignItems:'center', gap:6}}
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.92-10.27l5.43 5.43"/></svg>
+                      Refresh dialogs
+                    </button>
+                  )}
+                  <button 
+                    onClick={() => loadMessages(sel, selTopic?.id || null)}
+                    style={{padding:'10px 20px', background:'#7c3aed', color:'#fff', border:'none', borderRadius:8, cursor:'pointer', fontWeight:600, display:'flex', alignItems:'center', gap:6}}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                    Retry
+                  </button>
+                  {typeof messageFetchError === 'object' && messageFetchError.code === 'ENTITY_RESOLVE_FAILED' && onAuthFailed && (
+                    <button 
+                      onClick={() => onAuthFailed()}
+                      style={{padding:'10px 20px', background:'rgba(229,57,53,0.1)', color:'#e53935', border:'1px solid rgba(229,57,53,0.4)', borderRadius:8, cursor:'pointer', fontWeight:600}}
+                    >
+                      Reconnect account
+                    </button>
+                  )}
+                </div>
               </div>
             )}
 

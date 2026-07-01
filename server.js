@@ -270,9 +270,57 @@ async function warmupClients() {
 }
 
 // Entity cache to avoid repeated TG lookups
-const _entityCache = {}
+const _entityCache = new Map(); // accountId -> cache
 
-async function resolveEntity(client, idStr, username) {
+async function resolveTelegramEntity(accountId, client, idStr, username, accessHashStr) {
+  if (idStr === 'me' || idStr === 'self') return await client.getMe();
+  
+  if (!_entityCache.has(accountId)) _entityCache.set(accountId, {});
+  const cache = _entityCache.get(accountId);
+  const cacheKey = username || idStr;
+  
+  if (cache[cacheKey]) return cache[cacheKey];
+
+  let entity;
+  if (username && username !== 'undefined') {
+    try { entity = await client.getEntity(username); } catch {}
+  }
+  
+  const { Api } = require('telegram/tl');
+  if (!entity) {
+    const num = Number(idStr);
+    const ah = accessHashStr && accessHashStr !== 'undefined' ? BigInt(accessHashStr) : null;
+
+    if (num < 0) {
+      const channelId = Math.abs(num) - 1000000000000;
+      if (channelId > 0) {
+        try {
+          if (ah) entity = await client.getEntity(new Api.InputPeerChannel({ channelId: BigInt(channelId), accessHash: ah }));
+          else {
+            // Only attempt without accessHash if we really have to, it might throw
+            entity = await client.getEntity(new Api.PeerChannel({ channelId: BigInt(channelId) }));
+          }
+        } catch(e) {}
+      } else {
+        try {
+          entity = await client.getEntity(new Api.PeerChat({ chatId: BigInt(Math.abs(num)) }));
+        } catch(e) {}
+      }
+    } else {
+      try {
+        if (ah) entity = await client.getEntity(new Api.InputPeerUser({ userId: BigInt(num), accessHash: ah }));
+        else entity = await client.getEntity(new Api.PeerUser({ userId: BigInt(num) }));
+      } catch(e) {}
+    }
+    
+    if (!entity) {
+      try { entity = await client.getEntity(idStr); } catch {}
+    }
+  }
+
+  if (entity) cache[cacheKey] = entity;
+  return entity;
+}
   if (idStr === 'me' || idStr === 'self') {
     return await client.getMe();
   }
@@ -402,7 +450,13 @@ app.get('/api/chat/status/:id', requireAuth, async (req,res) => {
   if (!_accounts.get(req.accountId)?.session) return res.json({ status: '' })
   try {
     const client = await getClient(req.accountId)
-    const peer = await resolveEntity(client, req.params.id)
+    const peer = await resolveTelegramEntity(req.accountId, client, req.params.id)
+    if (!peer) return res.status(404).json({
+      ok: false,
+      code: "ENTITY_RESOLVE_FAILED",
+      error: "Could not resolve this Telegram chat. Try refreshing dialogs or reconnecting this account.",
+      accountId: req.accountId
+    });
     if (!peer) return res.json({ status: '' })
     
     // Only fetch for User
@@ -447,6 +501,26 @@ app.get('/api/chat/status/:id', requireAuth, async (req,res) => {
 })
 
 // ── CHAT LIST ──
+
+app.post('/api/telegram/dialogs/refresh', requireAuth, async (req, res) => {
+  if (!_accounts.get(req.accountId)?.session) return res.status(401).json({ok: false, error: 'Not connected'});
+  try {
+    const client = await getClient(req.accountId);
+    // Fetch dialogs to force cache population
+    const dialogs = await withTimeout(client.getDialogs({ limit: 40 }), 60000, 'getDialogs');
+    if (!_entityCache.has(req.accountId)) _entityCache.set(req.accountId, {});
+    const cache = _entityCache.get(req.accountId);
+    for (const d of dialogs) {
+      if (d.entity) {
+        cache[d.id.toString()] = d.entity;
+        if (d.entity.username) cache[d.entity.username] = d.entity;
+      }
+    }
+    res.json({ ok: true, count: dialogs.length });
+  } catch(e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
 app.get('/api/chat/list', requireAuth, async (req,res) => {
   if (!_accounts.get(req.accountId)?.session) return res.json([])
   try {
@@ -459,9 +533,19 @@ app.get('/api/chat/list', requireAuth, async (req,res) => {
     const opts = { limit }
     if (offsetDate > 0) opts.offsetDate = offsetDate
     if (offsetId > 0) opts.offsetId = offsetId
-    if (offsetPeerId) opts.offsetPeer = await resolveEntity(client, offsetPeerId)
+    if (offsetPeerId) opts.offsetPeer = await resolveTelegramEntity(req.accountId, client, offsetPeerId)
     
     const dialogs = await withTimeout(client.getDialogs(opts), 60000, 'getDialogs')
+    
+    // Preload entities to cache
+    if (!_entityCache.has(req.accountId)) _entityCache.set(req.accountId, {});
+    const cache = _entityCache.get(req.accountId);
+    for (const d of dialogs) {
+      if (d.entity) {
+        cache[d.id.toString()] = d.entity;
+        if (d.entity.username) cache[d.entity.username] = d.entity;
+      }
+    }
     const chats = dialogs.map(d => ({
       id: d.id.toString(),
       name: d.title || d.name || 'Unknown',
@@ -592,7 +676,13 @@ app.get('/api/chat/members/:id', requireAuth, async (req, res) => {
   if (!_accounts.get(req.accountId)?.session) return res.json({ok: false, error: 'TG_SESSION_EXPIRED'})
   try {
     const client = await getClient(req.accountId)
-    const entity = await resolveEntity(client, req.params.id)
+    const entity = await resolveTelegramEntity(req.accountId, client, req.params.id)
+    if (!entity) return res.status(404).json({
+      ok: false,
+      code: "ENTITY_RESOLVE_FAILED",
+      error: "Could not resolve this Telegram chat. Try refreshing dialogs or reconnecting this account.",
+      accountId: req.accountId
+    });
     
     // Some channels throw CHAT_ADMIN_REQUIRED if you request participants.
     const participants = await client.getParticipants(entity, { limit: 200 })
@@ -630,8 +720,14 @@ app.post('/api/chat/leave', requireAuth, async (req, res) => {
     const { chatId } = req.body;
     if (!chatId) return res.status(400).json({ error: 'Missing chatId' });
     
-    const peer = await resolveEntity(client, chatId);
-    if (!peer) return res.status(404).json({ error: 'Chat not found' });
+    const peer = await resolveTelegramEntity(req.accountId, client, chatId);
+    if (!peer) return res.status(404).json({
+      ok: false,
+      code: "ENTITY_RESOLVE_FAILED",
+      error: "Could not resolve this Telegram chat. Try refreshing dialogs or reconnecting this account.",
+      accountId: req.accountId
+    });
+    
     
     if (peer.className === 'Channel') {
       await client.invoke(new Api.channels.LeaveChannel({ channel: peer }));
@@ -655,10 +751,14 @@ app.get('/api/telegram/entities/resolve', requireAuth, async (req, res) => {
     const query = req.query.username || req.query.peerId;
     if (!query) return res.status(400).json({ok: false, error: 'Missing username or peerId'});
 
-    const entity = await resolveEntity(client, query, req.query.username);
-    if (!entity || typeof entity === 'string') {
-       return res.status(404).json({ok: false, code: 'ENTITY_RESOLVE_FAILED', error: 'Could not resolve Telegram user'});
-    }
+    const entity = await resolveTelegramEntity(req.accountId, client, query, req.query.username);
+    if (!entity) return res.status(404).json({
+      ok: false,
+      code: "ENTITY_RESOLVE_FAILED",
+      error: "Could not resolve this Telegram chat. Try refreshing dialogs or reconnecting this account.",
+      accountId: req.accountId
+    });
+    
     
     let type = 'unknown';
     if (entity.className === 'User') type = 'user';
@@ -686,7 +786,13 @@ app.get('/api/chat/profile/:id', requireAuth, async (req, res) => {
   try {
     const client = await getClient(req.accountId)
     const { Api } = require('telegram/tl')
-    const entity = await resolveEntity(client, req.params.id)
+    const entity = await resolveTelegramEntity(req.accountId, client, req.params.id)
+    if (!entity) return res.status(404).json({
+      ok: false,
+      code: "ENTITY_RESOLVE_FAILED",
+      error: "Could not resolve this Telegram chat. Try refreshing dialogs or reconnecting this account.",
+      accountId: req.accountId
+    });
     
     // Attempt to get full user or full chat
     let full = null
@@ -837,7 +943,13 @@ const sharedMediaHandler = async (req, res) => {
     const chatIdStr = req.params.id || req.query.chatId;
     if (!chatIdStr) return res.json({ok: false, error: 'Missing chatId'})
     
-    const entity = await resolveEntity(client, chatIdStr)
+    const entity = await resolveTelegramEntity(req.accountId, client, chatIdStr)
+    if (!entity) return res.status(404).json({
+      ok: false,
+      code: "ENTITY_RESOLVE_FAILED",
+      error: "Could not resolve this Telegram chat. Try refreshing dialogs or reconnecting this account.",
+      accountId: req.accountId
+    });
     
     const type = req.query.type || 'photos'
     const limit = parseInt(req.query.limit) || 30
@@ -862,7 +974,7 @@ const sharedMediaHandler = async (req, res) => {
         if (accessHash && accessHash !== 'undefined') {
           params.fromUser = new Api.InputPeerUser({ userId: BigInt(fromUser), accessHash: BigInt(accessHash) })
         } else {
-          params.fromUser = await resolveEntity(client, fromUser)
+          params.fromUser = await resolveTelegramEntity(req.accountId, client, fromUser)
         }
       } catch (err) {
         log(`shared media: could not resolve fromUser ${fromUser}`)
@@ -920,7 +1032,13 @@ const sharedMediaHandler = async (req, res) => {
         
         // Use the outer client variable
         const client = await getClient(req.accountId);
-        const entity = await resolveEntity(client, req.params.id || req.query.chatId);
+        const entity = await resolveTelegramEntity(req.accountId, client, req.params.id || req.query.chatId);
+    if (!entity) return res.status(404).json({
+      ok: false,
+      code: "ENTITY_RESOLVE_FAILED",
+      error: "Could not resolve this Telegram chat. Try refreshing dialogs or reconnecting this account.",
+      accountId: req.accountId
+    });
         
         while (matched.length < limit && attempts < 5) {
             const fetchParams = { limit: 100, offsetId: currentOffsetId };
@@ -982,7 +1100,7 @@ app.get('/api/chat/photo/:id', requireAuth, async (req, res) => {
     const username = req.query.username;
     const accessHashStr = req.query.accessHash;
     
-    let entity = await resolveEntity(client, userIdStr, username);
+    let entity = await resolveTelegramEntity(req.accountId, client, userIdStr, username);
     
     if (typeof entity === 'string' || typeof entity === 'number') {
       if (accessHashStr) {
@@ -1049,7 +1167,13 @@ app.get(['/api/chat/media/:chatId/:msgId', '/api/telegram/media/audio'], require
     }
 
     const client = await getClient(req.accountId)
-    const entity = await resolveEntity(client, chatId)
+    const entity = await resolveTelegramEntity(req.accountId, client, chatId)
+    if (!entity) return res.status(404).json({
+      ok: false,
+      code: "ENTITY_RESOLVE_FAILED",
+      error: "Could not resolve this Telegram chat. Try refreshing dialogs or reconnecting this account.",
+      accountId: req.accountId
+    });
 
     let message = global.mediaMessageCache ? global.mediaMessageCache.get(`${chatId}_${msgId}`) : null;
     if (!message) {
@@ -1249,7 +1373,13 @@ app.get('/api/chat/messages/:id', requireAuth, async (req,res) => {
   const t0 = Date.now()
   try {
     const client = await withTimeout(getClient(req.accountId), 10000, 'getClient')
-    const entity = await withTimeout(resolveEntity(client, req.params.id, req.query.username, req.query.accessHash), 8000, 'resolveEntity')
+    const entity = await withTimeout(resolveTelegramEntity(req.accountId, client, req.params.id, req.query.username, req.query.accessHash), 8000, 'resolveEntity')
+    if (!entity) return res.status(404).json({
+      ok: false,
+      code: "ENTITY_RESOLVE_FAILED",
+      error: "Could not resolve this Telegram chat. Try refreshing dialogs or reconnecting this account.",
+      accountId: req.accountId
+    });
     const maxId = parseInt(req.query.maxId) || 0
     const minId = parseInt(req.query.minId) || 0
     const opts = { limit: 40 }
@@ -1342,7 +1472,13 @@ app.get('/api/chat/topics/:chatId/:topicId/messages', requireAuth, async (req,re
   const t0 = Date.now()
   try {
     const client = await withTimeout(getClient(req.accountId), 10000, 'getClient')
-    const entity = await withTimeout(resolveEntity(client, req.params.chatId, req.query.username), 8000, 'resolveEntity')
+    const entity = await withTimeout(resolveTelegramEntity(req.accountId, client, req.params.chatId, req.query.username), 8000, 'resolveEntity')
+    if (!entity) return res.status(404).json({
+      ok: false,
+      code: "ENTITY_RESOLVE_FAILED",
+      error: "Could not resolve this Telegram chat. Try refreshing dialogs or reconnecting this account.",
+      accountId: req.accountId
+    });
     const maxId = parseInt(req.query.maxId) || 0
     const minId = parseInt(req.query.minId) || 0
     const opts = { limit: 40, replyTo: parseInt(req.params.topicId) }
@@ -1434,7 +1570,13 @@ app.post('/api/chat/send', requireAuth, async (req,res) => {
   if (!_accounts.get(req.accountId)?.session) return res.status(401).json({ error: 'Not connected' })
   try {
     const client = await getClient(req.accountId)
-    const entity = await withTimeout(resolveEntity(client, chatId, req.body.username), 8000, 'resolveEntity')
+    const entity = await withTimeout(resolveTelegramEntity(req.accountId, client, chatId, req.body.username), 8000, 'resolveEntity')
+    if (!entity) return res.status(404).json({
+      ok: false,
+      code: "ENTITY_RESOLVE_FAILED",
+      error: "Could not resolve this Telegram chat. Try refreshing dialogs or reconnecting this account.",
+      accountId: req.accountId
+    });
     const sent = await withTimeout(client.sendMessage(entity, { message: text }), 10000, 'sendMessage')
     log('Sent to '+chatId+': '+text.slice(0,40))
     res.json({ ok: true, messageId: sent.id, date: sent.date })
@@ -1448,7 +1590,13 @@ app.get('/api/chat/messages/:chatId/:msgId/read-receipts', requireAuth, async (r
   
   try {
     const client = await getClient(req.accountId);
-    const entity = await withTimeout(resolveEntity(client, chatId), 8000, 'resolveEntity');
+    const entity = await withTimeout(resolveTelegramEntity(req.accountId, client, chatId), 8000, 'resolveEntity');
+    if (!entity) return res.status(404).json({
+      ok: false,
+      code: "ENTITY_RESOLVE_FAILED",
+      error: "Could not resolve this Telegram chat. Try refreshing dialogs or reconnecting this account.",
+      accountId: req.accountId
+    });
     const inputPeer = await client.getInputEntity(entity || chatId);
     
     if (inputPeer.className === 'InputPeerUser') {
@@ -1505,7 +1653,13 @@ app.get('/api/chat/topics/:id', requireAuth, async (req, res) => {
   try {
     const { Api } = require('telegram/tl');
     const client = await getClient(accountId);
-    const entity = await withTimeout(resolveEntity(client, id, req.query.username), 8000, 'resolveEntity');
+    const entity = await withTimeout(resolveTelegramEntity(req.accountId, client, id, req.query.username), 8000, 'resolveEntity');
+    if (!entity) return res.status(404).json({
+      ok: false,
+      code: "ENTITY_RESOLVE_FAILED",
+      error: "Could not resolve this Telegram chat. Try refreshing dialogs or reconnecting this account.",
+      accountId: req.accountId
+    });
     
     // Call GetForumTopics
     const result = await client.invoke(new Api.channels.GetForumTopics({
@@ -1550,7 +1704,13 @@ app.post('/api/chat/topics/:chatId/:topicId/send', requireAuth, async (req,res) 
   if (!_accounts.get(req.accountId)?.session) return res.status(401).json({ error: 'Not connected' })
   try {
     const client = await getClient(req.accountId)
-    const entity = await withTimeout(resolveEntity(client, chatId, username), 8000, 'resolveEntity')
+    const entity = await withTimeout(resolveTelegramEntity(req.accountId, client, chatId, username), 8000, 'resolveEntity')
+    if (!entity) return res.status(404).json({
+      ok: false,
+      code: "ENTITY_RESOLVE_FAILED",
+      error: "Could not resolve this Telegram chat. Try refreshing dialogs or reconnecting this account.",
+      accountId: req.accountId
+    });
     await withTimeout(client.sendMessage(entity, { message: text, replyTo: parseInt(topicId) }), 10000, 'sendMessage')
     log('Sent to topic '+chatId+'/'+topicId+': '+text.slice(0,40))
     res.json({ ok: true })
@@ -1565,7 +1725,13 @@ app.post('/api/chat/send-media', requireAuth, upload.single('file'), async (req,
   
   try {
     const client = await getClient(req.accountId)
-    const entity = await withTimeout(resolveEntity(client, chatId, username), 8000, 'resolveEntity')
+    const entity = await withTimeout(resolveTelegramEntity(req.accountId, client, chatId, username), 8000, 'resolveEntity')
+    if (!entity) return res.status(404).json({
+      ok: false,
+      code: "ENTITY_RESOLVE_FAILED",
+      error: "Could not resolve this Telegram chat. Try refreshing dialogs or reconnecting this account.",
+      accountId: req.accountId
+    });
     
     // GramJS can upload from file path
     const fileParams = {
@@ -1599,7 +1765,13 @@ app.post('/api/chat/delete', requireAuth, async (req, res) => {
     if (!chatId || !ids.length) return res.json({ok: false, error: 'Missing parameters'});
     
     const client = await getClient(req.accountId);
-    const entity = await resolveEntity(client, chatId);
+    const entity = await resolveTelegramEntity(req.accountId, client, chatId);
+    if (!entity) return res.status(404).json({
+      ok: false,
+      code: "ENTITY_RESOLVE_FAILED",
+      error: "Could not resolve this Telegram chat. Try refreshing dialogs or reconnecting this account.",
+      accountId: req.accountId
+    });
     
     await client.deleteMessages(entity, ids, { revoke: revoke !== false });
     
@@ -1622,7 +1794,13 @@ app.post('/api/ai/transcribe-voice', requireAuth, async (req,res) => {
       buffer = fs.readFileSync(cachePath)
     } else {
       const client = await getClient(req.accountId)
-      const entity = await resolveEntity(client, chatId)
+      const entity = await resolveTelegramEntity(req.accountId, client, chatId)
+    if (!entity) return res.status(404).json({
+      ok: false,
+      code: "ENTITY_RESOLVE_FAILED",
+      error: "Could not resolve this Telegram chat. Try refreshing dialogs or reconnecting this account.",
+      accountId: req.accountId
+    });
       const messages = await client.getMessages(entity, { ids: [parseInt(messageId)] })
       if (!messages || messages.length === 0 || !messages[0]) {
         return res.status(404).json({error: 'Message not found'})
@@ -2302,7 +2480,13 @@ app.post('/api/chat/edit', requireAuth, async (req,res) => {
   if(!chatId||!msgId||!text) return res.status(400).json({error:'Missing fields'})
   try {
     const client = await withTimeout(getClient(req.accountId), 10000, 'getClient')
-    const entity = await withTimeout(resolveEntity(client, chatId, username), 8000, 'resolve')
+    const entity = await withTimeout(resolveTelegramEntity(req.accountId, client, chatId, username), 8000, 'resolve')
+    if (!entity) return res.status(404).json({
+      ok: false,
+      code: "ENTITY_RESOLVE_FAILED",
+      error: "Could not resolve this Telegram chat. Try refreshing dialogs or reconnecting this account.",
+      accountId: req.accountId
+    });
     const {Api} = require('telegram/tl')
     await withTimeout(
       client.invoke(new Api.messages.EditMessage({
@@ -2329,7 +2513,13 @@ app.get('/api/telegram/messages/around', requireAuth, async (req, res) => {
   
   try {
     const client = await withTimeout(getClient(req.accountId), 10000, 'getClient')
-    const entity = await withTimeout(resolveEntity(client, chatId, username), 8000, 'resolveEntity')
+    const entity = await withTimeout(resolveTelegramEntity(req.accountId, client, chatId, username), 8000, 'resolveEntity')
+    if (!entity) return res.status(404).json({
+      ok: false,
+      code: "ENTITY_RESOLVE_FAILED",
+      error: "Could not resolve this Telegram chat. Try refreshing dialogs or reconnecting this account.",
+      accountId: req.accountId
+    });
     
     // limitBefore = 30, limitAfter = 30 -> total 60
     const limit = 60;
@@ -2725,7 +2915,13 @@ app.post(['/api/chat/react', '/api/telegram/messages/react'], requireAuth, async
   
   try {
     const client = await withTimeout(getClient(req.accountId), 10000, 'getClient')
-    const entity = await withTimeout(resolveEntity(client, chatId, username), 8000, 'resolve')
+    const entity = await withTimeout(resolveTelegramEntity(req.accountId, client, chatId, username), 8000, 'resolve')
+    if (!entity) return res.status(404).json({
+      ok: false,
+      code: "ENTITY_RESOLVE_FAILED",
+      error: "Could not resolve this Telegram chat. Try refreshing dialogs or reconnecting this account.",
+      accountId: req.accountId
+    });
     const {Api} = require('telegram/tl')
     
     let reactionArr = [];
@@ -2780,7 +2976,13 @@ app.get('/api/telegram/messages/pinned', requireAuth, async (req,res) => {
   if(!chatId) return res.status(400).json({error:'Missing chatId'})
   try {
     const client = await withTimeout(getClient(req.accountId), 10000, 'getClient')
-    const entity = await withTimeout(resolveEntity(client, chatId, username), 8000, 'resolve')
+    const entity = await withTimeout(resolveTelegramEntity(req.accountId, client, chatId, username), 8000, 'resolve')
+    if (!entity) return res.status(404).json({
+      ok: false,
+      code: "ENTITY_RESOLVE_FAILED",
+      error: "Could not resolve this Telegram chat. Try refreshing dialogs or reconnecting this account.",
+      accountId: req.accountId
+    });
     const {Api} = require('telegram/tl')
     
     // Telegram search with pinned filter
@@ -2836,7 +3038,13 @@ app.post('/api/chat/read', requireAuth, async (req,res) => {
   if(!chatId) return res.status(400).json({error:'Missing chatId'})
   try {
     const client = await withTimeout(getClient(req.accountId), 10000, 'getClient')
-    const entity = await withTimeout(resolveEntity(client, chatId, username), 8000, 'resolve')
+    const entity = await withTimeout(resolveTelegramEntity(req.accountId, client, chatId, username), 8000, 'resolve')
+    if (!entity) return res.status(404).json({
+      ok: false,
+      code: "ENTITY_RESOLVE_FAILED",
+      error: "Could not resolve this Telegram chat. Try refreshing dialogs or reconnecting this account.",
+      accountId: req.accountId
+    });
     
     // Telegram markAsRead logic
     // Using simple client.markAsRead which handles most cases
@@ -3021,7 +3229,7 @@ app.get('/api/chat/common_groups/:id', requireAuth, async (req, res) => {
     const username = req.query.username;
     const accessHashStr = req.query.accessHash;
     
-    let entity = await resolveEntity(client, userIdStr, username);
+    let entity = await resolveTelegramEntity(req.accountId, client, userIdStr, username);
     
     // If resolveEntity returns a string (unresolved), try to manually construct InputUser
     if (typeof entity === 'string' || typeof entity === 'number') {

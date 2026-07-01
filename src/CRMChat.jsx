@@ -3595,11 +3595,13 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
         
       } else if (d && d.error === 'AUTH_FAILED') {
         if (typeof onAuthFailed === 'function') onAuthFailed()
-      } else if (d && d.error) {
-        if (d.error === 'ACCOUNT_SESSION_EXPIRED') {
+      } else if (d && (d.error || d.code)) {
+        if (d.code === 'ENTITY_RESOLVE_FAILED') {
+          setMessageFetchError(d);
+        } else if (d.error === 'ACCOUNT_SESSION_EXPIRED') {
           setMessageFetchError('This Telegram account session expired. Reconnect this account.');
         } else {
-          setMessageFetchError(d.error);
+          setMessageFetchError(d.error || 'Unknown error');
         }
       }
     } catch(e) { console.error("loadMsgs:",e); setMessageFetchError(e.message); }
@@ -4640,7 +4642,30 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
     send(failedMsg.text);
   };
 
+  const handleRefreshDialogs = async () => {
+    if (!activeAccRef.current) return;
+    try {
+      setLoadChats(true);
+      const d = await safeFetch('/api/telegram/dialogs/refresh', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
+        body: JSON.stringify({ accountId: activeAccRef.current })
+      });
+      if (d.ok) {
+        fetchChats(false);
+        if (selRef.current) loadMessages(selRef.current, selTopicRef.current?.id || null);
+      } else {
+        alert(d.error || 'Failed to refresh dialogs');
+      }
+    } catch (e) {
+      alert('Error: ' + e.message);
+    } finally {
+      setLoadChats(false);
+    }
+  };
+
   const chatProps = {
+    handleRefreshDialogs,
     resendMessage,
     sel, selTopic, setSelTopic, TG: {}, setProfilePreview, setShowMembers, onlineStatus, setChatSearchOpen, showProfile, setShowProfile,
     topics, loadingTopics, topicSearch, setTopicSearch, topicError, setTopicCtxMenu, topicCtxMenu, setSel,
