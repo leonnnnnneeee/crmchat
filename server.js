@@ -2464,21 +2464,34 @@ app.get('/api/telegram/accounts', async (req, res) => {
 
   log(`[Accounts Debug] rawAccounts count: ${rawAccounts.length}`);
   
-  // 1. Group accounts by stable identity
-  const groups = new Map();
+  // 1. Group accounts by stable identity (robust merging)
+  const groupsList = [];
   for (const acc of rawAccounts) {
-    const key = acc.telegramUserId || acc.phone || acc.accountId;
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(acc);
+    let foundGroup = null;
+    for (const group of groupsList) {
+      if (group.some(existing => {
+        if (acc.telegramUserId && existing.telegramUserId && acc.telegramUserId === existing.telegramUserId) return true;
+        if (acc.phone && existing.phone && acc.phone === existing.phone) return true;
+        return false;
+      })) {
+        foundGroup = group;
+        break;
+      }
+    }
+    if (foundGroup) {
+      foundGroup.push(acc);
+    } else {
+      groupsList.push([acc]);
+    }
   }
 
-  log(`[Accounts Debug] Duplicate groups: ${groups.size}`);
+  log(`[Accounts Debug] Duplicate groups: ${groupsList.length}`);
   
   const finalAccounts = [];
   let hiddenInvalidAccounts = 0;
 
   // 2. Select canonical account per group
-  for (const [key, group] of groups.entries()) {
+  for (const group of groupsList) {
     // Sort to prefer: connected > valid session > has profile > accountId length
     group.sort((a, b) => {
       if (a.sessionStatus === 'connected' && b.sessionStatus !== 'connected') return -1;

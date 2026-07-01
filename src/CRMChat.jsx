@@ -1918,7 +1918,7 @@ function renderMessageText(text, searchStr, entities = []) {
     return <span key={idx} style={{whiteSpace: 'pre-wrap'}}>{renderContent(part.content)}</span>;
   });
 }
-function AccountMenu({ accounts, activeAccountId, onClose, onAddAccount, onSwitchAccount, onAuthFailed, onLogout, onOpenSettings }) {
+function AccountMenu({ accounts, activeAccountId, onClose, onAddAccount, onSwitchAccount, onAuthFailed, onLogout, onOpenSettings, onAccountDeleted }) {
   const activeAcc = accounts.find(a => a.accountId === activeAccountId) || accounts[0];
   
   return (
@@ -1948,6 +1948,25 @@ function AccountMenu({ accounts, activeAccountId, onClose, onAddAccount, onSwitc
       <div style={{ maxHeight: 200, overflowY: 'auto' }}>
         {accounts.map(acc => (
           <div key={acc.accountId} 
+            onContextMenu={async (e) => {
+              e.preventDefault();
+              if (window.confirm(`Are you sure you want to completely remove account ${acc.displayName || acc.phone || acc.accountId}?`)) {
+                try {
+                  const d = await safeFetch('/api/telegram/accounts/logout', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ accountId: acc.accountId })
+                  });
+                  if (d.ok) {
+                    if (onAccountDeleted) onAccountDeleted();
+                  } else {
+                    alert('Failed to remove account: ' + (d.error || 'Unknown error'));
+                  }
+                } catch (err) {
+                  alert('Error removing account.');
+                }
+              }
+            }}
             onClick={async (e) => {
               if (window._isSwitchingAccount) return;
               window._isSwitchingAccount = true;
@@ -1995,7 +2014,7 @@ function AccountMenu({ accounts, activeAccountId, onClose, onAddAccount, onSwitc
                 {acc.displayName || acc.accountId}
               </div>
               <div style={{ color: '#8e8e93', fontSize: 12, marginTop: 2 }}>
-                {acc.phone ? `+${acc.phone}` : (acc.username ? `@${acc.username}` : 'Telegram account')}
+                {acc.phone ? (acc.phone.startsWith('+') ? acc.phone : `+${acc.phone}`) : (acc.username ? `@${acc.username}` : 'Telegram account')}
               </div>
             </div>
             {acc.accountId === activeAccountId && <div style={{ color: '#7c3aed', fontSize: 16 }}>✓</div>}
@@ -4831,6 +4850,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
               setShowAccountMenu(false);
               setShowAddAccount(true);
             }}
+            onAccountDeleted={fetchAccounts}
             onSwitchAccount={(id) => {
               console.log('[MultiAccount] Switching to account:', id);
               setActiveAccId(id);
