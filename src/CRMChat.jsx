@@ -125,29 +125,35 @@ if (!window._fetchIntercepted) {
   window._fetchIntercepted = true;
 }
 
-function Avatar({name, chatId, username, accessHash, size=40}) {
+function Avatar({name, chatId, username, accessHash, size=40, accountId}) {
   const colors=["#c03d33","#4fad2d","#d09306","#168acd","#8544d6","#cd4073","#2996ad","#ce671b"]
   const colorIdx = (name||"?").charCodeAt(0) % colors.length
   const initials = getSafeInitials(name)
-  const [photoUrl, setPhotoUrl] = useState(photoCache[chatId] || null)
+  
+  const targetAcc = accountId || localStorage.getItem('crmchat_active_account') || '';
+  const cacheKey = `${targetAcc}_${chatId}`;
+  
+  const [photoUrl, setPhotoUrl] = useState(photoCache[cacheKey] || null)
   const [failed, setFailed] = useState(false)
 
   useEffect(()=>{
     if (!chatId || !_authToken || failed) return
-    if (photoCache[chatId]) { setPhotoUrl(photoCache[chatId]); return }
+    if (photoCache[cacheKey]) { setPhotoUrl(photoCache[cacheKey]); return }
     const qsObj = new URLSearchParams()
     if (username) qsObj.append('username', username)
     if (accessHash) qsObj.append('accessHash', accessHash)
+    if (targetAcc) qsObj.append('acc', targetAcc)
     const qs = qsObj.toString() ? `?${qsObj.toString()}` : ""
-    fetch(`/api/chat/photo/${chatId}${qs}`, {headers:{"x-auth-token":_authToken}})
+    
+    fetch(`/api/chat/photo/${chatId}${qs}`, {headers:{"x-auth-token":_authToken, "x-account-id": targetAcc}})
       .then(r => { if (!r.ok) throw new Error("no photo"); return r.blob() })
       .then(blob => {
         const url = URL.createObjectURL(blob)
-        photoCache[chatId] = url
+        photoCache[cacheKey] = url
         setPhotoUrl(url)
       })
       .catch(() => setFailed(true))
-  }, [chatId, failed, username, accessHash])
+  }, [chatId, targetAcc, failed, username, accessHash])
 
   if (photoUrl && !failed) {
     return (
