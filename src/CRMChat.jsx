@@ -1951,16 +1951,17 @@ function AccountMenu({ accounts, activeAccountId, onClose, onAddAccount, onSwitc
             onClick={async (e) => {
               if (window._isSwitchingAccount) return;
               window._isSwitchingAccount = true;
+              const targetNode = e.currentTarget;
               try {
-                const prev = e.currentTarget.style.opacity;
-                e.currentTarget.style.opacity = '0.5';
+                const prev = targetNode.style.opacity;
+                targetNode.style.opacity = '0.5';
                 // Use safeFetch which gracefully handles HTML 502s from Railway deploys
                 const d = await safeFetch('/api/telegram/accounts/switch', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({ accountId: acc.accountId })
                 });
-                e.currentTarget.style.opacity = prev;
+                targetNode.style.opacity = prev;
                 
                 if (d.ok) {
                   onSwitchAccount(acc.accountId);
