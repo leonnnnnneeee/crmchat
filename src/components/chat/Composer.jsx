@@ -215,6 +215,7 @@ export default function Composer(props) {
               <button className="ib s" onClick={() => {
                 console.log('[Debug] sparkleClicked');
                 setAiPanelOpen(true);
+                if (typeof getAI === 'function') getAI(false);
               }} disabled={aiLoading} title="AI Suggest"
                 style={{fontSize:18, opacity: aiLoading ? 0.5 : 1}}>
                 {aiLoading?"⏳":"✨"}
