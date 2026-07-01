@@ -321,39 +321,6 @@ async function resolveTelegramEntity(accountId, client, idStr, username, accessH
   if (entity) cache[cacheKey] = entity;
   return entity;
 }
-  if (idStr === 'me' || idStr === 'self') {
-    return await client.getMe();
-  }
-  const cacheKey = username || idStr
-  if (_entityCache[cacheKey]) return _entityCache[cacheKey]
-
-  let entity
-  if (username) {
-    try { entity = await client.getEntity(username) } catch {}
-  }
-  if (!entity) {
-    const num = Number(idStr)
-    if (num < 0) {
-      try {
-        const { Api } = require('telegram/tl')
-        const channelId = Math.abs(num) - 1000000000000
-        if (channelId > 0) {
-          entity = await client.getEntity(new Api.PeerChannel({ channelId: BigInt(channelId) }))
-        } else {
-          entity = await client.getEntity(new Api.PeerChat({ chatId: BigInt(Math.abs(num)) }))
-        }
-      } catch {}
-    }
-    if (!entity) {
-      try { entity = await client.getEntity(BigInt(idStr)) } catch {}
-    }
-    if (!entity) {
-      try { entity = await client.getEntity(num) } catch {}
-    }
-  }
-  if (entity) _entityCache[cacheKey] = entity
-  return entity || idStr
-}
 
 // ── AUTH: check status ──
 app.get('/api/tg/status', requireAuth, async (req,res) => {
