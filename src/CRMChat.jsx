@@ -1777,7 +1777,7 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
                         setTimeout(() => inputRef?.current?.focus(), 100);
                       } else {
                         // If chat not in local list, fallback to basic sel logic
-                        setSel({ id: g.id, title: g.title, isGroup: true, username: g.username });
+                        setSel({ id: g.id, name: g.title, isGroup: true, username: g.username, accessHash: g.accessHash });
                         onClose();
                       }
                     }} 
