@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 
+import { getSafeInitials } from '../../utils/avatarUtils';
+
 // Assume photoCache and _authToken are passed or imported
 const photoCache = {};
 let _authToken = '';
@@ -8,7 +10,7 @@ export const setAvatarAuthToken = (t) => _authToken = t;
 function Avatar({name, chatId, username, size=40}) {
   const colors=["#c03d33","#4fad2d","#d09306","#168acd","#8544d6","#cd4073","#2996ad","#ce671b"]
   const colorIdx = (name||"?").charCodeAt(0) % colors.length
-  const initials = (name||"?").split(" ").map(w=>w[0]).slice(0,2).join("").toUpperCase()
+  const initials = getSafeInitials(name);
   const [photoUrl, setPhotoUrl] = useState(photoCache[chatId] || null)
   const [failed, setFailed] = useState(false)
 

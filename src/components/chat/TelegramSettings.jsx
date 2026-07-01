@@ -1,3 +1,4 @@
+import { getSafeInitials } from '../../utils/avatarUtils';
 import React, { useState, useEffect } from 'react';
 import { safeFetch } from '../../utils/api';
 
@@ -49,7 +50,66 @@ export default function TelegramSettings({ onClose, activeAccountId, accounts, t
   const mergedUsername = profileData?.username || activeAcc?.username || "";
   const rawPhone = profileData?.phone || activeAcc?.phone || "";
   const mergedBio = profileData?.bio || "Not set";
-  const mergedStatus = profileData?.status?.replace('UserStatus', '') || "online";
+  const normalizeTelegramStatus = (profile, account) => {
+    const sStatus = profile?.sessionStatus || 'disconnected';
+    const isActive = account?.accountId === profile?.accountId;
+    const uStatus = profile?.userStatus || '';
+    const lastSeen = profile?.lastSeenAt;
+
+    let text = 'last seen recently';
+    let color = 'rgba(255,255,255,0.8)';
+    let reason = 'fallback default';
+
+    if (sStatus === 'expired') {
+      text = 'session expired';
+      color = '#ff3b30';
+      reason = 'session expired';
+    } else if (sStatus === 'disconnected') {
+      text = 'disconnected';
+      color = '#ff9500';
+      reason = 'session disconnected';
+    } else if (isActive && sStatus === 'connected') {
+      text = 'online';
+      color = '#34c759';
+      reason = 'active and connected';
+    } else if (uStatus.includes('Online')) {
+      text = 'online';
+      color = '#34c759';
+      reason = 'userStatus online';
+    } else if (uStatus.includes('Offline') && lastSeen) {
+      const d = new Date(lastSeen * 1000);
+      text = `last seen at ${d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
+      color = 'rgba(255,255,255,0.8)';
+      reason = 'userStatus offline with timestamp';
+    } else if (uStatus.includes('Recently')) {
+      text = 'last seen recently';
+      color = 'rgba(255,255,255,0.8)';
+      reason = 'userStatus recently';
+    } else if (uStatus) {
+      text = uStatus.replace('UserStatus', '').toLowerCase();
+      color = 'rgba(255,255,255,0.8)';
+      reason = 'userStatus parsed';
+    } else {
+      reason = 'missing status, defaulted to last seen recently';
+    }
+
+    if (profile) {
+      console.log('[DEBUG] Status Normalization:', {
+        activeAccountId: account?.accountId,
+        profileAccountId: profile.accountId,
+        sessionStatus: sStatus,
+        isActive,
+        rawUserStatus: uStatus,
+        lastSeenAt: lastSeen,
+        normalizedDisplayStatus: text,
+        fallbackUsed: reason
+      });
+    }
+
+    return { text, color };
+  };
+
+  const statusObj = profileData ? normalizeTelegramStatus(profileData, activeAcc) : { text: 'Loading...', color: 'rgba(255,255,255,0.5)' };
   const telegramUserId = profileData?.telegramUserId || activeAcc?.telegramUserId;
 
   console.log('[DEBUG] mergedProfile:', { mergedDisplayName, mergedUsername, rawPhone, mergedBio, telegramUserId });
@@ -197,14 +257,15 @@ export default function TelegramSettings({ onClose, activeAccountId, accounts, t
                 {avatarSrc ? (
                   <img src={avatarSrc} alt="Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 ) : (
-                  mergedDisplayName.charAt(0).toUpperCase()
+                  getSafeInitials(mergedDisplayName)
                 )}
               </div>
               <div style={{ fontSize: 22, fontWeight: 600, color: '#fff', marginTop: 16, textShadow: '0 1px 4px rgba(0,0,0,0.5)' }}>
                 {loading && !profileData ? 'Loading...' : mergedDisplayName}
               </div>
-              <div style={{ fontSize: 14, color: 'rgba(255,255,255,0.8)', marginTop: 4 }}>
-                {loading && !profileData ? '...' : mergedStatus}
+              <div style={{ fontSize: 14, color: statusObj.color, marginTop: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                {statusObj.color === '#34c759' && <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#34c759' }} />}
+                {loading && !profileData ? '...' : statusObj.text}
               </div>
             </div>
           </div>

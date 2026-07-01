@@ -1,5 +1,6 @@
 // v-edit2-083448
 // v035029
+import { getSafeInitials } from './utils/avatarUtils';
 import React, { useState, useEffect, useRef, useMemo, useCallback, useDeferredValue } from "react"
 import { safeFetch } from './utils/api';
 import { ErrorBoundary } from './components/ErrorBoundary'
@@ -105,7 +106,7 @@ if (!window._fetchIntercepted) {
 function Avatar({name, chatId, username, accessHash, size=40}) {
   const colors=["#c03d33","#4fad2d","#d09306","#168acd","#8544d6","#cd4073","#2996ad","#ce671b"]
   const colorIdx = (name||"?").charCodeAt(0) % colors.length
-  const initials = (name||"?").split(" ").map(w=>w[0]).slice(0,2).join("").toUpperCase()
+  const initials = getSafeInitials(name)
   const [photoUrl, setPhotoUrl] = useState(photoCache[chatId] || null)
   const [failed, setFailed] = useState(false)
 
@@ -1929,7 +1930,7 @@ function AccountMenu({ accounts, activeAccountId, onClose, onAddAccount, onSwitc
       {/* Active Account Info */}
       <div style={{ padding: '16px', borderBottom: '1px solid #2c2c2e', display: 'flex', alignItems: 'center', gap: 12 }}>
         <div style={{ width: 44, height: 44, borderRadius: '50%', background: '#7c3aed', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 18, fontWeight: 600 }}>
-          {activeAcc?.displayName ? activeAcc.displayName.charAt(0).toUpperCase() : 'A'}
+          {getSafeInitials(activeAcc?.displayName || 'A')}
         </div>
         <div style={{ flex: 1, overflow: 'hidden' }}>
           <div style={{ color: '#fff', fontWeight: 600, fontSize: 15, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -1956,7 +1957,7 @@ function AccountMenu({ accounts, activeAccountId, onClose, onAddAccount, onSwitc
               <Avatar name={acc.displayName || acc.accountId} chatId={acc.telegramUserId} size={32} />
             ) : (
               <div style={{ width: 32, height: 32, borderRadius: '50%', background: acc.accountId === activeAccountId ? '#7c3aed' : '#3a3a3c', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 13, fontWeight: 600 }}>
-                {acc.displayName ? acc.displayName.charAt(0).toUpperCase() : 'A'}
+                {getSafeInitials(acc.displayName || 'A')}
               </div>
             )}
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>

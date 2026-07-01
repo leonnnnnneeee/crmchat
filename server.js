@@ -2596,7 +2596,11 @@ app.get('/api/telegram/accounts/:accountId/profile', requireAuth, async (req, re
       lastName: me.lastName || '',
       username: me.username || '',
       phone: me.phone || '',
-      status: me.status?.className || '',
+      sessionStatus: acc.sessionStatus || (acc.ready ? 'connected' : 'disconnected'),
+      isActive: req.accountId === accountId,
+      userStatus: me.status?.className || '',
+      lastSeenAt: me.status?.wasOnline || null,
+      displayStatus: me.status?.className || '',
       bio: full?.fullUser?.about || '',
       businessHours: full?.fullUser?.businessWorkHours || null,
       location: full?.fullUser?.businessLocation || null

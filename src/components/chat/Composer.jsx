@@ -1,3 +1,4 @@
+import { getSafeInitials } from '../../utils/avatarUtils';
 import React, { useState, useEffect, useRef } from 'react';
 import { allowShortcuts, handlePaste } from '../../CRMChat';
 
@@ -198,7 +199,7 @@ export default function Composer(props) {
                       borderBottom: '1px solid #2c2c2e'
                     }}>
                     <div style={{width: 28, height: 28, borderRadius: '50%', background: '#7c3aed', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 12, fontWeight: 'bold'}}>
-                      {m.name.charAt(0)}
+                      {getSafeInitials(m.name)}
                     </div>
                     <div>
                       <div style={{fontSize: 13, color: '#f0e6ff', fontWeight: 600}}>{m.name}</div>

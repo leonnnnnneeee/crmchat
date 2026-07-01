@@ -1,3 +1,4 @@
+import { getSafeInitials } from '../../utils/avatarUtils';
 import React, { useState, useEffect, useRef } from 'react';
 
 export default function TelegramMainMenu({ 
@@ -42,7 +43,7 @@ export default function TelegramMainMenu({
 
   const activeAcc = accounts.find(a => a.accountId === activeAccountId) || accounts[0];
   const avatarLetter = activeAcc?.displayName 
-    ? activeAcc.displayName.charAt(0).toUpperCase() 
+    ? getSafeInitials(activeAcc.displayName) 
     : (activeAcc?.phone ? activeAcc.phone.charAt(1) : 'U');
 
   const handleItemClick = (label, action) => {
