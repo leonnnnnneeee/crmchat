@@ -1237,17 +1237,11 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
     let isMounted = true
     console.log(`[Debug] Resolve endpoint URL: /api/chat/profile/${targetId}`);
     safeFetch(`/api/chat/profile/${targetId}`, { headers: {'x-auth-token': token} })
-      .then(async r => {
-        const ct = r.headers.get('content-type');
-        if (ct && ct.includes('text/html')) throw new Error('API route not found or backend returned HTML');
-        if (r.__httpStatus >= 400) {
-          if (r.status === 401 && typeof onAuthFailed === 'function') onAuthFailed();
-          const err = r.catch(()=>({}));
-          throw new Error(err.error || err.code || `HTTP ${r.status}`);
-        }
-        return r;
-      })
       .then(d => { 
+        if (d.__httpStatus >= 400) {
+          if (d.__httpStatus === 401 && typeof onAuthFailed === 'function') onAuthFailed();
+          throw new Error(d.error || d.code || `HTTP ${d.__httpStatus}`);
+        }
         if(isMounted && d.ok && d.full) {
           console.log('[Debug] Resolved profile object:', d.full);
           setFullProfile(d.full);
@@ -1261,17 +1255,13 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
     if (!data?.id) return
     let isMounted = true
     safeFetch(`/api/chat/status/${data.id}`, { headers: {'x-auth-token': token} })
-      .then(async r => {
-        const ct = r.headers.get('content-type');
-        if (ct && ct.includes('text/html')) throw new Error('API route not found or backend returned HTML');
-        if (r.__httpStatus >= 400) {
-          if (r.status === 401 && typeof onAuthFailed === 'function') onAuthFailed();
-          const err = r.catch(()=>({}));
-          throw new Error(err.error || err.code || `HTTP ${r.status}`);
+      .then(d => { 
+        if (d.__httpStatus >= 400) {
+          if (d.__httpStatus === 401 && typeof onAuthFailed === 'function') onAuthFailed();
+          throw new Error(d.error || d.code || `HTTP ${d.__httpStatus}`);
         }
-        return r;
+        if(isMounted) setStatus(d.status) 
       })
-      .then(d => { if(isMounted) setStatus(d.status) })
       .catch(e => { if(isMounted) setStatus('') })
     return () => { isMounted = false }
   }, [data?.id, token])
@@ -1350,18 +1340,12 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
       const usernameQuery = data.username ? (data.accessHash ? `&username=${data.username}` : `?username=${data.username}`) : '';
       
       safeFetch(`/api/chat/common_groups/${data.id}${accessHashQuery}${usernameQuery}`, { headers: {'x-auth-token': token}, signal: controller.signal })
-        .then(async r => {
-          clearTimeout(timeoutId);
-          const ct = r.headers.get('content-type');
-          if (ct && ct.includes('text/html')) throw new Error('API route not found or backend returned HTML');
-          if (r.__httpStatus >= 400) {
-            if (r.status === 401 && typeof onAuthFailed === 'function') onAuthFailed();
-          const err = r.catch(()=>({}));
-            throw new Error(err.error || `HTTP ${r.status}`);
-          }
-          return r
-        })
         .then(d => {
+          clearTimeout(timeoutId);
+          if (d.__httpStatus >= 400) {
+            if (d.__httpStatus === 401 && typeof onAuthFailed === 'function') onAuthFailed();
+            throw new Error(d.error || d.code || `HTTP ${d.__httpStatus}`);
+          }
           if (isMounted && d.ok) {
              setTabData(prev => {
                const updated = d.groups || [];
@@ -1396,18 +1380,12 @@ function UserProfileModal({ data, onClose, token, chats, setSel, inputRef, msgs,
     console.log(`[Debug] Media tab type: ${tab} | API URL: /api/telegram/shared-media?chatId=${data.chatId}&type=${tab}${fromUserQuery}${accessHashQuery}${topicIdQuery}&cursor=${currentCursor}&limit=30`);
     
     safeFetch(`/api/telegram/shared-media?chatId=${data.chatId}&type=${tab}${fromUserQuery}${accessHashQuery}${topicIdQuery}&cursor=${currentCursor}&limit=30`, { headers: {'x-auth-token': token}, signal: controller.signal })
-      .then(async r => {
-        clearTimeout(timeoutId);
-        const ct = r.headers.get('content-type');
-        if (ct && ct.includes('text/html')) throw new Error('API route not found or backend returned HTML');
-        if (r.__httpStatus >= 400) {
-          if (r.status === 401 && typeof onAuthFailed === 'function') onAuthFailed();
-          const err = r.catch(()=>({}));
-          throw new Error(err.error || err.code || `HTTP ${r.status}`);
-        }
-        return r;
-      })
       .then(d => {
+        clearTimeout(timeoutId);
+        if (d.__httpStatus >= 400) {
+          if (d.__httpStatus === 401 && typeof onAuthFailed === 'function') onAuthFailed();
+          throw new Error(d.error || d.code || `HTTP ${d.__httpStatus}`);
+        }
         if (isMounted && d.ok) {
            const items = d.items || d.media || [];
            const nextCursor = d.nextCursor || d.nextOffsetId || 0;
