@@ -1954,11 +1954,12 @@ function AccountMenu({ accounts, activeAccountId, onClose, onAddAccount, onSwitc
               try {
                 const prev = e.currentTarget.style.opacity;
                 e.currentTarget.style.opacity = '0.5';
-                const d = await window.fetch('/api/telegram/accounts/switch', {
+                // Use safeFetch which gracefully handles HTML 502s from Railway deploys
+                const d = await safeFetch('/api/telegram/accounts/switch', {
                   method: 'POST',
-                  headers: { 'Content-Type': 'application/json', 'x-auth-token': localStorage.getItem('crm_token') || '' },
+                  headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({ accountId: acc.accountId })
-                }).then(r => r.json());
+                });
                 e.currentTarget.style.opacity = prev;
                 
                 if (d.ok) {
@@ -1966,10 +1967,13 @@ function AccountMenu({ accounts, activeAccountId, onClose, onAddAccount, onSwitc
                   onClose();
                 } else {
                   alert(d.error || 'This account session is invalid or expired.');
-                  if (onAuthFailed) onAuthFailed();
+                  if (d.code === 'ACCOUNT_SESSION_INVALID' && onAuthFailed) {
+                    onAuthFailed();
+                  }
                 }
               } catch (e) {
-                alert('Network error while switching accounts.');
+                console.error('[MultiAccount] Switch failed:', e);
+                alert('Failed to switch accounts: ' + e.message);
               } finally {
                 window._isSwitchingAccount = false;
               }
