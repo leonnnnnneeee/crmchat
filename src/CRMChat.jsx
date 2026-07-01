@@ -17,6 +17,28 @@ import TelegramMainMenu from './components/chat/TelegramMainMenu';
 
 const translationCache = new Map();
 
+function normalizePhone(p) {
+  if (!p) return '';
+  let cleaned = String(p).replace(/[\s\-\(\)]/g, '');
+  if (!cleaned.startsWith('+') && cleaned.length > 5) cleaned = '+' + cleaned;
+  return cleaned;
+}
+
+function normalizeTelegramAccount(raw) {
+  const normPhone = normalizePhone(raw.phone || raw.normalizedPhone || '');
+  let canonicalKey = raw.accountId;
+  if (raw.telegramUserId) {
+    canonicalKey = 'uid_' + raw.telegramUserId;
+  } else if (normPhone) {
+    canonicalKey = 'phone_' + normPhone;
+  }
+  return {
+    ...raw,
+    normalizedPhone: normPhone,
+    canonicalKey: canonicalKey
+  };
+}
+
 const TG = {
   bg:"#120929", panel:"#1a0533", surface:"#1e0a3c", elevated:"#2d1155",
   border:"#0d0618", blue:"#7c3aed", blueHover:"#6d2ed5", blueDim:"rgba(124,58,237,.15)", blueLight:"#5288c1",
