@@ -609,6 +609,32 @@ app.get('/api/chat/members/:id', requireAuth, async (req, res) => {
   }
 })
 
+// ── LEAVE / DELETE CHAT ──
+app.post('/api/chat/leave', requireAuth, async (req, res) => {
+  if (!_accounts.get(req.accountId)?.session) return res.status(401).json({ error: 'Not connected' });
+  try {
+    const client = await getClient(req.accountId);
+    const { Api } = require('telegram/tl');
+    const { chatId } = req.body;
+    if (!chatId) return res.status(400).json({ error: 'Missing chatId' });
+    
+    const peer = await resolveEntity(client, chatId);
+    if (!peer) return res.status(404).json({ error: 'Chat not found' });
+    
+    if (peer.className === 'Channel') {
+      await client.invoke(new Api.channels.LeaveChannel({ channel: peer }));
+    } else if (peer.className === 'Chat') {
+      await client.invoke(new Api.messages.DeleteChatUser({ chatId: peer.id, userId: new Api.InputUserSelf() }));
+    } else {
+      await client.invoke(new Api.messages.DeleteHistory({ peer: peer, maxId: 0, revoke: true }));
+    }
+    res.json({ ok: true });
+  } catch(e) {
+    log('leaveChat error: ' + e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── RESOLVE ENTITY ──
 app.get('/api/telegram/entities/resolve', requireAuth, async (req, res) => {
   if (!_accounts.get(req.accountId)?.session) return res.json({ok: false, error: 'No session'});

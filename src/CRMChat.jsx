@@ -185,7 +185,7 @@ function fmtDateSep(ts) {
 // ── Chat List Context Menu ──
 function ChatContextMenu({x,y,chat,onClose,
   onPin,onMute,onMarkRead,onMarkUnread,onArchive,onUnarchive,
-  onPreview,onSetFolder,onLeave,
+  onPreview,onSetFolder,onHide,onLeave,
   isPinned,isMuted,isArchived,isRead,currentFolder}) {
   const ref    = useRef(null)
   const [showFolderSub,setShowFolderSub] = useState(false)
@@ -285,6 +285,7 @@ function ChatContextMenu({x,y,chat,onClose,
       </div>
 
       <Item sep/>
+      <Item icon='👀' label='Hide locally' action={onHide}/>
       <Item icon='🚪' label={chat?.isUser?'Delete chat':'Leave group'}
         action={onLeave} danger/>
     </div>
@@ -5271,17 +5272,22 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
               {confirmLeave.isUser
                 ?`Delete conversation with ${confirmLeave.name}? This cannot be undone.`
                 :`Leave "${confirmLeave.name}"? You won't receive messages anymore.`}
-              <br/><span style={{fontSize:11,color:'#6b4d94',marginTop:6,display:'block'}}>
-                ⚠️ TODO: Requires Telegram API — local only for now
-              </span>
             </div>
             <div style={{display:'flex',gap:8}}>
-              <button onClick={()=>{
-                // TODO: call Telegram leave API when available
-                setArchivedChats(p=>{const s=new Set(p);s.add(confirmLeave.id);return s})
-                if(sel?.id===confirmLeave.id) setSel(null)
-                setConfirmLeave(null)
-                alert('Chat hidden locally. Telegram leave API not yet connected.')
+              <button onClick={async ()=>{
+                try {
+                  await safeFetch('/api/chat/leave', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
+                    body: JSON.stringify({ chatId: confirmLeave.id })
+                  });
+                  setChats(p=>p.filter(c=>c.id!==confirmLeave.id));
+                  if(sel?.id===confirmLeave.id) setSel(null);
+                  setConfirmLeave(null);
+                } catch (e) {
+                  console.error('Leave/Delete failed:', e);
+                  alert('Failed to leave/delete chat');
+                }
               }} style={{flex:1,padding:'9px',background:'#e53935',color:'#fff',
                 border:'none',borderRadius:8,cursor:'pointer',fontWeight:600,fontSize:13}}>
                 {confirmLeave.isUser?'Delete':'Leave'}
@@ -5320,6 +5326,11 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
           onUnarchive={()=>setArchivedChats(p=>{const s=new Set(p);s.delete(chatCtxMenu.chat.id);return s})}
           onPreview={()=>{ setPreviewChat(chatCtxMenu.chat); setChatCtxMenu(null) }}
           onSetFolder={f=>setChatFolders(p=>({...p,[chatCtxMenu.chat.id]:f}))}
+          onHide={()=>{
+            setArchivedChats(p=>{const s=new Set(p);s.add(chatCtxMenu.chat.id);return s})
+            if(sel?.id===chatCtxMenu.chat.id) setSel(null)
+            setChatCtxMenu(null)
+          }}
           onLeave={()=>{ setConfirmLeave(chatCtxMenu.chat); setChatCtxMenu(null) }}
           onClose={()=>setChatCtxMenu(null)}
         />
