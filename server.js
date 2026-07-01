@@ -2492,7 +2492,7 @@ app.get('/api/telegram/accounts', async (req, res) => {
 
   // 2. Select canonical account per group
   for (const group of groupsList) {
-    // Sort to prefer: connected > valid session > has profile > accountId length
+    // Sort to prefer: connected > valid session > has profile > not phone name > accountId length
     group.sort((a, b) => {
       if (a.sessionStatus === 'connected' && b.sessionStatus !== 'connected') return -1;
       if (b.sessionStatus === 'connected' && a.sessionStatus !== 'connected') return 1;
@@ -2500,6 +2500,11 @@ app.get('/api/telegram/accounts', async (req, res) => {
       const aHasSession = _accounts.get(a.accountId)?.session ? 1 : 0;
       const bHasSession = _accounts.get(b.accountId)?.session ? 1 : 0;
       if (aHasSession !== bHasSession) return bHasSession - aHasSession;
+
+      const aIsPhone = /^\+?\d+$/.test(a.displayName || '');
+      const bIsPhone = /^\+?\d+$/.test(b.displayName || '');
+      if (!aIsPhone && bIsPhone) return -1;
+      if (aIsPhone && !bIsPhone) return 1;
 
       const aHasProfile = (a.displayName && a.displayName !== 'Telegram Account') ? 1 : 0;
       const bHasProfile = (b.displayName && b.displayName !== 'Telegram Account') ? 1 : 0;
@@ -2517,6 +2522,12 @@ app.get('/api/telegram/accounts', async (req, res) => {
       if (dup.isActive) canonical.isActive = true;
       if (dup.phone && !canonical.phone) canonical.phone = dup.phone;
       if (dup.username && !canonical.username) canonical.username = dup.username;
+      if (dup.telegramUserId && !canonical.telegramUserId) canonical.telegramUserId = dup.telegramUserId;
+      
+      const canonicalIsPhone = /^\+?\d+$/.test(canonical.displayName || '');
+      if (dup.displayName && (canonicalIsPhone || canonical.displayName === 'Telegram Account')) {
+        canonical.displayName = dup.displayName;
+      }
       hiddenInvalidAccounts++;
     }
 
