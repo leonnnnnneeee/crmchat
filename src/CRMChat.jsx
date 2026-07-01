@@ -2367,8 +2367,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
     try {
       const url = `/api/telegram/search?q=${encodeURIComponent(search.trim())}`
       const data = await safeFetch(url, { headers: { 'x-auth-token': token } })
-      if (!res.__httpStatus || res.ok) {
-        
+      if (!data.__httpStatus || data.__httpStatus < 400) {
         const query = search.trim().toLowerCase()
         const strictMatches = (data || []).filter(c => {
           const name = (c.name || '').toLowerCase()
