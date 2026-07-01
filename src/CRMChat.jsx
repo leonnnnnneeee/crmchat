@@ -3779,31 +3779,30 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
         if (text) formData.append('caption', text)
         formData.append('file', pastedFile)
 
-        const r = await fetch('/api/chat/send-media', {
+        const d = await safeFetch('/api/chat/send-media', {
           method: 'POST',
           headers: { "x-auth-token": token },
           body: formData
         })
-        const d = r
-        if (d.ok && d.messageId) { realMsgId = d.messageId; realDate = d.date; }
+        if (!d.__httpStatus || d.ok) { 
+          if (d.messageId) { realMsgId = d.messageId; realDate = d.date; }
+        }
         
         setPastedFile(null)
         setFilePreview(null)
       } else if(selTopic) {
-        const r = await fetch('/api/chat/topics/'+sel.id+'/'+selTopic.id+'/send', {
+        const d = await safeFetch('/api/chat/topics/'+sel.id+'/'+selTopic.id+'/send', {
           method:"POST", headers:{"Content-Type":"application/json","x-auth-token":token},
           body:JSON.stringify({text, username: sel.username || undefined})
         })
-        const d = r
-        if (d.ok && d.messageId) { realMsgId = d.messageId; realDate = d.date; }
+        if ((!d.__httpStatus || d.ok) && d.messageId) { realMsgId = d.messageId; realDate = d.date; }
       } else {
         const payload = {chatId:sel.id, text, username: sel.username || undefined};
-        const r = await fetch('/api/chat/send', {
+        const d = await safeFetch('/api/chat/send', {
           method:"POST", headers:{"Content-Type":"application/json","x-auth-token":token},
           body:JSON.stringify(payload)
         })
-        const d = r
-        if (d.ok && d.messageId) { realMsgId = d.messageId; realDate = d.date; }
+        if ((!d.__httpStatus || d.ok) && d.messageId) { realMsgId = d.messageId; realDate = d.date; }
         console.log('[DEBUG] sendApiResponse', d)
       }
       
