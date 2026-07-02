@@ -3862,10 +3862,12 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
     // Clear input immediately so user sees it's been captured
     setInput("")
     sendingRef.current = true
+    const replyToObj = replyTo;
+    const replyToMsgId = replyTo ? replyTo.id : undefined;
     setSending(true); setReplyTo(null)
     // Show message instantly (optimistic)
     const sentDate = Math.floor(Date.now()/1000)
-    const tempMsg = {id: -Date.now(), accountId: activeAccRef.current, chatId: sel.id, topicId: selTopic?.id || null, text, fromMe:true, date:sentDate, pending:true}
+    const tempMsg = {id: -Date.now(), accountId: activeAccRef.current, chatId: sel.id, topicId: selTopic?.id || null, text, fromMe:true, date:sentDate, pending:true, replyTo: replyToObj}
     console.log('[DEBUG] sendClicked', { activeAccountId: activeAccRef.current, chatId: sel.id, topicId: selTopic?.id || null, text })
     console.log('[DEBUG] optimisticTempId', tempMsg.id)
     
@@ -3913,6 +3915,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
         if (selTopic) formData.append('topicId', selTopic.id)
         if (sel.username) formData.append('username', sel.username)
         if (text) formData.append('caption', text)
+        if (replyToMsgId) formData.append('replyToMsgId', replyToMsgId)
         formData.append('file', pastedFile)
 
         const d = await safeFetch('/api/chat/send-media', {
@@ -3929,11 +3932,11 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
       } else if(selTopic) {
         const d = await safeFetch('/api/chat/topics/'+sel.id+'/'+selTopic.id+'/send', {
           method:"POST", headers:{"Content-Type":"application/json","x-auth-token":token},
-          body:JSON.stringify({text, username: sel.username || undefined})
+          body:JSON.stringify({text, username: sel.username || undefined, replyToMsgId})
         })
         if ((!d.__httpStatus || d.ok) && d.messageId) { realMsgId = d.messageId; realDate = d.date; }
       } else {
-        const payload = {chatId:sel.id, text, username: sel.username || undefined};
+        const payload = {chatId:sel.id, text, username: sel.username || undefined, replyToMsgId};
         const d = await safeFetch('/api/chat/send', {
           method:"POST", headers:{"Content-Type":"application/json","x-auth-token":token},
           body:JSON.stringify(payload)

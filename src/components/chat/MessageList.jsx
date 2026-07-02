@@ -208,7 +208,7 @@ const MessageList = React.memo(function MessageList(props) {
                       ? <div className="msg-avatar" style={{cursor:'pointer'}} onClick={() => setProfilePreview({ id: getSenderId(msg)||sel.id, name: resolveSender(msg, sel)||sel.name, username: msg.senderUsername, accessHash: msg.senderAccessHash, chatId: sel.id })}><Avatar name={resolveSender(msg, sel)||sel.name} chatId={getSenderId(msg)||sel.id} username={msg.senderUsername} accessHash={msg.senderAccessHash} size={32}/></div>
                       : <div className="msg-avatar-gap"/>
                     )}
-                    <div className="msg-content" onContextMenu={e=>handleCtx(e,msg,i)}>
+                    <div className="msg-content" onContextMenu={e=>handleCtx(e,msg,i)} onDoubleClick={() => { if (!selectMode && !msg.deleted && setReplyTo) setReplyTo(msg); }}>
                       <div className={`bbl msg-bubble ${msg.fromMe?"out":"in"}${groupClass}`} style={{ padding: (msg.isAudio || msg.voice || msg.audio || msg.media?.type === 'audio') ? '6px' : undefined }}>
                         {sel?.isGroup && isFirstInGroup && !msg.fromMe && (
                           <div style={{fontSize:12,fontWeight:600,color:"#7dd3fc",marginBottom:2,whiteSpace:"nowrap",cursor:'pointer'}} onClick={() => setProfilePreview({ id: getSenderId(msg)||sel.id, name: resolveSender(msg, sel)||sel.name, username: msg.senderUsername, accessHash: msg.senderAccessHash, chatId: sel.id })}>{resolveSender(msg, sel)}</div>

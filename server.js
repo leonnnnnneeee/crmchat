@@ -1554,7 +1554,7 @@ app.get('/api/chat/topics/:chatId/:topicId/messages', requireAuth, async (req,re
 
 // ── SEND MESSAGE ──
 app.post('/api/chat/send', requireAuth, async (req,res) => {
-  const { chatId, text } = req.body
+  const { chatId, text, replyToMsgId } = req.body
   if (!_accounts.get(req.accountId)?.session) return res.status(401).json({ error: 'Not connected' })
   try {
     const client = await getClient(req.accountId)
@@ -1565,7 +1565,11 @@ app.post('/api/chat/send', requireAuth, async (req,res) => {
       error: "Could not resolve this Telegram chat. Try refreshing dialogs or reconnecting this account.",
       accountId: req.accountId
     });
-    const sent = await withTimeout(client.sendMessage(entity, { message: text }), 10000, 'sendMessage')
+    
+    const sendParams = { message: text };
+    if (replyToMsgId) sendParams.replyTo = parseInt(replyToMsgId);
+    
+    const sent = await withTimeout(client.sendMessage(entity, sendParams), 10000, 'sendMessage')
     log('Sent to '+chatId+': '+text.slice(0,40))
     res.json({ ok: true, messageId: sent.id, date: sent.date })
   } catch(e) { log('send: '+e.message); res.status(500).json({ error: e.message }) }
@@ -1699,7 +1703,9 @@ app.post('/api/chat/topics/:chatId/:topicId/send', requireAuth, async (req,res) 
       error: "Could not resolve this Telegram chat. Try refreshing dialogs or reconnecting this account.",
       accountId: req.accountId
     });
-    await withTimeout(client.sendMessage(entity, { message: text, replyTo: parseInt(topicId) }), 10000, 'sendMessage')
+    const sendParams = { message: text, replyTo: parseInt(topicId) };
+    if (req.body.replyToMsgId) sendParams.replyTo = parseInt(req.body.replyToMsgId);
+    await withTimeout(client.sendMessage(entity, sendParams), 10000, 'sendMessage')
     log('Sent to topic '+chatId+'/'+topicId+': '+text.slice(0,40))
     res.json({ ok: true })
   } catch(e) { log('send topic: '+e.message); res.status(500).json({ error: e.message }) }
@@ -1726,7 +1732,8 @@ app.post('/api/chat/send-media', requireAuth, upload.single('file'), async (req,
       file: req.file.path,
       caption: caption || '',
     }
-    if (topicId) fileParams.replyTo = parseInt(topicId)
+    if (req.body.replyToMsgId) fileParams.replyTo = parseInt(req.body.replyToMsgId);
+    else if (topicId) fileParams.replyTo = parseInt(topicId);
     
     const sent = await withTimeout(client.sendFile(entity, fileParams), 30000, 'sendFile')
     
