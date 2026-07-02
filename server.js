@@ -1953,8 +1953,8 @@ app.post('/api/ai/suggest', requireAuth, async (req,res) => {
   function normalizeUserCommand(cmd, chatHistoryStr, researchStr) {
     const intent = {
       language: 'en',
-      normalizedEnglishIntent: 'General response',
-      replyGoal: 'General response',
+      normalizedEnglishIntent: cmd ? `Execute this custom instruction: "${cmd}"` : 'General response',
+      replyGoal: cmd ? `Execute this custom instruction: "${cmd}"` : 'General response',
       tone: 'neutral',
       salesLevel: 'normal',
       shouldMentionPR: false,
