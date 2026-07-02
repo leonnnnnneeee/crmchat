@@ -4200,6 +4200,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
     // Only use fields we KNOW exist in the object based on server.js
     const parts = [
       c.name,
+      c.username ? `@${c.username}` : null,
       c.username,
       c.lastMsg
     ];
