@@ -3319,7 +3319,7 @@ export default function CRMChat({ token, onAuthFailed, onTokenRefresh, onLogout 
   const loadingMoreRef = useRef(false)
   const selRef = useRef(sel)
   const selTopicRef = useRef(selTopic)
-  useEffect(() => { selRef.current = sel; selTopicRef.current = selTopic }, [sel, selTopic])
+  useEffect(() => { selRef.current = sel; selTopicRef.current = selTopic; setReplyTo(null); setEditingMsg(null); }, [sel, selTopic])
 
   // Real-time SSE Connection
   useEffect(() => {
