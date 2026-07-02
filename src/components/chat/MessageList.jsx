@@ -213,12 +213,21 @@ const MessageList = React.memo(function MessageList(props) {
                         {sel?.isGroup && isFirstInGroup && !msg.fromMe && (
                           <div style={{fontSize:12,fontWeight:600,color:"#7dd3fc",marginBottom:2,whiteSpace:"nowrap",cursor:'pointer'}} onClick={() => setProfilePreview({ id: getSenderId(msg)||sel.id, name: resolveSender(msg, sel)||sel.name, username: msg.senderUsername, accessHash: msg.senderAccessHash, chatId: sel.id })}>{resolveSender(msg, sel)}</div>
                         )}
-                        {msg.replyTo&&(
-                          <div onClick={()=>{/* scroll to reply */}} style={{background:"rgba(255,255,255,.05)",borderLeft:`3px solid #7dd3fc`,padding:"2px 8px",borderRadius:"0 4px 4px 0",marginBottom:6,fontSize:13,color:"rgba(255,255,255,.7)",maxWidth:"100%",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",cursor:"pointer",display:"flex",flexDirection:"column"}}>
-                            <span style={{color:"#7dd3fc",fontWeight:500,fontSize:12}}>{msg.replyTo.fromMe?"You":sel.name}</span>
-                            <span>{msg.replyTo.text}</span>
-                          </div>
-                        )}
+                                                {(msg.replyTo || msg.replyToMsgId) && (() => {
+                          const replyMsg = msg.replyTo || msgs.find(m => m.id === msg.replyToMsgId);
+                          if (!replyMsg) return (
+                            <div onClick={()=>{/* scroll to reply */}} style={{background:"rgba(255,255,255,.05)",borderLeft:`3px solid #7dd3fc`,padding:"2px 8px",borderRadius:"0 4px 4px 0",marginBottom:6,fontSize:13,color:"rgba(255,255,255,.7)",maxWidth:"100%",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",cursor:"pointer",display:"flex",flexDirection:"column"}}>
+                              <span style={{color:"#7dd3fc",fontWeight:500,fontSize:12}}>Unknown Sender</span>
+                              <span>Replied Message</span>
+                            </div>
+                          );
+                          return (
+                            <div onClick={()=>{/* scroll to reply */}} style={{background:"rgba(255,255,255,.05)",borderLeft:`3px solid #7dd3fc`,padding:"2px 8px",borderRadius:"0 4px 4px 0",marginBottom:6,fontSize:13,color:"rgba(255,255,255,.7)",maxWidth:"100%",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",cursor:"pointer",display:"flex",flexDirection:"column"}}>
+                              <span style={{color:"#7dd3fc",fontWeight:500,fontSize:12}}>{replyMsg.fromMe ? "You" : (replyMsg.senderName || sel.name)}</span>
+                              <span>{replyMsg.text || 'Media'}</span>
+                            </div>
+                          );
+                        })()}
                         {isPhotoMsg(msg) && <ChatPhoto msg={msg} chatId={sel.id} authToken={token} onImageClick={(src)=>setLightbox(src)}/>}
                         {isVideoMsg(msg) && (
                           <video controls style={{maxWidth:'100%',maxHeight:320,borderRadius:8,display:'block',marginBottom:4}}>

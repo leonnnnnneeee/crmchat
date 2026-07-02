@@ -1430,6 +1430,7 @@ app.get('/api/chat/messages/:id', requireAuth, async (req,res) => {
             title: m.media.webpage.title,
             description: m.media.webpage.description
           } : null,
+          replyToMsgId: m.replyTo?.replyToMsgId || null,
           // Telegram API does not provide exact per-message read timestamps for basic messages
           messageId: m.id,
           isOutgoing: m.out,
