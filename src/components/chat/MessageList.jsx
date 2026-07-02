@@ -619,6 +619,9 @@ const MessageList = React.memo(function MessageList(props) {
   if (prev.scheduleOpen !== next.scheduleOpen) return false;
   if (prev.msgInfoOpen !== next.msgInfoOpen) return false;
   if (prev.highlightedMsgId !== next.highlightedMsgId) return false;
+  if (prev.replyTo !== next.replyTo) return false;
+  if (prev.editingMsg !== next.editingMsg) return false;
+  if (prev.forwardMsg !== next.forwardMsg) return false;
   if (prev.seenTooltip !== next.seenTooltip) return false;
   if (prev.messageFetchError !== next.messageFetchError) return false;
   // If we reach here, it means only input, editingMsg, pastedFile, or stable functions changed.
