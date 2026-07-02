@@ -230,7 +230,7 @@ const MessageList = React.memo(function MessageList(props) {
                         })()}
                         {isPhotoMsg(msg) && <ChatPhoto msg={msg} chatId={sel.id} authToken={token} onImageClick={(src)=>setLightbox(src)}/>}
                         {isVideoMsg(msg) && (
-                          <video controls style={{maxWidth:'100%',maxHeight:320,borderRadius:8,display:'block',marginBottom:4}}>
+                          <video controls preload="metadata" poster={`/api/chat/media/${sel.id}/${msg.id}?thumb=1&t=${token}`} style={{maxWidth:'100%',maxHeight:320,borderRadius:8,display:'block',marginBottom:4}}>
                             <source src={`/api/chat/media/${sel.id}/${msg.id}?t=${token}`}/>
                           </video>
                         )}

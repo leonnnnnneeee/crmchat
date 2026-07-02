@@ -1145,10 +1145,22 @@ app.get(['/api/chat/media/:chatId/:msgId', '/api/telegram/media/audio'], require
     const cachePath = path.join(MEDIA_CACHE_DIR, `${chatId}_${msgId}_${fileId}${isThumb ? '_thumb_' + thumbStr : ''}`)
     if (fs.existsSync(cachePath)) {
       log(`[Media Cache Hit] chatId=${chatId} msgId=${msgId} thumb=${thumbStr}`)
-      if (req.path.includes('/audio')) {
-        res.set('Content-Type', 'audio/ogg')
+      if (isThumb) {
+        res.set('Content-Type', 'image/jpeg');
+      } else if (req.path.includes('/audio')) {
+        res.set('Content-Type', 'audio/ogg');
       } else {
-        res.set('Content-Type', 'image/jpeg') 
+        let cachedMsg = global.mediaMessageCache ? global.mediaMessageCache.get(chatId + '_' + msgId) : null;
+        if (cachedMsg) {
+          const isVideo = cachedMsg.media?.className === 'MessageMediaDocument' && cachedMsg.media?.document?.mimeType?.startsWith('video/');
+          if (isVideo) res.set('Content-Type', cachedMsg.media.document.mimeType || 'video/mp4');
+          else if (cachedMsg.media?.className === 'MessageMediaDocument') res.set('Content-Type', cachedMsg.media.document.mimeType || 'application/octet-stream');
+          else res.set('Content-Type', 'image/jpeg');
+        } else {
+           // Avoid setting incorrect image/jpeg for videos, let browser sniff or assume video if large?
+           // Actually, it's safer to not set it if we don't know, so res.sendFile defaults to octet-stream and browser sniffs.
+           res.type('application/octet-stream');
+        }
       }
       res.set('Cache-Control', 'public, max-age=31536000')
       return res.sendFile(cachePath)
@@ -1185,10 +1197,19 @@ app.get(['/api/chat/media/:chatId/:msgId', '/api/telegram/media/audio'], require
     // Write to cache
     fs.writeFileSync(cachePath, buffer)
 
-    if (req.path.includes('/audio')) {
-      res.set('Content-Type', 'audio/ogg')
+    const isVideo = message.media?.className === 'MessageMediaDocument' && message.media?.document?.mimeType?.startsWith('video/');
+    const isAudio = req.path.includes('/audio') || (message.media?.className === 'MessageMediaDocument' && message.media?.document?.mimeType?.startsWith('audio/'));
+    
+    if (isThumb) {
+      res.set('Content-Type', 'image/jpeg');
+    } else if (isAudio) {
+      res.set('Content-Type', message.media?.document?.mimeType || 'audio/ogg');
+    } else if (isVideo) {
+      res.set('Content-Type', message.media?.document?.mimeType || 'video/mp4');
+    } else if (message.media?.className === 'MessageMediaDocument') {
+      res.set('Content-Type', message.media?.document?.mimeType || 'application/octet-stream');
     } else {
-      res.set('Content-Type', 'image/jpeg')
+      res.set('Content-Type', 'image/jpeg');
     }
     res.set('Cache-Control', 'public, max-age=31536000')
 

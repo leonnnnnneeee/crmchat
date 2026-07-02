@@ -1180,7 +1180,7 @@ function SharedMediaModal({ initialTab, msgs, data, onClose, token, setLightbox,
             if (activeTab === 'videos' && isVideoMsg(m)) {
               return (
                 <div key={m.id} style={{aspectRatio:'1/1',background:'rgba(124,58,237,.1)',borderRadius:8,overflow:'hidden',display:'flex',alignItems:'center',justifyContent:'center',position:'relative'}}>
-                  <video style={{width:'100%',height:'100%',objectFit:'cover'}} src={`/api/chat/media/${data.chatId}/${m.id}?t=${token}`}/>
+                  <video style={{width:'100%',height:'100%',objectFit:'cover'}} src={`/api/chat/media/${data.chatId}/${m.id}?t=${token}`} poster={`/api/chat/media/${data.chatId}/${m.id}?thumb=1&t=${token}`} preload="none"/>
                   <div style={{position:'absolute',fontSize:24,color:'white',pointerEvents:'none'}}>▶</div>
                   <div onClick={() => jumpToMessage(m.id)} style={{position:'absolute',top:4,right:4,background:'rgba(0,0,0,.5)',color:'#fff',padding:'2px 6px',borderRadius:4,fontSize:10,cursor:'pointer',pointerEvents:'auto'}}>Show msg</div>
                 </div>
